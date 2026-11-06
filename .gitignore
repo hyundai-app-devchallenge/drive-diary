@@ -1,0 +1,31 @@
+# 로컬 에이전트 설정
+/AGENTS.md
+.agents/
+.codex/
+.claude/
+/CLAUDE.md
+
+# 인증 정보 및 로컬 환경 변수
+.aws/
+.env
+.env.*
+!.env.example
+!.env.sample
+.envrc
+
+# 에디터 설정 및 임시 파일
+.idea/
+.vscode/
+.*.swp
+.*.swo
+
+# 운영체제 메타데이터
+.DS_Store
+._*
+.Spotlight-V100/
+.Trashes/
+Thumbs.db
+Desktop.ini
+
+# 로컬 캐시
+.cache/
