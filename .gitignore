@@ -29,3 +29,6 @@ Desktop.ini
 
 # 로컬 캐시
 .cache/
+
+# 개인 문서
+/personal-docs/

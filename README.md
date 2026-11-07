@@ -32,3 +32,9 @@
 - 주행 기록 앱은 있지만 기록과 가족 이야기를 결합한 "차량 다이어리"는 찾지 못했습니다.
 - 위치 기록이 쌓이므로 저장 최소화와 동의 설계가 필수입니다.
 - Gleo AI와 역할을 나눠야 합니다. 다이어리는 대화가 아니라 기록을 담당합니다.
+
+## 협업 안내
+
+작업은 [작업 이슈 템플릿](.github/ISSUE_TEMPLATE/task.md)으로 등록하고, 버그는 [버그 신고 템플릿](.github/ISSUE_TEMPLATE/bug_report.md)을 사용합니다. 저장소 파일을 바꾸는 경우 작업 브랜치를 만들고 [PR 템플릿](.github/pull_request_template.md)에 따라 PR을 엽니다.
+
+작업 이슈 등록 → 저장소 파일 변경 시 브랜치 작업 → PR → 리뷰·승인 → 일반 Merge 또는 Squash 순서로 진행합니다. 다른 팀원의 PR은 `@MIIINSEOOOK`가 최종 승인하고, `@MIIINSEOOOK`의 PR은 다른 쓰기 권한 팀원 1명이 승인합니다. 자세한 안내는 [CONTRIBUTING.md](CONTRIBUTING.md)를 참고하세요.
