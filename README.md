@@ -37,4 +37,4 @@
 
 작업은 [작업 이슈 템플릿](.github/ISSUE_TEMPLATE/task.md)으로 등록하고, 버그는 [버그 신고 템플릿](.github/ISSUE_TEMPLATE/bug_report.md)을 사용합니다. 저장소 파일을 바꾸는 경우 작업 브랜치를 만들고 [PR 템플릿](.github/pull_request_template.md)에 따라 PR을 엽니다.
 
-작업 이슈 등록 → 저장소 파일 변경 시 브랜치 작업 → PR → 리뷰·승인 → 일반 Merge 또는 Squash 순서로 진행합니다. 다른 팀원의 PR은 `@MIIINSEOOOK`가 최종 승인하고, `@MIIINSEOOOK`의 PR은 다른 쓰기 권한 팀원 1명이 승인합니다. 자세한 안내는 [CONTRIBUTING.md](CONTRIBUTING.md)를 참고하세요.
+작업 이슈 등록 → 저장소 파일 변경 시 브랜치 작업 → PR → 검토 → 일반 Merge 또는 Squash 순서로 진행합니다. PR 승인은 필수가 아니며 쓰기 권한이 있는 작성자는 자기 PR도 승인 없이 병합할 수 있습니다. GitHub는 작성자의 자기 승인을 허용하지 않습니다. 자세한 안내는 [CONTRIBUTING.md](CONTRIBUTING.md)를 참고하세요.
