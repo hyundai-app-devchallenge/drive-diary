@@ -63,8 +63,10 @@ public final class ProbeActivity extends Activity {
         button(panel, "Run 120-second background STT", this::startContinuous);
         button(panel, "Stop background STT", this::stopContinuous);
         button(panel, "Show last background STT result", this::showContinuousResult);
+        button(panel, "Test 10s gaps, Gleo guard and local story model", this::startStoryReplay);
         button(panel, "Test mic input for 8 seconds", () -> startMic(8));
         button(panel, "Test mic input for 30 seconds (can leave app)", () -> startMic(30));
+        button(panel, "Test mic close and reopen with 10s gap", () -> startMic(6, true));
         button(panel, "Stop mic test", () -> stopService(new Intent(this, MicProbeService.class)));
         ScrollView scroll = new ScrollView(this);
         scroll.addView(panel);
@@ -81,6 +83,7 @@ public final class ProbeActivity extends Activity {
         if (state == null && "stream".equals(synthetic)) testPcm(Locale.KOREA, true);
         if (state == null && "virtual-answer".equals(synthetic)) recordVirtualAnswer();
         if (state == null && "continuous".equals(synthetic)) startContinuous();
+        if (state == null && "feature2".equals(synthetic)) startStoryReplay();
     }
 
     private void button(LinearLayout panel, String text, Runnable click) {
@@ -91,6 +94,10 @@ public final class ProbeActivity extends Activity {
     }
 
     private void startMic(int seconds) {
+        startMic(seconds, false);
+    }
+
+    private void startMic(int seconds, boolean gap) {
         if (sttBusy()) {
             report("Wait for the synthetic test to finish.");
             return;
@@ -103,7 +110,8 @@ public final class ProbeActivity extends Activity {
             report("Tap the desired mic test again after granting permission.");
             return;
         }
-        startForegroundService(new Intent(this, MicProbeService.class).putExtra("seconds", seconds));
+        startForegroundService(new Intent(this, MicProbeService.class)
+                .putExtra("seconds", seconds).putExtra("gap", gap));
     }
 
     private void testPcm(Locale locale, boolean stream) {
@@ -193,6 +201,32 @@ public final class ProbeActivity extends Activity {
             status.append(Files.readString(file.toPath()));
         } catch (IOException error) {
             report("No completed background STT result available.");
+        }
+    }
+
+    private void startStoryReplay() {
+        if (sttBusy()) {
+            report("Wait for the current STT test to finish.");
+            return;
+        }
+        try {
+            TinyStoryModel model = new TinyStoryModel(this);
+            StoryReplayProbe.evaluateModel(this, model, this::report);
+            byte[] timeline = StoryReplayProbe.timeline(this, this::report);
+            shortStream = new SyntheticStreamProbe(this, timeline, this::report, (result, finals) -> {
+                shortStream = null;
+                report("Story replay: " + result);
+                if (!result.startsWith("Synthetic PCM stream finished")
+                        || finals.size() != StoryReplayProbe.EXPECTED_FORWARDED) return;
+                try {
+                    StoryReplayProbe.saveCandidates(this, model, finals, this::report);
+                } catch (IOException error) {
+                    report("Could not save story candidates: " + error.getMessage());
+                }
+            });
+            shortStream.start();
+        } catch (IOException error) {
+            report("Could not load story replay: " + error.getMessage());
         }
     }
 

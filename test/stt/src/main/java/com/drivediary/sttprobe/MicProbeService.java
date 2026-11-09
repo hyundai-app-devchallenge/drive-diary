@@ -29,7 +29,8 @@ public final class MicProbeService extends Service {
         }
         if (worker != null) return START_NOT_STICKY;
 
-        int seconds = intent.getIntExtra("seconds", 8) == 30 ? 30 : 8;
+        boolean gap = intent.getBooleanExtra("gap", false);
+        int seconds = gap ? 6 : (intent.getIntExtra("seconds", 8) == 30 ? 30 : 8);
         NotificationManager manager = getSystemService(NotificationManager.class);
         manager.createNotificationChannel(new NotificationChannel(CHANNEL, "Mic probe",
                 NotificationManager.IMPORTANCE_LOW));
@@ -38,18 +39,39 @@ public final class MicProbeService extends Service {
         Notification notification = new Notification.Builder(this, CHANNEL)
                 .setSmallIcon(android.R.drawable.ic_btn_speak_now)
                 .setContentTitle("Drive Diary microphone test")
-                .setContentText("Sample counts only. Stops automatically after " + seconds + " seconds.")
+                .setContentText(gap ? "6s input, 10s closed, 6s input. Sample counts only."
+                        : "Sample counts only. Stops automatically after " + seconds + " seconds.")
                 .addAction(new Notification.Action.Builder(null, "Stop", stop).build())
                 .setOngoing(true)
                 .build();
         startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
 
-        worker = new Thread(() -> measure(seconds), "mic-probe");
+        worker = new Thread(() -> runProbe(seconds, gap), "mic-probe");
         worker.start();
         return START_NOT_STICKY;
     }
 
-    private void measure(int seconds) {
+    private void runProbe(int seconds, boolean gap) {
+        try {
+            if (measure(seconds) && gap && !stopped) {
+                long closedAt = SystemClock.elapsedRealtime();
+                Log.i(ProbeActivity.TAG, "Mic gap started after AudioRecord release");
+                while (!stopped && SystemClock.elapsedRealtime() - closedAt < 10000) {
+                    SystemClock.sleep(100);
+                }
+                if (!stopped) {
+                    Log.i(ProbeActivity.TAG, "Mic gap completed, closedMs="
+                            + (SystemClock.elapsedRealtime() - closedAt));
+                    measure(seconds);
+                }
+            }
+        } finally {
+            Log.i(ProbeActivity.TAG, "Mic stopped");
+            stopSelf();
+        }
+    }
+
+    private boolean measure(int seconds) {
         int channels = AudioFormat.CHANNEL_IN_MONO;
         int encoding = AudioFormat.ENCODING_PCM_16BIT;
         AudioRecord recorder = null;
@@ -85,15 +107,12 @@ public final class MicProbeService extends Service {
                     peak = 0;
                 }
             }
+            return true;
         } catch (RuntimeException error) {
             Log.w(ProbeActivity.TAG, "Mic failed", error);
+            return false;
         } finally {
-            try {
-                if (recorder != null) releaseRecorder(recorder);
-            } finally {
-                Log.i(ProbeActivity.TAG, "Mic stopped");
-                stopSelf();
-            }
+            if (recorder != null) releaseRecorder(recorder);
         }
     }
 
