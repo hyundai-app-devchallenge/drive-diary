@@ -18,3 +18,6 @@ fun formatDuration(ms: Long): String {
 }
 
 fun formatDistance(value: Float): String = "%,.1f".format(value)
+
+/** 미터 → "12.3" 같은 km 문자열 */
+fun formatKm(meters: Double): String = "%,.1f".format(meters / 1000)

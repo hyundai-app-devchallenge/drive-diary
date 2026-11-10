@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.dongbantest.app.domain.model.DataSourceType
+import com.dongbantest.app.domain.model.DriveSummary
 import com.dongbantest.app.domain.model.MemoryType
 import com.dongbantest.app.domain.model.Trip
 import com.dongbantest.app.ui.components.DiaryBackground
@@ -40,6 +41,7 @@ import com.dongbantest.app.ui.components.PolaroidPhoto
 import com.dongbantest.app.ui.components.ScreenHeader
 import com.dongbantest.app.ui.components.formatDate
 import com.dongbantest.app.ui.components.formatDistance
+import com.dongbantest.app.ui.components.formatKm
 import com.dongbantest.app.ui.components.formatTime
 import com.dongbantest.app.ui.theme.Cocoa
 import com.dongbantest.app.ui.theme.CocoaSoft
@@ -95,6 +97,7 @@ fun DiaryDetailScreen(
                             DiaryPage(Modifier.weight(1f)) {
                                 DrivingRestrictionBanner(uiState.safety)
                                 TripHeader(data.trip)
+                                DriveSection(data.drive)
                                 stories.forEach { MemoryRow(it, uiState.playingPath == it.filePath, onPlay, if (restricted) null else onDeleteMemory) }
                             }
                             // 책 가운데 접히는 부분
@@ -107,6 +110,7 @@ fun DiaryDetailScreen(
                         DiaryPage(Modifier.fillMaxSize()) {
                             DrivingRestrictionBanner(uiState.safety)
                             TripHeader(data.trip)
+                            DriveSection(data.drive)
                             PhotoPage(photos.map { it.filePath to formatTime(it.createdAt) }, restricted, onPhotoPicked, onPhotoPickerUnavailable)
                             stories.forEach { MemoryRow(it, uiState.playingPath == it.filePath, onPlay, if (restricted) null else onDeleteMemory) }
                         }
@@ -152,6 +156,22 @@ private fun TripHeader(trip: Trip) {
         Text("🚗 함께 달린 거리: ${formatDistance(d)} ($src)", style = MaterialTheme.typography.bodyMedium, color = CocoaSoft)
     }
     if (trip.isSample) Text("※ 예시로 만든 다이어리예요.", style = MaterialTheme.typography.labelMedium, color = CocoaSoft)
+}
+
+/** GPS 기록으로 만든 주행거리와 타임라인. 위치 기록이 없으면 아무것도 그리지 않는다. */
+@Composable
+private fun DriveSection(drive: DriveSummary) {
+    if (drive.pointCount == 0) return
+    Text(
+        "🛣️ GPS로 기록한 거리: ${formatKm(drive.distanceMeters)} km",
+        style = MaterialTheme.typography.bodyMedium, color = CocoaSoft,
+    )
+    if (drive.timeline.isNotEmpty()) {
+        Text(
+            drive.timeline.joinToString(" → ") { "${formatTime(it.time)} ${it.type.label}" },
+            style = MaterialTheme.typography.bodyMedium, color = Cocoa,
+        )
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)

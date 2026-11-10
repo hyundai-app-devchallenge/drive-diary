@@ -9,6 +9,7 @@ import com.dongbantest.app.data.repository.MediaFileStore
 import com.dongbantest.app.data.repository.QuestionBank
 import com.dongbantest.app.data.repository.TripRepository
 import com.dongbantest.app.domain.model.TripWithMemories
+import com.dongbantest.app.location.LocationTracker
 import com.dongbantest.app.vehicle.DrivingSafetyMonitor
 import com.dongbantest.app.vehicle.DrivingSafetyState
 import com.dongbantest.app.vehicle.SafetySource
@@ -49,6 +50,7 @@ class TripViewModel(
     private val safetyMonitor: DrivingSafetyMonitor,
     private val files: MediaFileStore,
     private val recorder: VoiceRecorder,
+    private val locationTracker: LocationTracker,
 ) : ViewModel() {
 
     private val player = VoicePlayer()
@@ -142,14 +144,21 @@ class TripViewModel(
         tripRepository.deleteMemory(memoryId)
     }
 
+    /** 진행 중인 여행이면 GPS 위치 수집을 시작한다. 위치 권한이 있을 때만 동작한다. */
+    fun startLocationTracking() = viewModelScope.launch {
+        if (tripRepository.isTripOngoing(tripId)) locationTracker.start(tripId)
+    }
+
     fun endTrip(onEnded: () -> Unit) = viewModelScope.launch {
         if (recorder.isRecording) stopRecording()
+        locationTracker.stop(tripId)
         tripRepository.endTrip(tripId, vehicleRepository.state.value.odometer)
         onEnded()
     }
 
     fun deleteTrip(onDeleted: () -> Unit) = viewModelScope.launch {
         player.stop()
+        locationTracker.stop(tripId)
         tripRepository.deleteTrip(tripId)
         onDeleted()
     }

@@ -51,4 +51,10 @@ interface TripDao {
 
     @Query("DELETE FROM memories WHERE id = :id")
     suspend fun deleteMemory(id: Long)
+
+    @Insert
+    suspend fun insertLocationPoint(point: LocationPointEntity): Long
+
+    @Query("SELECT * FROM location_points WHERE tripId = :tripId ORDER BY recordedAt ASC")
+    fun observeLocationPoints(tripId: Long): Flow<List<LocationPointEntity>>
 }

@@ -1,9 +1,12 @@
 package com.dongbantest.app.data.repository
 
+import com.dongbantest.app.data.local.LocationPointEntity
 import com.dongbantest.app.data.local.MemoryEntity
 import com.dongbantest.app.data.local.TripDao
 import com.dongbantest.app.data.local.TripEntity
+import com.dongbantest.app.domain.location.summarizeDrive
 import com.dongbantest.app.domain.model.DataSourceType
+import com.dongbantest.app.domain.model.LocationPoint
 import com.dongbantest.app.domain.model.Memory
 import com.dongbantest.app.domain.model.MemoryType
 import com.dongbantest.app.domain.model.Trip
@@ -27,15 +30,32 @@ class TripRepository(
     fun observeOngoingTrip(): Flow<Trip?> = dao.observeOngoingTrip().map { it?.toDomain() }
 
     fun observeTripWithMemories(tripId: Long): Flow<TripWithMemories?> =
-        combine(dao.observeTrip(tripId), dao.observeMemories(tripId)) { trip, memories ->
+        combine(
+            dao.observeTrip(tripId),
+            dao.observeMemories(tripId),
+            dao.observeLocationPoints(tripId),
+        ) { trip, memories, points ->
             trip?.let { t ->
                 val domainMemories = memories.map { it.toDomain() }
                 TripWithMemories(
                     trip = t.toDomain(domainMemories.firstOrNull { it.type == MemoryType.PHOTO }?.filePath),
                     memories = domainMemories,
+                    drive = summarizeDrive(points.map { it.toDomain() }, finished = t.endedAt != null),
                 )
             }
         }
+
+    suspend fun isTripOngoing(tripId: Long): Boolean = dao.getTrip(tripId)?.endedAt == null
+
+    suspend fun addLocationPoint(point: LocationPoint): Long = dao.insertLocationPoint(
+        LocationPointEntity(
+            tripId = point.tripId,
+            recordedAt = point.recordedAt,
+            latitude = point.latitude,
+            longitude = point.longitude,
+            accuracyMeters = point.accuracyMeters,
+        )
+    )
 
     suspend fun startTrip(
         title: String,
@@ -144,4 +164,12 @@ private fun MemoryEntity.toDomain() = Memory(
     filePath = filePath,
     transcript = transcript,
     durationMs = durationMs,
+)
+
+private fun LocationPointEntity.toDomain() = LocationPoint(
+    tripId = tripId,
+    recordedAt = recordedAt,
+    latitude = latitude,
+    longitude = longitude,
+    accuracyMeters = accuracyMeters,
 )

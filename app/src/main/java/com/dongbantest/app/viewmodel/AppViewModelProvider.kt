@@ -39,6 +39,7 @@ object AppViewModelProvider {
                 safetyMonitor = c.drivingSafetyMonitor,
                 files = c.mediaFileStore,
                 recorder = VoiceRecorder(app()),
+                locationTracker = c.locationTracker,
             )
         }
     }

@@ -5,6 +5,8 @@ import android.content.Context
 import com.dongbantest.app.data.local.DongbanDatabase
 import com.dongbantest.app.data.repository.MediaFileStore
 import com.dongbantest.app.data.repository.TripRepository
+import com.dongbantest.app.location.LocationReader
+import com.dongbantest.app.location.LocationTracker
 import com.dongbantest.app.vehicle.DrivingSafetyMonitor
 import com.dongbantest.app.vehicle.VehicleRepository
 import kotlinx.coroutines.CoroutineScope
@@ -19,6 +21,7 @@ class AppContainer(context: Context) {
     val tripRepository by lazy { TripRepository(database.tripDao(), mediaFileStore) }
     val vehicleRepository by lazy { VehicleRepository(context, appScope) }
     val drivingSafetyMonitor by lazy { DrivingSafetyMonitor(context) }
+    val locationTracker by lazy { LocationTracker(LocationReader(context), tripRepository, appScope) }
 }
 
 class DongbanApplication : Application() {

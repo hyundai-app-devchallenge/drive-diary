@@ -34,6 +34,7 @@ import com.dongbantest.app.ui.components.QuestionCard
 import com.dongbantest.app.ui.components.RecordVoiceButton
 import com.dongbantest.app.ui.components.ScreenHeader
 import com.dongbantest.app.ui.components.SoftButton
+import com.dongbantest.app.ui.components.formatKm
 import com.dongbantest.app.ui.components.formatTime
 import com.dongbantest.app.ui.theme.Butter
 import com.dongbantest.app.ui.theme.Cocoa
@@ -82,6 +83,12 @@ fun TripScreen(
                             }
                         }
                         Text("지금까지 남긴 추억 $memoryCount 개", style = MaterialTheme.typography.bodyMedium, color = CocoaSoft)
+                        uiState.data?.drive?.takeIf { it.pointCount > 0 }?.let { drive ->
+                            Text("🛣️ GPS 주행거리 ${formatKm(drive.distanceMeters)} km", style = MaterialTheme.typography.bodyLarge, color = Cocoa)
+                            drive.timeline.lastOrNull()?.let { event ->
+                                Text("${formatTime(event.time)} ${event.type.label}", style = MaterialTheme.typography.bodyMedium, color = CocoaSoft)
+                            }
+                        }
                     }
                 }
                 val actions = @Composable { m: Modifier ->

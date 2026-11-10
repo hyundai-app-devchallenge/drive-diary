@@ -1,5 +1,7 @@
 package com.dongbantest.app.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -11,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -23,6 +26,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.dongbantest.app.location.LocationReader
 import com.dongbantest.app.ui.screens.DiaryDetailScreen
 import com.dongbantest.app.ui.screens.DiaryListScreen
 import com.dongbantest.app.ui.screens.HomeScreen
@@ -87,6 +91,18 @@ fun DongbanNavHost(navController: NavHostController = rememberNavController()) {
             val vm: TripViewModel = viewModel(factory = AppViewModelProvider.trip(tripId))
             val state by vm.uiState.collectAsStateWithLifecycle()
             LifecycleEventEffect(Lifecycle.Event.ON_STOP) { vm.onScreenHidden() }
+            // 여행 화면에 들어오면 위치 권한을 확인하고 GPS 기록을 시작한다.
+            val context = LocalContext.current
+            val locationPermission = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestMultiplePermissions()
+            ) {
+                if (LocationReader.hasPermission(context)) vm.startLocationTracking()
+                else vm.showMessage("위치 권한이 없어 주행 경로를 기록하지 않아요.")
+            }
+            LaunchedEffect(tripId) {
+                if (LocationReader.hasPermission(context)) vm.startLocationTracking()
+                else locationPermission.launch(LocationReader.PERMISSIONS)
+            }
             WithMessages(state.message, vm::consumeMessage) {
                 TripScreen(
                     uiState = state,

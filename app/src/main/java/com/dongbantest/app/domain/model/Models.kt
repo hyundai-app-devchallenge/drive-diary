@@ -55,6 +55,44 @@ data class Memory(
 data class TripWithMemories(
     val trip: Trip,
     val memories: List<Memory>,
+    /** GPS 기록으로 계산한 주행 요약. 위치 기록이 없으면 빈 값. */
+    val drive: DriveSummary = DriveSummary.EMPTY,
 )
 
 enum class DataSourceType { PLEOS_VEHICLE, MOCK }
+
+/** 여행 중 GPS 로 받은 위치 한 점. */
+data class LocationPoint(
+    val tripId: Long,
+    val recordedAt: Long,
+    val latitude: Double,
+    val longitude: Double,
+    /** GPS 오차(미터). 값이 없으면 null. */
+    val accuracyMeters: Float? = null,
+)
+
+enum class TimelineType(val label: String) {
+    START("출발"),
+    STOP("정차"),
+    RESUME("다시 출발"),
+    END("도착"),
+}
+
+/** 위치 기록에서 자동으로 뽑은 이벤트 (출발·정차·다시 출발·도착). */
+data class TimelineEvent(
+    val time: Long,
+    val type: TimelineType,
+    val latitude: Double,
+    val longitude: Double,
+)
+
+/** GPS 기록 기반 주행 요약. 차량 주행거리계(odometer)와 별개로 계산한다. */
+data class DriveSummary(
+    val pointCount: Int,
+    val distanceMeters: Double,
+    val timeline: List<TimelineEvent>,
+) {
+    companion object {
+        val EMPTY = DriveSummary(pointCount = 0, distanceMeters = 0.0, timeline = emptyList())
+    }
+}

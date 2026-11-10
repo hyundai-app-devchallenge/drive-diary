@@ -46,3 +46,25 @@ data class MemoryEntity(
     val transcript: String?,
     val durationMs: Long?,
 )
+
+/** 여행 중 GPS 로 받은 위치. 여행을 지우면 함께 지워진다. */
+@Entity(
+    tableName = "location_points",
+    foreignKeys = [
+        ForeignKey(
+            entity = TripEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["tripId"],
+            onDelete = ForeignKey.CASCADE,
+        )
+    ],
+    indices = [Index("tripId")],
+)
+data class LocationPointEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val tripId: Long,
+    val recordedAt: Long,
+    val latitude: Double,
+    val longitude: Double,
+    val accuracyMeters: Float?,
+)
