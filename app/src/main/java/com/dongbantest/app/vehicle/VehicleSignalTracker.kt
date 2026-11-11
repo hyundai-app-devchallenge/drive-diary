@@ -29,6 +29,9 @@ class VehicleSignalTracker(
     private var job: Job? = null
     private var trackingTripId: Long? = null
 
+    /** 기어가 P 로 바뀌어 저장한 뒤 부른다 (도착 판단용). 인자는 여행 id. */
+    var onParked: ((Long) -> Unit)? = null
+
     fun start(tripId: Long) {
         if (trackingTripId == tripId && job?.isActive == true) return
         stop()
@@ -43,6 +46,7 @@ class VehicleSignalTracker(
                     last[group] = type
                     Log.i(TAG, "차량 신호: $type")
                     repository.addVehicleSignal(VehicleSignal(tripId, System.currentTimeMillis(), type))
+                    if (type == PARKED) onParked?.invoke(tripId)
                 }
         }
     }

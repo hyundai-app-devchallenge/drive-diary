@@ -41,6 +41,7 @@ object AppViewModelProvider {
                 recorder = VoiceRecorder(app()),
                 locationTracker = c.locationTracker,
                 vehicleSignalTracker = c.vehicleSignalTracker,
+                arrivalManager = c.arrivalManager,
             )
         }
     }

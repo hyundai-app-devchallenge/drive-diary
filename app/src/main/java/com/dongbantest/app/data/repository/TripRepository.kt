@@ -108,6 +108,14 @@ class TripRepository(
         dao.updateTrip(trip.copy(endedAt = now, endOdometer = odometer ?: trip.endOdometer))
     }
 
+    /** 자동 종료를 되돌린다 ("아직 여행 중이에요"). */
+    suspend fun reopenTrip(tripId: Long) {
+        val trip = dao.getTrip(tripId) ?: return
+        dao.updateTrip(trip.copy(endedAt = null))
+    }
+
+    suspend fun lastLocation(tripId: Long): LocationPoint? = dao.getLastLocationPoint(tripId)?.toDomain()
+
     suspend fun addTextMemo(tripId: Long, text: String) =
         addMemory(tripId, MemoryType.TEXT, text = text.trim())
 

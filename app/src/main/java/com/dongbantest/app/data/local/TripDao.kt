@@ -58,6 +58,9 @@ interface TripDao {
     @Query("SELECT * FROM location_points WHERE tripId = :tripId ORDER BY recordedAt ASC")
     fun observeLocationPoints(tripId: Long): Flow<List<LocationPointEntity>>
 
+    @Query("SELECT * FROM location_points WHERE tripId = :tripId ORDER BY recordedAt DESC LIMIT 1")
+    suspend fun getLastLocationPoint(tripId: Long): LocationPointEntity?
+
     /** 끝난 여행들의 위치 기록 전부 (기록 지도용). */
     @Query(
         "SELECT location_points.* FROM location_points " +

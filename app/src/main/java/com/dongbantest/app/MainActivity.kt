@@ -17,6 +17,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.launch
 import com.dongbantest.app.navi.ArrivalNotifier
 import com.dongbantest.app.ui.ArrivalRequest
 import com.dongbantest.app.ui.DongbanNavHost
@@ -63,6 +68,15 @@ class MainActivity : ComponentActivity() {
             arrivalRequest = intent.toArrivalRequest()
             requestMissingPermissions()
         }
+        // 앱이 화면에 있을 때 여행이 자동 종료되면 바로 S11 도착 화면으로 간다.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                container.arrivalManager.arrival.filterNotNull().collect {
+                    arrivalRequest = ArrivalRequest(it.tripId, it.destinationName)
+                    container.arrivalManager.consume()
+                }
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -89,11 +103,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        container.arrivalManager.isAppVisible = true
         container.drivingSafetyMonitor.start()
         container.vehicleRepository.start()
     }
 
     override fun onStop() {
+        container.arrivalManager.isAppVisible = false
         container.vehicleRepository.stop()
         container.drivingSafetyMonitor.stop()
         super.onStop()

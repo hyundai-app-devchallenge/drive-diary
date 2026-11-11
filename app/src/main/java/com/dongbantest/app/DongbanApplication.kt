@@ -7,6 +7,7 @@ import com.dongbantest.app.data.repository.MediaFileStore
 import com.dongbantest.app.data.repository.TripRepository
 import com.dongbantest.app.location.LocationReader
 import com.dongbantest.app.location.LocationTracker
+import com.dongbantest.app.navi.ArrivalManager
 import com.dongbantest.app.navi.ArrivalNotifier
 import com.dongbantest.app.navi.NaviMonitor
 import com.dongbantest.app.vehicle.DrivingSafetyMonitor
@@ -16,8 +17,6 @@ import com.dongbantest.app.vehicle.VehicleRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 
 /** 간단한 수동 DI 컨테이너. */
 class AppContainer(context: Context) {
@@ -30,16 +29,18 @@ class AppContainer(context: Context) {
     val locationTracker by lazy { LocationTracker(LocationReader(context), tripRepository, appScope) }
     val vehicleSignalTracker by lazy { VehicleSignalTracker(VehicleSignalReader(context), tripRepository, appScope) }
     val naviMonitor by lazy { NaviMonitor(context) }
-    private val arrivalNotifier by lazy { ArrivalNotifier(context) }
+    val arrivalManager by lazy {
+        ArrivalManager(
+            tripRepository, vehicleRepository, locationTracker, vehicleSignalTracker,
+            ArrivalNotifier(context), appScope,
+        )
+    }
 
-    /** 내비에서 목적지 도착 신호가 오면, 진행 중인 여행이 있을 때만 알림을 띄운다. */
+    /** 내비 연결 + 도착 자동 종료 연결: 내비 도착 신호, 내비 목적지, 주차 신호를 ArrivalManager 로 보낸다. */
     fun startNavi() {
-        naviMonitor.onArrived = { destinationName ->
-            appScope.launch {
-                val trip = tripRepository.observeOngoingTrip().first() ?: return@launch
-                arrivalNotifier.show(trip.id, destinationName)
-            }
-        }
+        naviMonitor.onArrived = { arrivalManager.onNaviArrived(it) }
+        naviMonitor.onDestination = { arrivalManager.destination = it }
+        vehicleSignalTracker.onParked = { arrivalManager.onParked(it) }
         naviMonitor.start()
     }
 }

@@ -14,8 +14,8 @@ import com.dongbantest.app.MainActivity
 import com.dongbantest.app.R
 
 /**
- * 목적지에 도착하면 "여행 기록을 마칠까요?" 알림을 띄운다.
- * 알림을 누르면 MainActivity 가 열리고, 여행 화면에서 종료 확인 창을 보여준다.
+ * 목적지 도착으로 여행이 자동 종료됐을 때, 앱이 화면에 없으면 알림을 띄운다.
+ * 알림을 누르면 MainActivity 가 열리고 S11 도착 화면을 보여준다 ("아직 여행 중이에요"로 되돌릴 수 있다).
  */
 class ArrivalNotifier(private val context: Context) {
 
@@ -45,7 +45,7 @@ class ArrivalNotifier(private val context: Context) {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("${place}에 도착했어요")
-            .setContentText("여행 기록을 마칠까요? 눌러서 확인해 주세요.")
+            .setContentText("여행을 마치고 다이어리로 정리할게요. 아직 여행 중이면 눌러서 알려 주세요.")
             .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pendingIntent)

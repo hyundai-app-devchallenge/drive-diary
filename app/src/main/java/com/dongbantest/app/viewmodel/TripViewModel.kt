@@ -15,6 +15,7 @@ import com.dongbantest.app.vehicle.DrivingSafetyState
 import com.dongbantest.app.vehicle.SafetySource
 import com.dongbantest.app.vehicle.VehicleRepository
 import com.dongbantest.app.vehicle.VehicleSignalTracker
+import com.dongbantest.app.navi.ArrivalManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -53,6 +54,7 @@ class TripViewModel(
     private val recorder: VoiceRecorder,
     private val locationTracker: LocationTracker,
     private val vehicleSignalTracker: VehicleSignalTracker,
+    private val arrivalManager: ArrivalManager,
 ) : ViewModel() {
 
     private val player = VoicePlayer()
@@ -162,6 +164,12 @@ class TripViewModel(
         vehicleSignalTracker.stop(tripId)
         tripRepository.endTrip(tripId, vehicleRepository.state.value.odometer)
         onEnded()
+    }
+
+    /** S11 "아직 여행 중이에요": 자동 종료된 여행을 다시 연다. */
+    fun keepTraveling(onReopened: () -> Unit) = viewModelScope.launch {
+        arrivalManager.keepTraveling(tripId).join()
+        onReopened()
     }
 
     fun deleteTrip(onDeleted: () -> Unit) = viewModelScope.launch {

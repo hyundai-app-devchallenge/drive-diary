@@ -18,6 +18,9 @@ import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
  * 내비가 보내는 값을 로그로 남기고, 목적지에 도착하면 [onArrived]를 부른다.
  * 확인 명령: adb logcat -s NaviMonitor
  */
+/** 내비에 설정된 목적지 */
+data class NaviDestination(val name: String, val latitude: Double, val longitude: Double)
+
 class NaviMonitor(context: Context) {
 
     private val naviHelper = NaviHelper(context.applicationContext)
@@ -26,6 +29,9 @@ class NaviMonitor(context: Context) {
     /** 목적지에 도착했을 때 부를 함수. 인자는 목적지 이름이다. */
     var onArrived: ((String) -> Unit)? = null
 
+    /** 내비에 설정된 목적지가 바뀌면 부른다. 목적지가 없으면 null. */
+    var onDestination: ((NaviDestination?) -> Unit)? = null
+
     private val listener = object : NaviHelperEventListener {
         override fun onCurrentLocationInfo(currentLocationInfo: CurrentLocationInfo) {
             Log.i(TAG, "현재 위치: $currentLocationInfo")
@@ -33,6 +39,11 @@ class NaviMonitor(context: Context) {
 
         override fun onDestinationInfo(destinationInfo: DestinationInfo) {
             Log.i(TAG, "목적지: $destinationInfo")
+            val hasDestination = destinationInfo.latitude != 0.0 || destinationInfo.longitude != 0.0
+            onDestination?.invoke(
+                if (hasDestination) NaviDestination(destinationInfo.name, destinationInfo.latitude, destinationInfo.longitude)
+                else null
+            )
         }
 
         override fun onRouteStateInfo(routeStateInfo: RouteStateInfo) {
@@ -46,6 +57,7 @@ class NaviMonitor(context: Context) {
 
         override fun onRouteStarted(routeStartInfo: RouteStartInfo) {
             Log.i(TAG, "길 안내 시작: $routeStartInfo")
+            runCatching { naviHelper.getDestinationInfo() }
         }
 
         override fun onRouteEnded() {
@@ -54,6 +66,7 @@ class NaviMonitor(context: Context) {
 
         override fun onRouteCancelled() {
             Log.i(TAG, "길 안내 취소")
+            onDestination?.invoke(null)
         }
 
         override fun onDestinationArrived(destinationArrivedInfo: DestinationArrivedInfo) {
