@@ -4,6 +4,7 @@ import com.dongbantest.app.data.local.LocationPointEntity
 import com.dongbantest.app.data.local.MemoryEntity
 import com.dongbantest.app.data.local.TripDao
 import com.dongbantest.app.data.local.TripEntity
+import com.dongbantest.app.data.local.VehicleSignalEntity
 import com.dongbantest.app.domain.location.summarizeDrive
 import com.dongbantest.app.domain.model.DataSourceType
 import com.dongbantest.app.domain.model.LocationPoint
@@ -11,6 +12,8 @@ import com.dongbantest.app.domain.model.Memory
 import com.dongbantest.app.domain.model.MemoryType
 import com.dongbantest.app.domain.model.Trip
 import com.dongbantest.app.domain.model.TripWithMemories
+import com.dongbantest.app.domain.model.VehicleSignal
+import com.dongbantest.app.domain.model.VehicleSignalType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -34,13 +37,18 @@ class TripRepository(
             dao.observeTrip(tripId),
             dao.observeMemories(tripId),
             dao.observeLocationPoints(tripId),
-        ) { trip, memories, points ->
+            dao.observeVehicleSignals(tripId),
+        ) { trip, memories, points, signals ->
             trip?.let { t ->
                 val domainMemories = memories.map { it.toDomain() }
                 TripWithMemories(
                     trip = t.toDomain(domainMemories.firstOrNull { it.type == MemoryType.PHOTO }?.filePath),
                     memories = domainMemories,
-                    drive = summarizeDrive(points.map { it.toDomain() }, finished = t.endedAt != null),
+                    drive = summarizeDrive(
+                        points = points.map { it.toDomain() },
+                        signals = signals.mapNotNull { it.toDomain() },
+                        finished = t.endedAt != null,
+                    ),
                 )
             }
         }
@@ -54,6 +62,14 @@ class TripRepository(
             latitude = point.latitude,
             longitude = point.longitude,
             accuracyMeters = point.accuracyMeters,
+        )
+    )
+
+    suspend fun addVehicleSignal(signal: VehicleSignal): Long = dao.insertVehicleSignal(
+        VehicleSignalEntity(
+            tripId = signal.tripId,
+            recordedAt = signal.recordedAt,
+            type = signal.type.name,
         )
     )
 
@@ -173,3 +189,8 @@ private fun LocationPointEntity.toDomain() = LocationPoint(
     longitude = longitude,
     accuracyMeters = accuracyMeters,
 )
+
+/** 알 수 없는 이름(예전 버전에서 저장한 값 등)은 건너뛴다. */
+private fun VehicleSignalEntity.toDomain(): VehicleSignal? =
+    VehicleSignalType.entries.firstOrNull { it.name == type }
+        ?.let { VehicleSignal(tripId = tripId, recordedAt = recordedAt, type = it) }

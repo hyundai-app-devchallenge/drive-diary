@@ -22,6 +22,12 @@
     <!-- Pleos NaviHelper: 현재 위치·목적지 조회와 도착 이벤트 (protection level: normal) -->
     <uses-permission android:name="pleos.car.permission.NAVI_ROUTE" />
 
+    <!-- 정차 판단: 운전석 착석·안전벨트(Seat), 문 열림(Door) — Pleos, protection level: normal -->
+    <uses-permission android:name="pleos.car.permission.CAR_SEATS" />
+    <uses-permission android:name="pleos.car.permission.CAR_DOORS" />
+    <!-- 정차 판단: 기어(AAOS GEAR_SELECTION) -->
+    <uses-permission android:name="android.car.permission.CAR_POWERTRAIN" />
+
     <!-- 목적지 도착 알림 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 

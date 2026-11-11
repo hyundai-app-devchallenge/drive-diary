@@ -10,6 +10,8 @@ import com.dongbantest.app.location.LocationTracker
 import com.dongbantest.app.navi.ArrivalNotifier
 import com.dongbantest.app.navi.NaviMonitor
 import com.dongbantest.app.vehicle.DrivingSafetyMonitor
+import com.dongbantest.app.vehicle.VehicleSignalReader
+import com.dongbantest.app.vehicle.VehicleSignalTracker
 import com.dongbantest.app.vehicle.VehicleRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +28,7 @@ class AppContainer(context: Context) {
     val vehicleRepository by lazy { VehicleRepository(context, appScope) }
     val drivingSafetyMonitor by lazy { DrivingSafetyMonitor(context) }
     val locationTracker by lazy { LocationTracker(LocationReader(context), tripRepository, appScope) }
+    val vehicleSignalTracker by lazy { VehicleSignalTracker(VehicleSignalReader(context), tripRepository, appScope) }
     val naviMonitor by lazy { NaviMonitor(context) }
     private val arrivalNotifier by lazy { ArrivalNotifier(context) }
 

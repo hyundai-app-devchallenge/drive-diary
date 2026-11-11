@@ -71,6 +71,26 @@ data class LocationPoint(
     val accuracyMeters: Float? = null,
 )
 
+/** 여행 중 차량에서 받은 정차 관련 신호. 정차 판단(타임라인)에 쓴다. */
+enum class VehicleSignalType {
+    /** 기어 P */
+    PARKED,
+    /** 기어 P 가 아닌 상태 (D·R·N) */
+    GEAR_NOT_PARKED,
+    DRIVER_SEAT_EMPTY,
+    DRIVER_SEAT_OCCUPIED,
+    DRIVER_BELT_OFF,
+    DRIVER_BELT_ON,
+    DOOR_OPEN,
+    DOOR_CLOSED,
+}
+
+data class VehicleSignal(
+    val tripId: Long,
+    val recordedAt: Long,
+    val type: VehicleSignalType,
+)
+
 enum class TimelineType(val label: String) {
     START("출발"),
     STOP("정차"),

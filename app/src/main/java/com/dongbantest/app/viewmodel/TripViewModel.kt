@@ -14,6 +14,7 @@ import com.dongbantest.app.vehicle.DrivingSafetyMonitor
 import com.dongbantest.app.vehicle.DrivingSafetyState
 import com.dongbantest.app.vehicle.SafetySource
 import com.dongbantest.app.vehicle.VehicleRepository
+import com.dongbantest.app.vehicle.VehicleSignalTracker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -51,6 +52,7 @@ class TripViewModel(
     private val files: MediaFileStore,
     private val recorder: VoiceRecorder,
     private val locationTracker: LocationTracker,
+    private val vehicleSignalTracker: VehicleSignalTracker,
 ) : ViewModel() {
 
     private val player = VoicePlayer()
@@ -144,6 +146,11 @@ class TripViewModel(
         tripRepository.deleteMemory(memoryId)
     }
 
+    /** 진행 중인 여행이면 정차 판단용 차량 신호(기어·운전석·안전벨트·문) 기록을 시작한다. */
+    fun startVehicleSignalTracking() = viewModelScope.launch {
+        if (tripRepository.isTripOngoing(tripId)) vehicleSignalTracker.start(tripId)
+    }
+
     /** 진행 중인 여행이면 GPS 위치 수집을 시작한다. 위치 권한이 있을 때만 동작한다. */
     fun startLocationTracking() = viewModelScope.launch {
         if (tripRepository.isTripOngoing(tripId)) locationTracker.start(tripId)
@@ -152,6 +159,7 @@ class TripViewModel(
     fun endTrip(onEnded: () -> Unit) = viewModelScope.launch {
         if (recorder.isRecording) stopRecording()
         locationTracker.stop(tripId)
+        vehicleSignalTracker.stop(tripId)
         tripRepository.endTrip(tripId, vehicleRepository.state.value.odometer)
         onEnded()
     }
@@ -159,6 +167,7 @@ class TripViewModel(
     fun deleteTrip(onDeleted: () -> Unit) = viewModelScope.launch {
         player.stop()
         locationTracker.stop(tripId)
+        vehicleSignalTracker.stop(tripId)
         tripRepository.deleteTrip(tripId)
         onDeleted()
     }

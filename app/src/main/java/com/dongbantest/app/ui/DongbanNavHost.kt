@@ -115,6 +115,7 @@ fun DongbanNavHost(
                 else vm.showMessage("위치 권한이 없어 주행 경로를 기록하지 않아요.")
             }
             LaunchedEffect(tripId) {
+                vm.startVehicleSignalTracking()
                 if (LocationReader.hasPermission(context)) vm.startLocationTracking()
                 else locationPermission.launch(LocationReader.PERMISSIONS)
             }

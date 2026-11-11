@@ -35,6 +35,8 @@ class MainActivity : ComponentActivity() {
     private val pleosPermissions = arrayOf(
         "pleos.car.permission.CAR_INFO",
         "pleos.car.permission.CAR_DRIVE",
+        "pleos.car.permission.CAR_SEATS",
+        "pleos.car.permission.CAR_DOORS",
     )
 
     private val permissionLauncher = registerForActivityResult(

@@ -57,4 +57,10 @@ interface TripDao {
 
     @Query("SELECT * FROM location_points WHERE tripId = :tripId ORDER BY recordedAt ASC")
     fun observeLocationPoints(tripId: Long): Flow<List<LocationPointEntity>>
+
+    @Insert
+    suspend fun insertVehicleSignal(signal: VehicleSignalEntity): Long
+
+    @Query("SELECT * FROM vehicle_signals WHERE tripId = :tripId ORDER BY recordedAt ASC")
+    fun observeVehicleSignals(tripId: Long): Flow<List<VehicleSignalEntity>>
 }

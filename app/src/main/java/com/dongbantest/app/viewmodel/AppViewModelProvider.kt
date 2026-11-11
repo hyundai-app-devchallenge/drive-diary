@@ -40,6 +40,7 @@ object AppViewModelProvider {
                 files = c.mediaFileStore,
                 recorder = VoiceRecorder(app()),
                 locationTracker = c.locationTracker,
+                vehicleSignalTracker = c.vehicleSignalTracker,
             )
         }
     }

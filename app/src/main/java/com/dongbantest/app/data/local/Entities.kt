@@ -68,3 +68,24 @@ data class LocationPointEntity(
     val longitude: Double,
     val accuracyMeters: Float?,
 )
+
+/** 여행 중 차량 신호(기어·운전석·안전벨트·문) 기록. 여행을 지우면 함께 지워진다. */
+@Entity(
+    tableName = "vehicle_signals",
+    foreignKeys = [
+        ForeignKey(
+            entity = TripEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["tripId"],
+            onDelete = ForeignKey.CASCADE,
+        )
+    ],
+    indices = [Index("tripId")],
+)
+data class VehicleSignalEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val tripId: Long,
+    val recordedAt: Long,
+    /** VehicleSignalType 이름 */
+    val type: String,
+)
