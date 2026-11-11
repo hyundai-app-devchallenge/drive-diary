@@ -1,13 +1,47 @@
+# 로컬 에이전트 설정
+/AGENTS.md
+.agents/
+.codex/
+.claude/
+/CLAUDE.md
+
+# 인증 정보 및 로컬 환경 변수
+.aws/
+.env
+.env.*
+!.env.example
+!.env.sample
+.envrc
+
+# 에디터 설정 및 임시 파일
+.idea/
+.vscode/
+.*.swp
+.*.swo
+
+# 운영체제 메타데이터
+.DS_Store
+._*
+.Spotlight-V100/
+.Trashes/
+Thumbs.db
+Desktop.ini
+
+# 로컬 캐시
+.cache/
+
+# 개인 문서
+/personal-docs/
+
+# Android 빌드 및 로컬 파일
 *.iml
 .gradle
-/local.properties
 /.idea/caches
 /.idea/libraries
 /.idea/modules.xml
 /.idea/workspace.xml
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
-.DS_Store
 /build
 /captures
 .externalNativeBuild

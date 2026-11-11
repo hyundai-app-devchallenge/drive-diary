@@ -1,134 +1,51 @@
-# 동반차 (Dongbancha)
+# 드라이브 다이어리
 
-차 안에서 함께 탄 사람들과 여행의 추억(음성 메모, 사진, 질문, 메모)을 기록하는 Pleos Playground용 Android Automotive 앱 MVP.
+주행 기록과 이야기가 함께 쌓이는 차량용 다이어리.
 
-> ⚠️ **현재 상태:** 빌드(debug APK)와 Compose Preview 렌더링까지만 확인되었습니다.
-> **Pleos 에뮬레이터와 실차에서는 아직 검증하지 않았습니다.** 아래 체크리스트는 검증을 위한 것입니다.
+차량이 자동으로 남기는 주행 기록 위에 가족의 음성 메모와 순간을 더해, '나만의 차'와 함께 쌓아 가는 추억 일기장입니다.
 
-## 구현 범위
+## 제안 배경
 
-| 구분 | 기능 | 방식 |
-|---|---|---|
-| Pleos SDK 사용 | 차대번호(VIN), 누적 주행거리 조회와 변경 감지 | `ai.pleos.playground:Vehicle:2.3.2`, 읽기만 함 |
-| AAOS 기본 API | 주행 중 화면 제한 | `CarUxRestrictionsManager` |
-| 일반 안드로이드 기능 | 음성 녹음·재생, 사진 첨부, 다이어리 저장 | MediaRecorder, Photo Picker, Room |
-| 대체 동작 | Pleos 연결이 실패하면 Mock 모드로 전환 | 6초 안에 응답이 없거나 VIN·주행거리 조회가 모두 실패할 때 |
-| 일반 안드로이드 기능 | GPS 위치 수집, GPS 주행거리, 이동 타임라인(출발·정차·다시 출발·도착) | `LocationManager`(GPS_PROVIDER, 3초 간격), Room `location_points` 테이블 |
-| **구현 안 됨** | 내비, 음성 인식(STT), 음성 안내(TTS), 기어 정보 | — |
+- 차는 수년간 가족의 모든 이동을 함께하지만, 그 기억은 어디에도 남지 않습니다.
+- 주행 데이터(언제, 어디로, 얼마나)는 차량만 정확히 기록할 수 있습니다.
+- 여기에 이야기를 붙이면 차가 **추억의 동반자**가 됩니다.
 
-- 차량 제어(Set) API와 `CONTROL_*`/`PRIVATE_*` 권한은 사용하지 않습니다.
-- SDK의 Gear API는 deprecated이고 공식 도메인 목록에 없어서 쓰지 않았습니다.
-- 위치는 일반 런타임 권한(`ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`)만 사용합니다. Google Play 서비스(FusedLocation)는 쓰지 않습니다.
-- 위치 기록이 추가되면서 DB 버전이 1 → 2로 올라갔습니다. `MIGRATION_1_2`가 `location_points` 테이블만 새로 만들기 때문에 기존 다이어리는 그대로 남습니다.
+## 타깃
 
-## 준비
+첫 차를 산 신혼부부, 또는 첫아이가 생긴 30대 부부.
 
-```bash
-./gradlew installDebug
-adb logcat -s PleosVehicle DrivingSafety VoiceRecorder VoicePlayer LocationTracker
-```
+## 핵심 사용자 흐름
 
-> 💡 **Pleos 에뮬레이터 주의:** 앱이 user 0이 아니라 **user 10**에서 실행됩니다. 그래서 Android Studio의 ▶ Run만 누르면 새 코드가 반영되지 않을 수 있습니다(옛 코드가 계속 실행됨). 아래처럼 설치 후 user 10으로 다시 실행하세요.
-> ```bash
-> ./gradlew installDebug && adb shell am force-stop --user 10 com.dongbantest.app && adb shell am start --user 10 -n com.dongbantest.app/.MainActivity
-> ```
-> `./gradlew`가 permission denied로 실행되지 않으면 `sh ./gradlew ...`로 실행하세요.
+1. 출고 첫날 차에 이름을 지어 줍니다. 예: "구름이"
+2. 주행할 때마다 경로, 거리, 장소가 일기 페이지로 자동 생성됩니다.
+3. 정차하거나 도착하면 "오늘 한 줄 남길까요?"라고 묻고, 가족이 음성으로 메모를 남깁니다.
+4. 기념 순간이 오면 차가 축하합니다. 예: 첫 바다, 아기의 첫 탑승, 함께 달린 1만 km
+5. 출고 기념일이나 연말에 "우리 가족 1년 드라이브 다이어리"를 만들어 줍니다.
 
-로그는 주로 **실패할 때** 남습니다. 성공 여부는 홈 화면의 차량 정보 카드(연결 상태, 차대번호, 주행거리, 주행 상태)로 판단하세요.
+## 회의에서 논의한 기능
 
-## 기능별 검증 체크리스트
+- 여행 출발부터 귀가까지의 기록을 하나의 다이어리로 묶습니다. 집을 경유지로 두는 흐름이 제안됐습니다.
+- 주행 중에는 조작과 화면 노출을 최소화하고 백그라운드 기록을 우선합니다. 장시간 음성 녹음 지원 여부는 확인이 필요합니다.
+- 주행 후 종이 다이어리처럼 내용을 돌아보고 꾸밉니다.
+- 사진·음성·짧은 영상을 스티커처럼 배치합니다. 노래를 스티커로 활용하는 안도 추가 아이디어로 나왔습니다.
+- 음성을 텍스트로 바꾸고 AI가 다이어리 정리를 돕는 방안을 논의했지만, AI 서비스는 정하지 않았습니다.
+- 예전에 방문한 장소 근처를 다시 지날 때 과거 추억을 보여주는 안이 나왔습니다.
 
-### 1. Pleos 연결과 권한 (가장 먼저 확인)
-- **확인 방법:** 앱을 처음 실행할 때 권한 요청 창이 뜨는지 봅니다. 그다음 아래 명령으로 권한이 실제로 허용됐는지 확인합니다.
-  ```bash
-  adb shell dumpsys package com.dongbantest.app | grep -i pleos
-  adb shell pm list permissions -f | grep -A4 "pleos.car"
-  ```
-- **성공:** `granted=true`가 나오고, 카드 상태가 "Pleos 연결 중…"에서 연결됨으로 바뀝니다.
-- **실패:** "Pleos 차량 연결 실패 → Mock 모드"와 원인이 표시됩니다. 로그에 `ERROR_SECURITY_PERMISSION`이 있으면 권한 문제입니다.
-- **알아둘 점:** 권한의 보호 수준이 `signature`나 `privileged`이면 일반 앱은 요청해도 받을 수 없습니다. 공식 문서에서 확인되지 않은 부분이라 꼭 확인해야 합니다.
+회의에서 나온 구상이며 제출용 최종 범위는 미정입니다. 장시간 녹음·사진 전송·AI 연동은 구현 가능 여부와 방식을 검토 중입니다.
 
-### 2. 차대번호(VIN)
-- **성공:** `••••••••1234`처럼 마지막 4자리만 보입니다.
-- **실패:** "제공되지 않음"이 뜨거나, 아래쪽 메시지에 `VIN: ...` 오류가 나옵니다.
+## SDK / 외부 API
 
-### 3. 누적 주행거리
-- **확인 방법:** 처음 값이 나오는지 본 뒤, 에뮬레이터에서 주행거리 값을 바꿔서 **화면 숫자가 따라 바뀌는지** 확인합니다. 바뀌어야 변경 감지(`registerDistanceDriven`)가 동작하는 것입니다.
-  ```bash
-  # 표준 AAOS 명령(PERF_ODOMETER). Pleos 에뮬레이터에서 되는지는 확인하지 않음
-  adb shell cmd car_service inject-vhal-event 0x11600204 12400
-  ```
-- **단위 확인:** 표시값이 km인지 mile인지 실제 차량 값과 비교합니다. SDK의 단위는 아직 확인하지 않았습니다.
+- SDK: Vehicle(누적 거리, 주행 상태), FusedLocation(첫 방문지 판단), NaviHelper(경로), STT·TTS
+- 외부 API: 지도 정적 이미지 API(경로 시각화), 외부 LLM(일기 문장 정리)
 
-### 4. Mock으로 자동 전환
-- **확인 방법:** 일반 폰 에뮬레이터에서 실행하면 "Mock" 표시와 "모의 주행 (테스트)" 스위치가 나와야 합니다.
-- **성공:** Pleos 에뮬레이터에서는 반대로 Mock이 **나오지 않아야** 합니다. 거기서 Mock이 뜬다면 연결이 실패한 것입니다.
+## 유사 서비스·리스크
 
-### 5. 주행 중 화면 제한 (CarUxRestrictions)
-- **확인 방법:** 에뮬레이터의 Extended Controls → Car data에서 기어를 D로 두고 속도를 올리거나, 아래 명령을 씁니다.
-  ```bash
-  adb shell cmd car_service inject-vhal-event 0x11400400 8    # 기어 D
-  adb shell cmd car_service inject-vhal-event 0x11600207 15   # 속도 15m/s
-  ```
-- **성공:** 주행 상태가 "주행 상태 (CarUx)"로 바뀌고 "(모의)"가 붙지 않습니다. 또 다음 세 가지가 확인돼야 합니다.
-  - 메모 입력과 사진 기능이 숨겨짐
-  - 다이어리 목록이 3개까지만 보임
-  - 정차하면 원래대로 돌아옴
-- **실패:** "(모의)"가 계속 보이면 CarUx에 연결되지 않은 것입니다. 로그에서 `CarUxRestrictions unavailable`을 찾아보세요.
+- 주행 기록 앱은 있지만 기록과 가족 이야기를 결합한 "차량 다이어리"는 찾지 못했습니다.
+- 위치 기록이 쌓이므로 저장 최소화와 동의 설계가 필수입니다.
+- Gleo AI와 역할을 나눠야 합니다. 다이어리는 대화가 아니라 기록을 담당합니다.
 
-### 6. 음성 녹음과 재생
-- **확인 방법:**
-  1. 에뮬레이터에서 Extended Controls → Microphone → "Virtual microphone uses host audio input"을 켭니다. **이걸 안 켜면 무음 파일이 만들어집니다.**
-  2. 동승자 동의 창 → 마이크 권한 → 녹음 → 정지 → 재생 순서로 해 봅니다.
-  3. 파일이 실제로 저장됐는지 확인합니다.
-     ```bash
-     adb shell run-as com.dongbantest.app find . -type f -newer databases
-     ```
-- **추가 확인:** 녹음 중에 다른 화면으로 가면 "화면을 벗어나 녹음을 취소했어요"가 떠야 합니다. 실차에서는 차량 마이크로 녹음되는지, 재생 소리가 차량 스피커로 나오는지도 확인합니다.
+## 협업 안내
 
-### 7. 사진 첨부
-- **위험한 부분:** AAOS나 Pleos에는 **사진 선택 화면이나 갤러리 앱이 없을 수 있습니다.** 버튼을 눌렀을 때 아무 반응이 없거나 앱이 죽는지 꼭 확인하세요. 안 된다면 휴대폰 연동 같은 다른 방식이 필요합니다.
+작업은 [작업 이슈 템플릿](.github/ISSUE_TEMPLATE/task.md)으로 등록하고, 버그는 [버그 신고 템플릿](.github/ISSUE_TEMPLATE/bug_report.md)을 사용합니다. 저장소 파일을 바꾸는 경우 작업 브랜치를 만들고 [PR 템플릿](.github/pull_request_template.md)에 따라 PR을 엽니다.
 
-### 8. 여행 거리 기록과 저장 유지
-- **확인 방법:**
-  1. 여행을 시작하고, 주행거리를 바꾼 다음(3번 명령), 여행을 종료합니다.
-  2. 다이어리 상세 화면에서 거리와 "차량 주행거리계" 표시가 맞는지 봅니다.
-  3. 앱을 강제 종료하고 다시 열어서 기록이 남아 있는지 확인합니다.
-     ```bash
-     adb shell am force-stop com.dongbantest.app
-     ```
-
-### 9. GPS 위치 기록, 주행거리, 타임라인
-- **확인 방법:**
-  1. 여행을 시작하면 여행 화면에서 위치 권한 요청 창이 떠야 합니다. 허용합니다.
-  2. 에뮬레이터에서 위치를 움직입니다. Extended Controls → Location에서 경로(Routes)를 재생하거나, 아래 명령으로 좌표를 몇 번 바꿉니다(경도, 위도 순서).
-     ```bash
-     adb emu geo fix 126.97796 37.56654
-     adb emu geo fix 126.97796 37.56744   # 약 100m 북쪽
-     ```
-  3. 위치를 한곳에 3분 이상 두었다가 다시 움직이고, 여행을 종료합니다.
-- **성공:**
-  - 여행 화면 정보 카드에 "🛣️ GPS 주행거리 X km"와 마지막 이벤트가 보이고, 이동할 때마다 거리가 늘어납니다.
-  - 다이어리 상세 화면에 "GPS로 기록한 거리"와 `출발 → 정차 → 다시 출발 → 도착` 타임라인이 보입니다.
-  - 앱을 강제 종료했다가 다시 열어도 거리와 타임라인이 남아 있습니다.
-- **권한을 거부하면:** "위치 권한이 없어 주행 경로를 기록하지 않아요."가 뜨고, 위치 없이 나머지 기능은 그대로 동작해야 합니다.
-- **거리 계산 규칙:** 정확도가 30m보다 나쁜 점은 버리고, 5m 미만의 흔들림은 무시합니다. 순간 속도가 70m/s(약 250km/h)를 넘는 점은 위치가 튄 것으로 보고 거리에 넣지 않습니다.
-- **타임라인 규칙:** 반경 30m 안에 3분 이상 머무르면 정차로 봅니다. 출발 지점에서 기다린 시간은 정차로 치지 않습니다.
-- **실차 확인:** 차량의 GPS 신호가 앱에 들어오는지, GPS 거리와 차량 주행거리계 거리가 비슷한지 비교합니다.
-
-## 알려진 문제
-- **거리 계산 오류 가능성:** 여행 종료 때는 그 시점에 쓰는 데이터 소스의 주행거리를 그대로 저장합니다. 그래서 시작은 실제 차량 값이고 종료는 Mock 값(12,345km 근처)인 경우, 말이 안 되는 거리가 계산될 수 있습니다.
-- **느린 환경에서의 타임아웃:** 연결 대기 시간이 6초(`CONNECT_TIMEOUT_MS`)라서, 에뮬레이터가 느리면 실제로는 연결이 되는데도 Mock으로 넘어갈 수 있습니다. 이럴 때는 홈 화면의 재연결 버튼을 눌러 보세요.
-- **위치 기록은 앱이 켜져 있을 때만:** 포그라운드 서비스가 없어서 앱이 백그라운드로 가거나 종료되면 위치 기록이 멈출 수 있습니다. 여행 화면에 다시 들어가면 기록이 이어집니다.
-- **GPS 신호만 사용:** `GPS_PROVIDER`만 쓰기 때문에 터널, 지하 주차장처럼 GPS가 안 잡히는 곳에서는 그 구간이 기록되지 않습니다.
-- **에뮬레이터 기본 위치:** 에뮬레이터는 처음에 미국(구글 본사) 좌표로 시작합니다. 서울로 위치를 바꾸면 위치가 튄 것으로 처리되어 거리에 들어가지 않습니다(정상).
-- **명령 호환성:** 위의 `adb ... car_service` 명령들은 표준 AAOS 기준입니다. Pleos 에뮬레이터에서 막혀 있을 수 있으니, 안 되면 Extended Controls의 Car data 화면을 쓰세요.
-
-## 주요 코드 위치
-- `app/src/main/java/com/dongbantest/app/vehicle/PleosVehicleDataSource.kt` — Pleos Vehicle SDK 연결
-- `app/src/main/java/com/dongbantest/app/vehicle/VehicleRepository.kt` — Pleos 우선 시도, 실패 시 Mock 전환
-- `app/src/main/java/com/dongbantest/app/vehicle/DrivingSafetyMonitor.kt` — 주행 중 제한 감지
-- `app/src/main/java/com/dongbantest/app/audio/` — 녹음과 재생
-- `app/src/main/java/com/dongbantest/app/location/` — GPS 위치 수집(`LocationReader`)과 여행 중 저장(`LocationTracker`)
-- `app/src/main/java/com/dongbantest/app/domain/location/` — 주행거리 계산(`DistanceCalculator`), 타임라인 생성(`TimelineBuilder`)
-- `app/src/test/java/com/dongbantest/app/LocationLogicTest.kt` — 거리·타임라인 단위 테스트
+작업 이슈 등록 → 저장소 파일 변경 시 브랜치 작업 → PR → 검토 → 일반 Merge 또는 Squash 순서로 진행합니다. PR 승인은 필수가 아니며 쓰기 권한이 있는 작성자는 자기 PR도 승인 없이 병합할 수 있습니다. GitHub는 작성자의 자기 승인을 허용하지 않습니다. 자세한 안내는 [CONTRIBUTING.md](CONTRIBUTING.md)를 참고하세요.
