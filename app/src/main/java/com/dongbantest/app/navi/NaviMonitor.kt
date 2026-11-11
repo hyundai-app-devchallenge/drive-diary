@@ -11,6 +11,8 @@ import ai.pleos.playground.navi.data.RouteStartInfo
 import ai.pleos.playground.navi.data.RouteStateInfo
 import ai.pleos.playground.navi.helper.NaviHelper
 import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Pleos NaviHelper 연결.
@@ -25,6 +27,7 @@ class NaviMonitor(context: Context) {
 
     private val naviHelper = NaviHelper(context.applicationContext)
     private var started = false
+    private val addressWaiters = mutableListOf<CompletableDeferred<String>>()
 
     /** 목적지에 도착했을 때 부를 함수. 인자는 목적지 이름이다. */
     var onArrived: ((String) -> Unit)? = null
@@ -35,6 +38,8 @@ class NaviMonitor(context: Context) {
     private val listener = object : NaviHelperEventListener {
         override fun onCurrentLocationInfo(currentLocationInfo: CurrentLocationInfo) {
             Log.i(TAG, "현재 위치: $currentLocationInfo")
+            val waiting = synchronized(addressWaiters) { addressWaiters.toList().also { addressWaiters.clear() } }
+            waiting.forEach { it.complete(currentLocationInfo.address) }
         }
 
         override fun onDestinationInfo(destinationInfo: DestinationInfo) {
@@ -107,6 +112,25 @@ class NaviMonitor(context: Context) {
             naviHelper.getDestinationInfo()
             naviHelper.getRouteStateInfo()
         }.onFailure { Log.w(TAG, "내비 정보 조회 실패", it) }
+    }
+
+    /**
+     * 내비가 아는 지금 위치의 주소 (예: "수정구 시흥동"). 출발지·도착지 이름에 쓴다.
+     * 내비가 연결되지 않았거나 [timeoutMillis] 안에 답이 없으면 null.
+     */
+    suspend fun currentAddress(timeoutMillis: Long = 3_000L): String? {
+        if (!started) return null
+        val waiter = CompletableDeferred<String>()
+        synchronized(addressWaiters) { addressWaiters += waiter }
+        runCatching { naviHelper.getCurrentLocationInfo() }.onFailure {
+            Log.w(TAG, "현재 위치 조회 실패", it)
+            return null
+        }
+        return try {
+            withTimeoutOrNull(timeoutMillis) { waiter.await() }?.takeIf { it.isNotBlank() }
+        } finally {
+            synchronized(addressWaiters) { addressWaiters -= waiter }
+        }
     }
 
     /** 에뮬레이터는 내비 위치가 움직이지 않아 실제 도착을 만들 수 없다. 디버그 빌드 테스트용. */

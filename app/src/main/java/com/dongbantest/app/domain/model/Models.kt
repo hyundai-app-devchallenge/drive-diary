@@ -21,6 +21,10 @@ data class Trip(
     /** 예시(테스트) 데이터 여부 — 실제 사용자 기록과 구분한다. */
     val isSample: Boolean,
     val coverPhotoPath: String? = null,
+    /** 출발한 곳 이름 (PRD S14 소요 시간). 모르면 null */
+    val startPlace: String? = null,
+    /** 도착한 곳 이름. 모르면 null */
+    val endPlace: String? = null,
 ) {
     val isOngoing: Boolean get() = endedAt == null
 

@@ -20,6 +20,7 @@ internal object SampleData {
         sample(
             title = "가족과 함께한 속초 여행",
             destination = "속초 영금정",
+            places = "서울 중구" to "속초 영금정",
             companions = "엄마,아빠,지우,지호",
             daysAgo = 40, hours = 9,
             odometer = 12_480f to 12_690f,
@@ -38,6 +39,7 @@ internal object SampleData {
         sample(
             title = "연인과 함께한 제주도 여행",
             destination = "제주 협재해수욕장",
+            places = "제주국제공항" to "협재해수욕장",
             companions = "민지,현우",
             daysAgo = 20, hours = 6,
             odometer = 30_105f to 30_188f,
@@ -52,6 +54,7 @@ internal object SampleData {
         sample(
             title = "친구들과의 강릉 드라이브",
             destination = "강릉 안목 커피거리",
+            places = "서울 중구" to "강릉 안목해변",
             companions = "수빈,도윤,하린",
             daysAgo = 5, hours = 4,
             odometer = 8_002f to 8_231f,
@@ -72,6 +75,7 @@ internal object SampleData {
     private fun sample(
         title: String,
         destination: String,
+        places: Pair<String, String>,
         companions: String,
         daysAgo: Int,
         hours: Int,
@@ -97,6 +101,8 @@ internal object SampleData {
                 endOdometer = odometer.second,
                 odometerSource = DataSourceType.MOCK.name,
                 isSample = true,
+                startPlace = places.first,
+                endPlace = places.second,
             ),
             memories = memories.mapIndexed { i, (type, text) ->
                 MemoryEntity(

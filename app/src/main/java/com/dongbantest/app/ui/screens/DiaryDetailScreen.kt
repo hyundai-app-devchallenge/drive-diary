@@ -46,6 +46,7 @@ import com.dongbantest.app.ui.components.RouteMap
 import com.dongbantest.app.ui.components.ScreenHeader
 import com.dongbantest.app.ui.components.formatDate
 import com.dongbantest.app.ui.components.formatDistance
+import com.dongbantest.app.ui.components.formatElapsed
 import com.dongbantest.app.ui.components.formatKm
 import com.dongbantest.app.ui.components.formatTime
 import com.dongbantest.app.ui.theme.Cocoa
@@ -149,8 +150,17 @@ private fun DiaryPage(modifier: Modifier, content: @Composable ColumnScope.() ->
 private fun TripHeader(trip: Trip) {
     Text(formatDate(trip.startedAt), style = MaterialTheme.typography.titleMedium, color = PeachDeep)
     Text(trip.title, style = MaterialTheme.typography.headlineMedium, color = Cocoa)
+    // PRD S14 소요 시간: 함께 달린 시간, 출발지·출발 시각, 도착지·도착 시각
+    val end = trip.endedAt
+    if (end != null) {
+        Text("⏱️ 함께 달린 시간 ${formatElapsed(end - trip.startedAt)}", style = MaterialTheme.typography.titleMedium, color = Cocoa)
+    }
     Text(
-        "📍 ${trip.destination}  ·  ${formatTime(trip.startedAt)} ~ ${trip.endedAt?.let { formatTime(it) } ?: "여행 중"}",
+        placeLine("🚩 출발", trip.startPlace, trip.startedAt),
+        style = MaterialTheme.typography.bodyLarge, color = Cocoa,
+    )
+    Text(
+        if (end != null) placeLine("📍 도착", trip.endPlace ?: trip.destination.ifBlank { null }, end) else "📍 여행 중",
         style = MaterialTheme.typography.bodyLarge, color = Cocoa,
     )
     if (trip.companions.isNotEmpty()) {
@@ -162,6 +172,10 @@ private fun TripHeader(trip: Trip) {
     }
     if (trip.isSample) Text("※ 예시로 만든 다이어리예요.", style = MaterialTheme.typography.labelMedium, color = CocoaSoft)
 }
+
+/** "🚩 출발 수정구 시흥동 · 오후 6:58" (장소를 모르면 "🚩 출발 · 오후 6:58") */
+private fun placeLine(label: String, place: String?, time: Long): String =
+    if (place.isNullOrBlank()) "$label · ${formatTime(time)}" else "$label $place · ${formatTime(time)}"
 
 /** GPS 기록으로 만든 경로 지도, 주행거리, 타임라인. 위치 기록이 없으면 아무것도 그리지 않는다. */
 @Composable

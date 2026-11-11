@@ -108,10 +108,22 @@ class TripRepository(
         dao.updateTrip(trip.copy(endedAt = now, endOdometer = odometer ?: trip.endOdometer))
     }
 
+    suspend fun setStartPlace(tripId: Long, place: String) {
+        val trip = dao.getTrip(tripId) ?: return
+        dao.updateTrip(trip.copy(startPlace = place))
+    }
+
+    suspend fun setEndPlace(tripId: Long, place: String) {
+        val trip = dao.getTrip(tripId) ?: return
+        dao.updateTrip(trip.copy(endPlace = place))
+    }
+
+    suspend fun startPlaceOf(tripId: Long): String? = dao.getTrip(tripId)?.startPlace
+
     /** 자동 종료를 되돌린다 ("아직 여행 중이에요"). */
     suspend fun reopenTrip(tripId: Long) {
         val trip = dao.getTrip(tripId) ?: return
-        dao.updateTrip(trip.copy(endedAt = null))
+        dao.updateTrip(trip.copy(endedAt = null, endPlace = null))
     }
 
     suspend fun lastLocation(tripId: Long): LocationPoint? = dao.getLastLocationPoint(tripId)?.toDomain()
@@ -187,6 +199,8 @@ private fun TripEntity.toDomain(coverPhotoPath: String? = null) = Trip(
     odometerSource = odometerSource?.let { runCatching { DataSourceType.valueOf(it) }.getOrNull() },
     isSample = isSample,
     coverPhotoPath = coverPhotoPath,
+    startPlace = startPlace,
+    endPlace = endPlace,
 )
 
 private fun MemoryEntity.toDomain() = Memory(

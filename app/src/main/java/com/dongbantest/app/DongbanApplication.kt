@@ -10,6 +10,7 @@ import com.dongbantest.app.location.LocationTracker
 import com.dongbantest.app.navi.ArrivalManager
 import com.dongbantest.app.navi.ArrivalNotifier
 import com.dongbantest.app.navi.NaviMonitor
+import com.dongbantest.app.navi.TripPlaceRecorder
 import com.dongbantest.app.vehicle.DrivingSafetyMonitor
 import com.dongbantest.app.vehicle.VehicleSignalReader
 import com.dongbantest.app.vehicle.VehicleSignalTracker
@@ -29,10 +30,11 @@ class AppContainer(context: Context) {
     val locationTracker by lazy { LocationTracker(LocationReader(context), tripRepository, appScope) }
     val vehicleSignalTracker by lazy { VehicleSignalTracker(VehicleSignalReader(context), tripRepository, appScope) }
     val naviMonitor by lazy { NaviMonitor(context) }
+    val tripPlaceRecorder by lazy { TripPlaceRecorder(naviMonitor, tripRepository, appScope) }
     val arrivalManager by lazy {
         ArrivalManager(
             tripRepository, vehicleRepository, locationTracker, vehicleSignalTracker,
-            ArrivalNotifier(context), appScope,
+            tripPlaceRecorder, ArrivalNotifier(context), appScope,
         )
     }
 

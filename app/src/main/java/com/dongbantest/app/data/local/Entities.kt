@@ -19,6 +19,10 @@ data class TripEntity(
     /** DataSourceType.name 또는 null */
     val odometerSource: String?,
     val isSample: Boolean,
+    /** 출발한 곳 이름 (내비 주소). 모르면 null */
+    val startPlace: String? = null,
+    /** 도착한 곳 이름 (내비 목적지 또는 주소). 모르면 null */
+    val endPlace: String? = null,
 )
 
 @Entity(

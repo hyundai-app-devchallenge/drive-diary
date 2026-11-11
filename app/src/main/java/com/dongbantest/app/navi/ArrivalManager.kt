@@ -31,6 +31,7 @@ class ArrivalManager(
     private val vehicleRepository: VehicleRepository,
     private val locationTracker: LocationTracker,
     private val vehicleSignalTracker: VehicleSignalTracker,
+    private val placeRecorder: TripPlaceRecorder,
     private val notifier: ArrivalNotifier,
     private val scope: CoroutineScope,
 ) {
@@ -77,6 +78,7 @@ class ArrivalManager(
         locationTracker.stop(tripId)
         vehicleSignalTracker.stop(tripId)
         tripRepository.endTrip(tripId, vehicleRepository.state.value.odometer)
+        placeRecorder.recordEnd(tripId, destinationName)
         _arrival.value = ArrivalEvent(tripId, destinationName)
         if (!isAppVisible) notifier.show(tripId, destinationName)
     }

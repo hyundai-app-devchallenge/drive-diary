@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [TripEntity::class, MemoryEntity::class, LocationPointEntity::class, VehicleSignalEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class DongbanDatabase : RoomDatabase() {
@@ -18,7 +18,7 @@ abstract class DongbanDatabase : RoomDatabase() {
     companion object {
         fun create(context: Context): DongbanDatabase =
             Room.databaseBuilder(context, DongbanDatabase::class.java, "dongbancha.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
 
         /** v2: 위치 기록 테이블 추가. 기존 여행·추억 데이터는 그대로 유지한다. */
@@ -50,6 +50,14 @@ abstract class DongbanDatabase : RoomDatabase() {
                         "FOREIGN KEY(`tripId`) REFERENCES `trips`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_vehicle_signals_tripId` ON `vehicle_signals` (`tripId`)")
+            }
+        }
+
+        /** v4: 출발지·도착지 이름 칸 추가. 기존 여행은 빈 값(null)으로 남는다. */
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `trips` ADD COLUMN `startPlace` TEXT")
+                db.execSQL("ALTER TABLE `trips` ADD COLUMN `endPlace` TEXT")
             }
         }
     }

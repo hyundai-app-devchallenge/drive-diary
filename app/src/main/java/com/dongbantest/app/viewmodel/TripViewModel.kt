@@ -16,6 +16,7 @@ import com.dongbantest.app.vehicle.SafetySource
 import com.dongbantest.app.vehicle.VehicleRepository
 import com.dongbantest.app.vehicle.VehicleSignalTracker
 import com.dongbantest.app.navi.ArrivalManager
+import com.dongbantest.app.navi.TripPlaceRecorder
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -55,6 +56,7 @@ class TripViewModel(
     private val locationTracker: LocationTracker,
     private val vehicleSignalTracker: VehicleSignalTracker,
     private val arrivalManager: ArrivalManager,
+    private val placeRecorder: TripPlaceRecorder,
 ) : ViewModel() {
 
     private val player = VoicePlayer()
@@ -150,7 +152,9 @@ class TripViewModel(
 
     /** 진행 중인 여행이면 정차 판단용 차량 신호(기어·운전석·안전벨트·문) 기록을 시작한다. */
     fun startVehicleSignalTracking() = viewModelScope.launch {
-        if (tripRepository.isTripOngoing(tripId)) vehicleSignalTracker.start(tripId)
+        if (!tripRepository.isTripOngoing(tripId)) return@launch
+        vehicleSignalTracker.start(tripId)
+        placeRecorder.recordStart(tripId)
     }
 
     /** 진행 중인 여행이면 GPS 위치 수집을 시작한다. 위치 권한이 있을 때만 동작한다. */
@@ -163,6 +167,7 @@ class TripViewModel(
         locationTracker.stop(tripId)
         vehicleSignalTracker.stop(tripId)
         tripRepository.endTrip(tripId, vehicleRepository.state.value.odometer)
+        placeRecorder.recordEnd(tripId)
         onEnded()
     }
 

@@ -21,3 +21,14 @@ fun formatDistance(value: Float): String = "%,.1f".format(value)
 
 /** 미터 → "12.3" 같은 km 문자열 */
 fun formatKm(meters: Double): String = "%,.1f".format(meters / 1000)
+
+/** 함께 달린 시간: "2시간 10분", "45분", "1분 미만" */
+fun formatElapsed(ms: Long): String {
+    val minutes = (ms / 60_000).coerceAtLeast(0)
+    return when {
+        minutes == 0L -> "1분 미만"
+        minutes < 60 -> "${minutes}분"
+        minutes % 60 == 0L -> "${minutes / 60}시간"
+        else -> "${minutes / 60}시간 ${minutes % 60}분"
+    }
+}
