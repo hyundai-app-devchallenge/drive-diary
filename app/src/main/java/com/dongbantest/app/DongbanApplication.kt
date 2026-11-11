@@ -7,6 +7,7 @@ import com.dongbantest.app.data.repository.MediaFileStore
 import com.dongbantest.app.data.repository.TripRepository
 import com.dongbantest.app.location.LocationReader
 import com.dongbantest.app.location.LocationTracker
+import com.dongbantest.app.navi.NaviMonitor
 import com.dongbantest.app.vehicle.DrivingSafetyMonitor
 import com.dongbantest.app.vehicle.VehicleRepository
 import kotlinx.coroutines.CoroutineScope
@@ -22,6 +23,7 @@ class AppContainer(context: Context) {
     val vehicleRepository by lazy { VehicleRepository(context, appScope) }
     val drivingSafetyMonitor by lazy { DrivingSafetyMonitor(context) }
     val locationTracker by lazy { LocationTracker(LocationReader(context), tripRepository, appScope) }
+    val naviMonitor by lazy { NaviMonitor(context) }
 }
 
 class DongbanApplication : Application() {
@@ -31,5 +33,6 @@ class DongbanApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        container.naviMonitor.start()
     }
 }

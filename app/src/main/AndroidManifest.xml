@@ -19,6 +19,9 @@
     <uses-permission android:name="pleos.car.permission.CAR_INFO" />
     <uses-permission android:name="pleos.car.permission.CAR_DRIVE" />
 
+    <!-- Pleos NaviHelper: 현재 위치·목적지 조회와 도착 이벤트 (protection level: normal) -->
+    <uses-permission android:name="pleos.car.permission.NAVI_ROUTE" />
+
     <!-- 개발 중에는 일반 기기에서도 Mock 모드로 실행할 수 있도록 required=false -->
     <uses-feature android:name="android.hardware.type.automotive" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
