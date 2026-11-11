@@ -1,0 +1,116 @@
+video_id	decision	reason	decided_by	comment
+U6Mf2CyODVI	reject	idol group content, not family/friends in-car talk	claude	
+uJ7N0wzfPWE	reject	mostly English speech (hangul share 0.53)	claude	
+F6IAfLSuDR4	approve	designer-approved existing video	claude	
+rfD2mZDPDFk	reject	crime talk show	claude	
+3eKrFeTGupY	reject	foreign footage with TTS narration and reactions (found by human gold review)	user	
+STlUZf798-w	approve	designer-approved existing video	claude	
+hjjSwsbF-fw	reject	no speech	claude	
+8Yo8kuO7fqY	approve	designer-approved existing video	claude	
+UBb2T5huI6k	approve	designer-approved existing video	claude	
+zifM3PJTBKQ	approve	designer-approved existing video	claude	
+IOlxH67P1JM	approve	human review	user	기준 영상: 무편집 차 안 가족 대화
+FJkJnUbJm88	approve	in-car family/friends/couple talk	claude	
+CNBsQuTxkTg	approve	in-car family/friends/couple talk	claude	
+0rqGBKrEao4	approve	in-car family/friends/couple talk	claude	
+UNTNivh2DxM	approve	in-car family/friends/couple talk	claude	
+VfzjQnKeizE	approve	in-car family/friends/couple talk	claude	
+4Z-Pl4aa-6g	approve	in-car family/friends/couple talk	claude	
+pkGAxu0g0vQ	approve	human review	user	기준 영상: 무편집 차 안 가족 대화
+eicKfWnR3cA	approve	in-car family/friends/couple talk	claude	
+zeFFCX_oku8	approve	in-car family/friends/couple talk	claude	
+ljdZIUyCgiM	approve	in-car family/friends/couple talk	claude	
+Cs4mYcCVEsc	approve	in-car family/friends/couple talk	claude	
+0_qX1N2IXTU	approve	in-car family/friends/couple talk	claude	
+4vEns7QH7R4	approve	long drive with baby/child, family vlog	claude	
+w_vP5TjI68o	approve	long drive with baby/child, family vlog	claude	
+X00WlhdkzFw	approve	long drive with baby/child, family vlog	claude	
+Mi3KKPZH720	approve	long drive with baby/child, family vlog	claude	
+5x1SpVWGhDQ	approve	long drive with baby/child, family vlog	claude	
+6p0zHS5mEqo	approve	long drive with baby/child, family vlog	claude	
+oykwvYDNG7Y	reject	no speech after transcription (subtitle-only vlog)	claude	
+YSSc0aUNHyc	approve	solo driver talk (monologue slice)	claude	
+-V1BsWCC8Jk	reject	no speech after transcription (subtitle-only vlog)	claude	
+Jy1Oruo4fZk	approve	family car-camping trip with conversation	claude	
+WdM5sso70Z4	approve	family car-camping trip with conversation	claude	
+woLJ1b8x-8I	approve	family car-camping trip with conversation	claude	
+yO9pbul2DvQ	approve	family car-camping trip with conversation	claude	
+GqlRV76skqE	approve	family car-camping trip with conversation	claude	
+KQ7N15C1iCc	approve	family trip vlog with conversation	claude	
+oCCzZJ1dy7U	approve	family trip vlog with conversation	claude	
+5vSwUj9l7iY	approve	family trip vlog with conversation	claude	
+BEIYkRxq7X4	approve	family trip vlog with conversation	claude	
+2qMkcQbgK6E	approve	family trip vlog with conversation	claude	
+YWrYUrqg0is	approve	family trip vlog with conversation	claude	
+JuOU4RnymqI	approve	family trip vlog with conversation	claude	
+M5_RSrf8Rik	approve	family trip vlog with conversation	claude	
+Uypi3qf82IQ	approve	family trip vlog with conversation	claude	
+vWaVvYE_Fp4	approve	family trip vlog with conversation	claude	
+wtF_ALqbkks	approve	family trip vlog with conversation	claude	
+48-p0eyUWZ0	approve	family trip vlog with conversation	claude	
+WpKricjnSzU	approve	family trip vlog with conversation	claude	
+4i4dDBv4hzA	approve	family trip vlog with conversation	claude	
+H5vQyHx07eU	approve	family trip vlog with conversation	claude	
+Ylx8I0qEMpg	approve	road trip vlog among friends/couple	claude	
+W8D9ZhiOVoA	approve	road trip vlog among friends/couple	claude	
+hBh7eAfsTlI	approve	road trip vlog among friends/couple	claude	
+b_TKOQzBNIE	approve	road trip vlog among friends/couple	claude	
+yZRvfnRf6XE	approve	road trip vlog among friends/couple	claude	
+3xvfnBp21_Y	approve	road trip vlog among friends/couple	claude	
+bfrn8g6_mB4	reject	panel/studio talk show, not family or in-car	claude	
+F5sJQrh8Y8I	reject	panel/studio talk show, not family or in-car	claude	
+skeV8ByvdNA	reject	panel/studio talk show, not family or in-car	claude	
+Uz43C1Xb3Ts	reject	panel/studio talk show, not family or in-car	claude	
+lnB7BFcZR5g	reject	panel/studio talk show, not family or in-car	claude	
+OxzZ1dutVPI	reject	panel/studio talk show, not family or in-car	claude	
+eiM6pdEyxnc	reject	panel/studio talk show, not family or in-car	claude	
+v8MLLpoocjY	reject	panel/studio talk show, not family or in-car	claude	
+tXbYY21TCBY	reject	panel/studio talk show, not family or in-car	claude	
+AsHvDDsLEP4	reject	panel/studio talk show, not family or in-car	claude	
+ZYUvlqe2rzQ	reject	panel/studio talk show, not family or in-car	claude	
+Pf7x5cPUE_k	reject	panel/studio talk show, not family or in-car	claude	
+Rwx2EGl7i2U	reject	panel/studio talk show, not family or in-car	claude	
+0WFSpZvvP_g	reject	panel/studio talk show, not family or in-car	claude	
+SIYB94Vtjv4	reject	panel/studio talk show, not family or in-car	claude	
+oJnE35jKdA4	reject	panel/studio talk show, not family or in-car	claude	
+v4hohBeoQGg	reject	panel/studio talk show, not family or in-car	claude	
+82m2TFg9l1g	reject	broadcast/drama/idol/reupload	claude	
+Hq6as-J5uNc	reject	broadcast/drama/idol/reupload	claude	
+2B9oGJxKGqk	reject	broadcast/drama/idol/reupload	claude	
+-Hue7uQAvlw	reject	broadcast/drama/idol/reupload	claude	
+12jeV0ir3II	reject	broadcast/drama/idol/reupload	claude	
+v4KLBef7o3Q	reject	broadcast/drama/idol/reupload	claude	
+lCcDZhKeNSc	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+qdtcTMnc6ew	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+IqigwO_xnO0	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+v8oUQGpemg4	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+u0_S76y2P64	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+4_00TRauSSc	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+x6dRSBwGKJc	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+nEchiCK_tn4	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+X26pwkWbMsA	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+-4sOd3lv7lQ	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+OMDmE-fBQ8Y	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+u3eP_pZL2HY	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+UXO0IbU6Zio	reject	scripted role-play	claude	
+VoMwZ2JWv9A	reject	language lesson or non-Korean	claude	
+QzhAnx1odzs	reject	language lesson or non-Korean	claude	
+ii-9qOq4k9o	reject	language lesson or non-Korean	claude	
+enAQO4fK1Bg	reject	scenery/music, little speech expected	claude	
+i0Au5zX5tcU	reject	scenery/music, little speech expected	claude	
+p6Q4jUoVLhA	reject	scenery/music, little speech expected	claude	
+-uETC3J0gKI	reject	scenery/music, little speech expected	claude	
+VgS7R_ONTS0	reject	documentary narration	claude	
+FEeIEWe1WsM	reject	metadata incomplete (sign-in wall), under 8 min	claude	
+23aRFY7cOhA	hold	per-channel cap reached; revisit when scaling	claude	
+XFPBoGHRau4	hold	per-channel cap reached; revisit when scaling	claude	
+JKwwUhkBxQ0	hold	per-channel cap reached; revisit when scaling	claude	
+T_Sz7MSyiQk	hold	per-channel cap reached; revisit when scaling	claude	
+YkIDdqXQYB4	hold	per-channel cap reached; revisit when scaling	claude	
+YB-ACc5dbHc	hold	per-channel cap reached; revisit when scaling	claude	
+NLCUZnbp2NU	hold	per-channel cap reached; revisit when scaling	claude	
+VYjfiGo8vCY	hold	unclear from metadata	claude	
+_X_02V4ZROE	hold	unclear from metadata	claude	
+XOSPauRbNK8	hold	unclear from metadata	claude	
+n-dAQX0KueI	hold	unclear from metadata	claude	
+zn4tDPT4RLQ	approve	human review	user	기준 영상: 무편집 차 안 가족 대화

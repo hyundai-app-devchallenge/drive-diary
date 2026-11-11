@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>전사 눈가림 비교</title>
+<style>
+:root{color-scheme:light;font-family:system-ui,sans-serif;background:#f4f5f8;color:#18202b}body{margin:0 auto;max-width:1600px;padding:28px}h1{font-size:25px}p{line-height:1.6}audio{width:min(100%,800px);display:block;margin:18px 0}button,textarea{font:inherit}button{cursor:pointer;background:white;border:1px solid #8593a5;border-radius:8px;padding:10px 16px;margin:5px}button:focus-visible{outline:3px solid #075db8}button:disabled{opacity:.5;cursor:wait}#options{display:flex;gap:14px;align-items:stretch;overflow-x:auto;margin:20px 0}.option{flex:1;min-width:230px;background:white;border:2px solid #d5dce5;border-radius:12px;padding:16px}.option.chosen{border-color:#075db8}.option button{margin:0 0 12px}.text{white-space:pre-wrap;line-height:1.8;overflow-wrap:anywhere}textarea{display:block;width:min(90%,700px);padding:10px;margin:10px 0}#status{min-height:24px;color:#174f8a}#done{background:#e1eddf;padding:16px;border-radius:8px}small{color:#526173}@media(max-width:700px){body{padding:15px}.option{min-width:75vw}}
+</style>
+<h1>가장 실제와 가까운 전사를 고르세요</h1>
+<p>오디오를 듣고 후보 하나를 선택하세요. 같은 내용은 하나로 합쳐져 있습니다.<br>
+Space 재생·일시정지 · 숫자 1~4 후보 선택 · 0 전부 엉망 · S 비슷함 · C 코멘트 · J 다음 · K 이전</p>
+<div id="progress"></div><small id="clip"></small>
+<audio id="audio" controls preload="metadata"></audio>
+<div id="options"></div>
+<label>짧은 코멘트 (선택, 입력 후 Esc를 누르면 선택 단축키 사용)<textarea id="comment" maxlength="2000" rows="2" placeholder="C 키로 입력"></textarea></label>
+<div><button id="bad">0 전부 엉망</button><button id="similar">S 비슷해서 못 고르겠음</button></div>
+<div><button id="prev">K 이전</button><button id="next">J 다음</button></div>
+<p id="status" role="status"></p><p id="done" hidden></p>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+let state=null,index=0,busy=false,finished=false;
+const drafts=new Map();
+async function api(path,options){const r=await fetch(path,options);if(!r.ok)throw Error('요청 실패: 저장 상태와 서버를 확인하세요.');return r.json();}
+function remember(){if(state&&state.rows[index])drafts.set(state.rows[index].id,$('comment').value);}
+function show(){
+ const row=state.rows[index];if(!row)return;
+ $('progress').textContent=`${index+1} / ${state.total} · 이번 묶음 선택 ${state.answered}개 · 전체 미선택 ${state.remaining_total}개`;
+ $('clip').textContent=row.id;$('audio').pause();$('audio').src='/audio?id='+encodeURIComponent(row.id);
+ $('comment').value=drafts.get(row.id)??row.answer?.comment??'';$('options').replaceChildren();
+ for(const option of row.options){const box=document.createElement('section');box.className='option'+(row.answer?.choice===option.slot?' chosen':'');
+ const button=document.createElement('button');button.textContent=`${option.slot}번 선택`;button.addEventListener('click',()=>choose(option.slot));
+ const text=document.createElement('div');text.className='text';text.textContent=option.text||'(인식된 내용 없음)';box.append(button,text);$('options').append(box);}
+ $('done').hidden=!finished;$('done').textContent='이번 묶음을 마쳤습니다. K로 돌아가 재선택하거나 서버를 재시작해 다음 미선택 묶음을 여세요.';
+ $('status').textContent=row.answer?'저장된 선택이 있습니다. 다시 선택하면 갱신됩니다.':'';
+}
+function move(delta){if(busy)return;remember();finished=false;index=Math.max(0,Math.min(state.total-1,index+delta));show();}
+async function choose(choice){
+ if(busy||!state)return;busy=true;remember();document.querySelectorAll('button').forEach(b=>b.disabled=true);
+ try{await api('/api/decision',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:state.rows[index].id,choice,comment:$('comment').value})});
+ state=await api('/api/state');if(index<state.total-1)index++;else finished=true;show();}
+ catch(e){$('status').textContent=e.message;}finally{busy=false;document.querySelectorAll('button').forEach(b=>b.disabled=false);}
+}
+$('bad').onclick=()=>choose('all_bad');$('similar').onclick=()=>choose('similar');$('prev').onclick=()=>move(-1);$('next').onclick=()=>move(1);
+document.addEventListener('keydown',e=>{
+ if(!state||busy||e.repeat||e.ctrlKey||e.altKey||e.metaKey)return;
+ if(['TEXTAREA','INPUT'].includes(document.activeElement.tagName)){if(e.key==='Escape')document.activeElement.blur();return;}
+ const key=e.key.toLowerCase();
+ if(e.code==='Space'){e.preventDefault();if($('audio').paused)$('audio').play().catch(()=>$('status').textContent='재생 버튼을 눌러 주세요.');else $('audio').pause();}
+ else if(/^[1-9]$/.test(key)&&Number(key)<=state.rows[index].options.length){e.preventDefault();choose(Number(key));}
+ else if(key==='0')choose('all_bad');else if(key==='s')choose('similar');else if(key==='c'){$('comment').focus();e.preventDefault();}
+ else if(key==='j')move(1);else if(key==='k')move(-1);
+});
+api('/api/state').then(value=>{state=value;const pending=state.rows.findIndex(r=>!r.answer);index=Math.max(0,pending);show();}).catch(e=>$('status').textContent=e.message);
+</script>
+</html>

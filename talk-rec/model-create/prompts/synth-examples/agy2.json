@@ -1,0 +1,976 @@
+[
+ {
+  "card": {
+   "label": "story",
+   "pattern": "kid_recount",
+   "boundary": false,
+   "family": [
+    {
+     "spk": "엄마",
+     "role": "운전자",
+     "age": "장년"
+    },
+    {
+     "spk": "아이1",
+     "role": "동승자",
+     "age": "유아"
+    }
+   ],
+   "situation": "하원·하교길",
+   "topic": "놀이터에서 친구랑 다툰 일",
+   "interruptions": [
+    "창밖에 본 것"
+   ],
+   "seconds": 55,
+   "energy": "보통",
+   "n_turns": 16
+  },
+  "lines": [
+   {
+    "t": 0.0,
+    "dur": 1.4,
+    "spk": "엄마",
+    "text": "손에 묻은 거 뭐야",
+    "overlap": false
+   },
+   {
+    "t": 2.2,
+    "dur": 2.8,
+    "spk": "아이1",
+    "text": "흙 모래놀이 하다가 민재가",
+    "overlap": false
+   },
+   {
+    "t": 5.8,
+    "dur": 1.2,
+    "spk": "엄마",
+    "text": "민재가 왜",
+    "overlap": false
+   },
+   {
+    "t": 7.4,
+    "dur": 3.6,
+    "spk": "아이1",
+    "text": "내가 만든 케이크 성인데 민재가 발로 뻥 차서",
+    "overlap": false
+   },
+   {
+    "t": 11.5,
+    "dur": 1.4,
+    "spk": "엄마",
+    "text": "그래서 싸웠어?",
+    "overlap": false
+   },
+   {
+    "t": 13.5,
+    "dur": 3.8,
+    "spk": "아이1",
+    "text": "내가 하지 말라고 소리 질렀는데 민재가 또 뻥 했어",
+    "overlap": false
+   },
+   {
+    "t": 18.0,
+    "dur": 2.1,
+    "spk": "아이1",
+    "text": "엄마 저기 크레인 엄청 커",
+    "overlap": false
+   },
+   {
+    "t": 20.8,
+    "dur": 1.3,
+    "spk": "엄마",
+    "text": "어 진짜 크네 노란색",
+    "overlap": false
+   },
+   {
+    "t": 23.0,
+    "dur": 2.5,
+    "spk": "아이1",
+    "text": "저거는 땅 파는 거 아니지 번쩍 드는 거지",
+    "overlap": false
+   },
+   {
+    "t": 26.2,
+    "dur": 1.5,
+    "spk": "엄마",
+    "text": "응 드는 거. 그래서 민재는?",
+    "overlap": false
+   },
+   {
+    "t": 28.5,
+    "dur": 4.1,
+    "spk": "아이1",
+    "text": "민재가 도망갔는데 내가 쫓아가다가 무릎 쿵 했어",
+    "overlap": false
+   },
+   {
+    "t": 33.2,
+    "dur": 1.4,
+    "spk": "엄마",
+    "text": "어디 봐 피 안 나네",
+    "overlap": false
+   },
+   {
+    "t": 35.3,
+    "dur": 3.4,
+    "spk": "아이1",
+    "text": "선생님이 호 해줬어 근데 민재가 미안하다고 안 했어",
+    "overlap": false
+   },
+   {
+    "t": 39.4,
+    "dur": 1.8,
+    "spk": "엄마",
+    "text": "내일 만나면 사과하겠지 뭐",
+    "overlap": false
+   },
+   {
+    "t": 42.0,
+    "dur": 3.2,
+    "spk": "아이1",
+    "text": "나 내일 민재랑 안 놀 거야 시윤이랑 놀 거야",
+    "overlap": false
+   },
+   {
+    "t": 46.5,
+    "dur": 1.6,
+    "spk": "엄마",
+    "text": "그래라 가방에 물병 챙겼지",
+    "overlap": false
+   }
+  ],
+  "why": "놀이터에서 다툰 일로 시작해 창밖 크레인으로 샜다가 다시 다툰 이야기로 돌아와 자연스럽게 일상 대화로 흩어진다",
+  "note": "유아 특유의 단순한 어휘 반복과 갑작스러운 시선 분산(크레인)을 넣었고, 엄마가 교훈을 주기보다 건성으로 넘기며 화제가 매듭 없이 끝난다."
+ },
+ {
+  "card": {
+   "label": "story",
+   "pattern": "parent_interview",
+   "boundary": true,
+   "family": [
+    {
+     "spk": "아빠",
+     "role": "운전자",
+     "age": "장년"
+    },
+    {
+     "spk": "아이1",
+     "role": "동승자",
+     "age": "초등 고학년"
+    }
+   ],
+   "situation": "학원 가는 길",
+   "topic": "단답으로 시작했다가 좋아하는 게임 얘기로 길어짐",
+   "interruptions": [],
+   "seconds": 60,
+   "energy": "차분",
+   "n_turns": 15
+  },
+  "lines": [
+   {
+    "t": 0.0,
+    "dur": 1.5,
+    "spk": "아빠",
+    "text": "오늘 몇 시에 끝나냐",
+    "overlap": false
+   },
+   {
+    "t": 2.3,
+    "dur": 0.8,
+    "spk": "아이1",
+    "text": "여덟 시 반",
+    "overlap": false
+   },
+   {
+    "t": 4.5,
+    "dur": 1.8,
+    "spk": "아빠",
+    "text": "숙제는 차에서 좀 봤어?",
+    "overlap": false
+   },
+   {
+    "t": 6.8,
+    "dur": 0.9,
+    "spk": "아이1",
+    "text": "아니 어지러워",
+    "overlap": false
+   },
+   {
+    "t": 9.2,
+    "dur": 2.2,
+    "spk": "아빠",
+    "text": "어제는 뭐 새벽까지 방에서 불 켜놓더만",
+    "overlap": false
+   },
+   {
+    "t": 12.0,
+    "dur": 1.4,
+    "spk": "아이1",
+    "text": "그거 이벤트 퀘스트",
+    "overlap": false
+   },
+   {
+    "t": 14.1,
+    "dur": 1.2,
+    "spk": "아빠",
+    "text": "뭔 퀘스트",
+    "overlap": false
+   },
+   {
+    "t": 16.0,
+    "dur": 4.2,
+    "spk": "아이1",
+    "text": "그 친구들이랑 레이드 뛰는 건데 열두 시까지만 그 보스 잡아야 날개 주거든",
+    "overlap": false
+   },
+   {
+    "t": 20.8,
+    "dur": 1.6,
+    "spk": "아빠",
+    "text": "날개? 그게 뭐 좋은 거야?",
+    "overlap": false
+   },
+   {
+    "t": 23.0,
+    "dur": 4.8,
+    "spk": "아이1",
+    "text": "그게 이동속도 이십 퍼센트 붙고 낙하 데미지가 아예 없어가지고 그거 없으면 파티 안 껴줘",
+    "overlap": false
+   },
+   {
+    "t": 28.5,
+    "dur": 1.4,
+    "spk": "아빠",
+    "text": "잡았냐 그래서?",
+    "overlap": false
+   },
+   {
+    "t": 30.5,
+    "dur": 4.6,
+    "spk": "아이1",
+    "text": "아니 우리 힐러가 튕겨가지고 마지막 페이즈에서 전멸했어. 진짜 어이없게 죽음",
+    "overlap": false
+   },
+   {
+    "t": 35.8,
+    "dur": 2.0,
+    "spk": "아빠",
+    "text": "그럼 오늘 밤에 또 하겠네",
+    "overlap": false
+   },
+   {
+    "t": 38.4,
+    "dur": 2.8,
+    "spk": "아이1",
+    "text": "오늘은 정기점검이라 서버 닫아. 못 해",
+    "overlap": false
+   },
+   {
+    "t": 42.0,
+    "dur": 1.5,
+    "spk": "아빠",
+    "text": "잘됐네 잠이나 일찍 자라",
+    "overlap": false
+   }
+  ],
+  "why": "학원 일정에 대한 단답으로 시작했다가 게임 보스전 이야기로 옮겨가 아이의 설명이 길어지며 대화가 오간다",
+  "note": "사춘기 초등 고학년 특유의 퉁명스러운 단답이 자기가 좋아하는 게임 화제에서 전문 용어와 함께 속사포로 바뀌는 실제 반응을 담았다."
+ },
+ {
+  "card": {
+   "label": "story",
+   "pattern": "shared_memory",
+   "boundary": false,
+   "family": [
+    {
+     "spk": "엄마",
+     "role": "운전자",
+     "age": "장년"
+    },
+    {
+     "spk": "아빠",
+     "role": "동승자",
+     "age": "장년"
+    },
+    {
+     "spk": "아이1",
+     "role": "동승자",
+     "age": "초등 저학년"
+    },
+    {
+     "spk": "아이2",
+     "role": "동승자",
+     "age": "유아"
+    }
+   ],
+   "situation": "휴게소 지나는 길",
+   "topic": "작년 휴게소에서 잃어버린 인형",
+   "interruptions": [
+    "화장실 가고 싶다는 말"
+   ],
+   "seconds": 60,
+   "energy": "정신없음",
+   "n_turns": 20
+  },
+  "lines": [
+   {
+    "t": 0.0,
+    "dur": 2.2,
+    "spk": "엄마",
+    "text": "여기 안성 맞지? 저 주유소 보니까",
+    "overlap": false
+   },
+   {
+    "t": 2.6,
+    "dur": 2.4,
+    "spk": "아빠",
+    "text": "안성 맞네. 저번에 핫바 먹은 데",
+    "overlap": false
+   },
+   {
+    "t": 5.5,
+    "dur": 3.0,
+    "spk": "아이1",
+    "text": "여기서 민우가 그 곰돌이 인형 떨어뜨렸잖아",
+    "overlap": false
+   },
+   {
+    "t": 9.0,
+    "dur": 2.2,
+    "spk": "아이2",
+    "text": "곰돌이 아니야 토끼야 토끼",
+    "overlap": false
+   },
+   {
+    "t": 11.5,
+    "dur": 1.8,
+    "spk": "아이1",
+    "text": "갈색이었는데 무슨 토끼야",
+    "overlap": false
+   },
+   {
+    "t": 13.0,
+    "dur": 1.6,
+    "spk": "아이2",
+    "text": "귀 길었어 토끼 맞단 말이야",
+    "overlap": true
+   },
+   {
+    "t": 15.2,
+    "dur": 2.0,
+    "spk": "아빠",
+    "text": "맞아 갈색 토끼였어 아빠가 찾아봤잖아",
+    "overlap": false
+   },
+   {
+    "t": 17.8,
+    "dur": 2.2,
+    "spk": "엄마",
+    "text": "화장실 쓰레기통 옆에 떨어졌던 거",
+    "overlap": false
+   },
+   {
+    "t": 20.4,
+    "dur": 1.8,
+    "spk": "아이2",
+    "text": "엄마 나 쉬 마려",
+    "overlap": false
+   },
+   {
+    "t": 22.8,
+    "dur": 1.2,
+    "spk": "엄마",
+    "text": "어? 지금?",
+    "overlap": false
+   },
+   {
+    "t": 24.3,
+    "dur": 1.5,
+    "spk": "아이2",
+    "text": "응 아까부터 마려웠어",
+    "overlap": false
+   },
+   {
+    "t": 26.2,
+    "dur": 2.6,
+    "spk": "아빠",
+    "text": "아 휴게소 막 지나쳤는데. 다음 거 얼마나 남았지?",
+    "overlap": false
+   },
+   {
+    "t": 29.5,
+    "dur": 2.4,
+    "spk": "엄마",
+    "text": "십이 킬로. 민우야 조금만 참을 수 있어?",
+    "overlap": false
+   },
+   {
+    "t": 32.3,
+    "dur": 1.4,
+    "spk": "아이2",
+    "text": "못 참아 찔끔 나와",
+    "overlap": false
+   },
+   {
+    "t": 34.0,
+    "dur": 2.2,
+    "spk": "아이1",
+    "text": "야 참아봐 침 꼴깍 삼켜",
+    "overlap": false
+   },
+   {
+    "t": 36.5,
+    "dur": 1.6,
+    "spk": "아빠",
+    "text": "졸음쉼터 있나 봐봐 오른쪽",
+    "overlap": false
+   },
+   {
+    "t": 38.6,
+    "dur": 2.0,
+    "spk": "엄마",
+    "text": "잠깐만… 삼 킬로 앞에 있다 졸음쉼터",
+    "overlap": false
+   },
+   {
+    "t": 41.2,
+    "dur": 1.8,
+    "spk": "아이2",
+    "text": "거기 화장실 있어?",
+    "overlap": false
+   },
+   {
+    "t": 43.4,
+    "dur": 1.2,
+    "spk": "엄마",
+    "text": "있어 있어 금방 가",
+    "overlap": false
+   },
+   {
+    "t": 45.2,
+    "dur": 2.0,
+    "spk": "아빠",
+    "text": "안전벨트 풀지 말고 가만히 있어",
+    "overlap": false
+   }
+  ],
+  "why": "작년 휴게소에서 잃어버린 인형을 서로 다른 기억으로 떠올리다 갑작스러운 화장실 요구로 어수선해진다",
+  "note": "두 아이가 인형 종류로 옥신각신 겹쳐 말하다가 유아의 돌발 용변 호소로 화제가 급격히 꺾이며 차 안이 분주해지는 생생함을 살렸다."
+ },
+ {
+  "card": {
+   "label": "story",
+   "pattern": "kid_recount",
+   "boundary": false,
+   "family": [
+    {
+     "spk": "할머니",
+     "role": "운전자",
+     "age": "노년"
+    },
+    {
+     "spk": "아이1",
+     "role": "동승자",
+     "age": "유아"
+    }
+   ],
+   "situation": "어린이집 가는 길",
+   "topic": "달은 왜 따라오는지",
+   "interruptions": [],
+   "seconds": 45,
+   "energy": "차분",
+   "n_turns": 13
+  },
+  "lines": [
+   {
+    "t": 0.0,
+    "dur": 2.4,
+    "spk": "아이1",
+    "text": "할머니 저기 저기 달 아직 있어",
+    "overlap": false
+   },
+   {
+    "t": 3.0,
+    "dur": 1.8,
+    "spk": "할머니",
+    "text": "아침인데도 아직 떠 있네 하얗게",
+    "overlap": false
+   },
+   {
+    "t": 5.4,
+    "dur": 3.2,
+    "spk": "아이1",
+    "text": "근데 왜 차 타고 가는데 자꾸 자꾸 따라와?",
+    "overlap": false
+   },
+   {
+    "t": 9.2,
+    "dur": 2.2,
+    "spk": "할머니",
+    "text": "달이 우리 하은이 따라오나 보다",
+    "overlap": false
+   },
+   {
+    "t": 12.0,
+    "dur": 3.4,
+    "spk": "아이1",
+    "text": "아니야 나무는 휙 가는데 달은 안 가고 여기 있어",
+    "overlap": false
+   },
+   {
+    "t": 16.0,
+    "dur": 2.8,
+    "spk": "할머니",
+    "text": "저게 너무 멀리 있어서 그래 저 하늘 꼭대기에",
+    "overlap": false
+   },
+   {
+    "t": 19.5,
+    "dur": 2.6,
+    "spk": "아이1",
+    "text": "비행기보다 더 위에 있어?",
+    "overlap": false
+   },
+   {
+    "t": 22.8,
+    "dur": 1.6,
+    "spk": "할머니",
+    "text": "비행기보다 훨씬 높지",
+    "overlap": false
+   },
+   {
+    "t": 25.0,
+    "dur": 3.0,
+    "spk": "아이1",
+    "text": "그럼 우주선 타고 가야 돼? 슈웅 해서?",
+    "overlap": false
+   },
+   {
+    "t": 28.5,
+    "dur": 2.0,
+    "spk": "할머니",
+    "text": "그렇지 우주선 타고 가야 닿지",
+    "overlap": false
+   },
+   {
+    "t": 31.0,
+    "dur": 2.8,
+    "spk": "아이1",
+    "text": "근데 지금은 왜 빵처럼 안 둥글고 쪼끔만 있어?",
+    "overlap": false
+   },
+   {
+    "t": 34.5,
+    "dur": 2.2,
+    "spk": "할머니",
+    "text": "밥 많이 먹으면 다시 통통해져",
+    "overlap": false
+   },
+   {
+    "t": 37.5,
+    "dur": 2.0,
+    "spk": "아이1",
+    "text": "거짓말 달이 밥을 어떻게 먹어",
+    "overlap": false
+   }
+  ],
+  "why": "아이가 창밖 낮달이 따라오는 이유를 묻고 할머니가 눈높이에 맞춰 받아주며 문답이 이어진다",
+  "note": "과학적 원리 설명 대신 어른의 어물쩍 넘기는 대답과 이에 반박하는 아이의 미완성 문장 문답으로 현실감을 줬다."
+ },
+ {
+  "card": {
+   "label": "moment",
+   "pattern": "novice_reaction",
+   "boundary": false,
+   "family": [
+    {
+     "spk": "아빠",
+     "role": "운전자",
+     "age": "장년"
+    },
+    {
+     "spk": "엄마",
+     "role": "동승자",
+     "age": "장년"
+    },
+    {
+     "spk": "아이1",
+     "role": "동승자",
+     "age": "유아"
+    }
+   ],
+   "situation": "주말 나들이",
+   "topic": "터널 나오자 바다가 보임",
+   "interruptions": [],
+   "seconds": 20,
+   "energy": "보통",
+   "n_turns": 6
+  },
+  "lines": [
+   {
+    "t": 0.0,
+    "dur": 1.4,
+    "spk": "아빠",
+    "text": "터널 나가면 눈 부시다",
+    "overlap": false
+   },
+   {
+    "t": 2.0,
+    "dur": 1.8,
+    "spk": "아이1",
+    "text": "어! 바다다!",
+    "overlap": false
+   },
+   {
+    "t": 4.2,
+    "dur": 1.6,
+    "spk": "엄마",
+    "text": "우와 진짜 파랗다 오늘",
+    "overlap": false
+   },
+   {
+    "t": 6.3,
+    "dur": 2.5,
+    "spk": "아이1",
+    "text": "엄마 저기 배 지나가 쪼끄만 배!",
+    "overlap": false
+   },
+   {
+    "t": 9.4,
+    "dur": 1.4,
+    "spk": "아빠",
+    "text": "날씨 제대로 잡았네",
+    "overlap": false
+   },
+   {
+    "t": 11.5,
+    "dur": 2.0,
+    "spk": "엄마",
+    "text": "그러게 바람도 별로 안 부네",
+    "overlap": false
+   }
+  ],
+  "why": "터널을 빠져나오며 펼쳐진 바다 풍경에 가족들이 짧게 감탄만 터뜨리고 긴 이야기로 번지지 않는다",
+  "note": "감탄사와 탄성으로 한순간 분위기가 환기되지만 구체적인 스토리로 발전하지 않고 시각적 인상 공유로 끝난다."
+ },
+ {
+  "card": {
+   "label": "moment",
+   "pattern": "adult_imitation",
+   "boundary": false,
+   "family": [
+    {
+     "spk": "엄마",
+     "role": "운전자",
+     "age": "장년"
+    },
+    {
+     "spk": "아이1",
+     "role": "동승자",
+     "age": "초등 저학년"
+    },
+    {
+     "spk": "아이2",
+     "role": "동승자",
+     "age": "유아"
+    }
+   ],
+   "situation": "등원·등교길",
+   "topic": "선생님 말투 흉내",
+   "interruptions": [],
+   "seconds": 25,
+   "energy": "보통",
+   "n_turns": 7
+  },
+  "lines": [
+   {
+    "t": 0.0,
+    "dur": 2.8,
+    "spk": "아이1",
+    "text": "자 어린이 여러분~ 선생님 보세요~",
+    "overlap": false
+   },
+   {
+    "t": 3.2,
+    "dur": 2.2,
+    "spk": "아이2",
+    "text": "네네 선생님!",
+    "overlap": false
+   },
+   {
+    "t": 5.8,
+    "dur": 3.2,
+    "spk": "아이1",
+    "text": "예쁜 손 무릎! 안 한 친구 누구예요~",
+    "overlap": false
+   },
+   {
+    "t": 9.4,
+    "dur": 1.8,
+    "spk": "엄마",
+    "text": "아하하 담임선생님이 그래?",
+    "overlap": false
+   },
+   {
+    "t": 11.6,
+    "dur": 2.2,
+    "spk": "아이1",
+    "text": "응 목소리 엄청 이렇게 얇게 해",
+    "overlap": false
+   },
+   {
+    "t": 14.2,
+    "dur": 1.6,
+    "spk": "아이2",
+    "text": "선생님 보세요~ 하하",
+    "overlap": false
+   },
+   {
+    "t": 16.5,
+    "dur": 1.8,
+    "spk": "엄마",
+    "text": "얼른 신발 주머니나 챙겨",
+    "overlap": false
+   }
+  ],
+  "why": "아이들이 선생님 특유의 어조를 흉내 내며 잠깐 웃음이 터지는 찰나의 순간이다",
+  "note": "학교·유치원 관용구를 흉내 내며 키득거리지만 바로 엄마의 등교 준비 잔소리로 툭 끊어진다."
+ },
+ {
+  "card": {
+   "label": "none",
+   "pattern": "driving_only",
+   "boundary": true,
+   "family": [
+    {
+     "spk": "아빠",
+     "role": "운전자",
+     "age": "장년"
+    },
+    {
+     "spk": "엄마",
+     "role": "동승자",
+     "age": "장년"
+    }
+   ],
+   "situation": "고속도로",
+   "topic": "어느 출구로 나갈지와 주유",
+   "interruptions": [
+    "내비 음성"
+   ],
+   "seconds": 50,
+   "energy": "차분",
+   "n_turns": 14
+  },
+  "lines": [
+   {
+    "t": 0.0,
+    "dur": 2.2,
+    "spk": "아빠",
+    "text": "다음 나들목으로 나가야 되나?",
+    "overlap": false
+   },
+   {
+    "t": 2.8,
+    "dur": 2.0,
+    "spk": "엄마",
+    "text": "잠깐만 내비가 뭐라 그러지",
+    "overlap": false
+   },
+   {
+    "t": 5.2,
+    "dur": 3.0,
+    "spk": "엄마",
+    "text": "직진이래. 이 킬로 앞에서 오른쪽",
+    "overlap": false
+   },
+   {
+    "t": 8.8,
+    "dur": 1.6,
+    "spk": "아빠",
+    "text": "기름 두 칸 남았는데",
+    "overlap": false
+   },
+   {
+    "t": 11.0,
+    "dur": 2.0,
+    "spk": "엄마",
+    "text": "나가서 넣자 톨게이트 앞에 주유소 있어",
+    "overlap": false
+   },
+   {
+    "t": 13.8,
+    "dur": 1.5,
+    "spk": "아빠",
+    "text": "거기 비싸 고속도로가 낫지 않나",
+    "overlap": false
+   },
+   {
+    "t": 16.0,
+    "dur": 2.4,
+    "spk": "엄마",
+    "text": "아냐 저기 알뜰주유소 있어 사거리 쪽에",
+    "overlap": false
+   },
+   {
+    "t": 19.2,
+    "dur": 1.8,
+    "spk": "아빠",
+    "text": "차선 어디로 타래?",
+    "overlap": false
+   },
+   {
+    "t": 21.5,
+    "dur": 1.8,
+    "spk": "엄마",
+    "text": "삼차로. 오른쪽 끝으로 붙어",
+    "overlap": false
+   },
+   {
+    "t": 24.0,
+    "dur": 1.2,
+    "spk": "아빠",
+    "text": "깜빡이 켜고…",
+    "overlap": false
+   },
+   {
+    "t": 26.5,
+    "dur": 2.2,
+    "spk": "엄마",
+    "text": "어 저 트럭 먼저 보내고 들어가",
+    "overlap": false
+   },
+   {
+    "t": 29.5,
+    "dur": 1.0,
+    "spk": "아빠",
+    "text": "어 들어갔어",
+    "overlap": false
+   },
+   {
+    "t": 32.0,
+    "dur": 1.8,
+    "spk": "엄마",
+    "text": "하이패스 카드 잔액 얼마 있지?",
+    "overlap": false
+   },
+   {
+    "t": 34.5,
+    "dur": 1.4,
+    "spk": "아빠",
+    "text": "자동충전이라 상관없어",
+    "overlap": false
+   }
+  ],
+  "why": "출구 경로 확인, 주유소 위치, 차선 변경 등 운전 목적의 실용적 정보만 오가며 남길 대화 내용이 없다",
+  "note": "내비게이션 지시와 주행 상황에 맞춰 단답형 확인과 끼어들기 지시가 이어지는 전형적인 운전 대화다."
+ },
+ {
+  "card": {
+   "label": "none",
+   "pattern": "fragments",
+   "boundary": true,
+   "family": [
+    {
+     "spk": "엄마",
+     "role": "운전자",
+     "age": "장년"
+    },
+    {
+     "spk": "아이1",
+     "role": "동승자",
+     "age": "초등 저학년"
+    }
+   ],
+   "situation": "하원·하교길",
+   "topic": "엄마 통화와 아이 혼잣말이 섞임",
+   "interruptions": [
+    "전화 통화"
+   ],
+   "seconds": 40,
+   "energy": "보통",
+   "n_turns": 11
+  },
+  "lines": [
+   {
+    "t": 0.0,
+    "dur": 1.8,
+    "spk": "엄마",
+    "text": "여보세요? 어 언니 나 지금 운전 중",
+    "overlap": false
+   },
+   {
+    "t": 2.5,
+    "dur": 2.4,
+    "spk": "아이1",
+    "text": "이거 딱지 어디다 뒀더라",
+    "overlap": false
+   },
+   {
+    "t": 5.4,
+    "dur": 3.2,
+    "spk": "엄마",
+    "text": "그거 서류 내일까지 보내면 된다고? 어 알았어",
+    "overlap": false
+   },
+   {
+    "t": 9.0,
+    "dur": 2.2,
+    "spk": "아이1",
+    "text": "아 가방 밑에 끼었네 왜 안 빠져",
+    "overlap": false
+   },
+   {
+    "t": 11.8,
+    "dur": 2.8,
+    "spk": "엄마",
+    "text": "아니 그건 김 과장한테 내가 메일로 전달할게",
+    "overlap": false
+   },
+   {
+    "t": 15.0,
+    "dur": 1.6,
+    "spk": "아이1",
+    "text": "엄마 이것 좀 당겨줘",
+    "overlap": false
+   },
+   {
+    "t": 17.0,
+    "dur": 1.8,
+    "spk": "엄마",
+    "text": "잠깐만 있어 봐. 언니 그래서 견적서가",
+    "overlap": false
+   },
+   {
+    "t": 19.5,
+    "dur": 2.6,
+    "spk": "아이1",
+    "text": "혼자 뺄 수 있나… 어 빠졌다 찢어질 뻔했네",
+    "overlap": false
+   },
+   {
+    "t": 23.0,
+    "dur": 2.4,
+    "spk": "엄마",
+    "text": "어 끊어 사무실 도착해서 전화할게",
+    "overlap": false
+   },
+   {
+    "t": 26.0,
+    "dur": 1.2,
+    "spk": "엄마",
+    "text": "너 발 또 의자에 올렸지",
+    "overlap": false
+   },
+   {
+    "t": 28.0,
+    "dur": 1.0,
+    "spk": "아이1",
+    "text": "아니 내렸어",
+    "overlap": false
+   }
+  ],
+  "why": "엄마의 통화 음성과 아이의 뒷좌석 혼잣말이 서로 섞여 각자 조각난 채 흘러가 남길 화제가 없다",
+  "note": "한 공간에 있지만 서로 다른 대상에게 말하며 흐름이 끊기고, 통화 종료 후 즉각적인 잔소리로 흩어지는 분절된 조각 대화다."
+ }
+]

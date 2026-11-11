@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>영상 검토 · Drive Diary</title>
+<style>
+:root { color-scheme: light; font-family: system-ui, sans-serif; color: #172c32; background: #f4f6f5; }
+* { box-sizing: border-box; } body { margin: 0; } header, main, footer { max-width: 1060px; margin: auto; padding: 24px; }
+header { padding-bottom: 12px; } h1 { margin: 0 0 8px; font-size: 28px; } h2 { font-size: 20px; margin: 0 0 10px; }
+p { line-height: 1.6; } .muted { color: #52666c; font-size: 14px; } .toolbar { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin: 18px 0; }
+button, select, textarea { font: inherit; } button, select { padding: 10px 14px; border-radius: 7px; border: 1px solid #9aacb1; background: white; color: inherit; }
+button { cursor: pointer; } button:disabled { opacity: .55; cursor: wait; } button:hover { background: #e9f0ee; }
+:focus-visible { outline: 3px solid #267a9b; outline-offset: 3px; } a { color: #075f91; }
+progress { width: 220px; accent-color: #147c61; } #notice { min-height: 24px; color: #9a2f24; }
+article { padding: 24px; margin: 0 0 22px; background: white; border: 2px solid #d8e1de; border-radius: 12px; scroll-margin-top: 16px; }
+article.active { border-color: #176f61; box-shadow: 0 0 0 2px #176f611c; }
+.meta { color: #465c62; line-height: 1.7; overflow-wrap: anywhere; } .indicators { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 14px 0; font-size: 14px; }
+.prescreen { padding: 10px 14px; border-left: 4px solid #bc9a49; background: #faf5e9; overflow-wrap: anywhere; }
+.human { padding: 10px 14px; background: #edf6f2; font-weight: 600; overflow-wrap: anywhere; }
+.listen { padding: 12px 0; border-bottom: 1px solid #e8eeeb; } .lines { margin: 8px 0 0; padding-left: 24px; color: #384f55; }
+.lines li { margin: 5px 0; white-space: pre-wrap; overflow-wrap: anywhere; } textarea { display: block; width: 100%; padding: 10px; margin: 8px 0 12px; border: 1px solid #9aacb1; border-radius: 7px; resize: vertical; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; } .approve { border-color: #147c61; color: #086246; } .reject { border-color: #b35348; color: #9a2f24; }
+.actions button[aria-pressed="true"] { box-shadow: inset 0 0 0 2px currentColor; font-weight: 700; }
+footer { border-top: 1px solid #d8e1de; padding-bottom: 40px; } .reached { color: #086246; font-weight: 700; } #rejectHint { padding: 12px; background: #fff0df; overflow-wrap: anywhere; }
+@media (max-width: 600px) { header, main, footer { padding: 16px; } article { padding: 16px; } }
+</style>
+<header>
+  <p class="muted">DRIVE DIARY · 학습 영상 검토</p>
+  <h1>차 안의 대화, 직접 듣고 결정해 주세요</h1>
+  <p>유튜브에서 몇 구간을 듣고 승인 · 거절 · 보류 중 하나를 선택하세요. 짧은 코멘트를 함께 남길 수 있습니다.</p>
+  <p id="reviewer"></p>
+  <div><progress id="progress" value="0" max="1"></progress> <span id="progressText"></span></div>
+  <div class="toolbar">
+    <label>판정 <select id="filter"><option value="unreviewed">미검토</option><option value="approve">승인</option><option value="reject">거절</option><option value="hold">보류</option><option value="all">전체</option></select></label>
+    <label><input type="checkbox" id="downloaded"> 받은 영상만</label>
+    <span id="visibleCount" class="muted"></span>
+  </div>
+  <p class="muted">A 승인 · R 거절 · H 보류 (즉시 저장) / J·↓ 다음 / K·↑ 이전 / C 코멘트 / Enter 현재 판정과 코멘트 저장. 입력 중에는 글자 단축키가 작동하지 않습니다.</p>
+  <p id="notice" role="status" aria-live="polite"></p>
+  <p id="rejectHint" hidden></p>
+</header>
+<main id="cards" aria-label="검토할 영상"></main>
+<footer>
+  <h2>사람 검토 현황</h2>
+  <p id="summary"></p><p id="channels"></p>
+  <p class="muted">현황은 자동 제외 영상을 포함한 매니페스트 전체 기준입니다. 진행률은 이 콘솔에 표시할 수 있는 받은 영상과 후보 기준입니다. dev·test는 각각 사람 승인 채널 10개가 목표입니다.</p>
+  <p class="muted">사전 의견은 사람 승인이 아닙니다. 사람 승인 판정은 학습 반영의 기준이며, 실제 학습 진입 제한은 T21과 후속 파이프라인에서 적용합니다. 자동 제외 영상은 이 목록에 표시되지 않습니다.</p>
+</footer>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const names = {approve: '승인', reject: '거절', hold: '보류'};
+let state, visible = [], activeId = null, saving = false;
+const drafts = new Map();
+function el(tag, text, cls) {
+  const node = document.createElement(tag);
+  if (text !== undefined) node.textContent = text;
+  if (cls) node.className = cls;
+  return node;
+}
+function time(seconds) {
+  const n = Math.floor(Number(seconds) || 0);
+  return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`;
+}
+function percent(value) { return value == null ? '자료 없음' : `${(value * 100).toFixed(1)}%`; }
+async function api(path, payload) {
+  const response = await fetch(path, payload === undefined ? {} : {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || '요청에 실패했습니다.');
+  return data;
+}
+function select(id, scroll = false) {
+  activeId = id;
+  for (const card of $('cards').querySelectorAll('article')) {
+    card.classList.toggle('active', card.dataset.id === id);
+    if (card.dataset.id === id && scroll) { card.focus({preventScroll: true}); card.scrollIntoView({block: 'start', behavior: 'smooth'}); }
+  }
+}
+function renderSummary() {
+  const s = state.summary, p = s.progress;
+  $('reviewer').textContent = `검토자: ${state.reviewer}`;
+  $('progress').max = p.total || 1; $('progress').value = p.reviewed;
+  $('progressText').textContent = `${p.reviewed} / ${p.total}개 검토 (${p.total ? Math.round(p.reviewed / p.total * 100) : 0}%)`;
+  $('summary').textContent = `승인 ${s.human_decisions.approve} · 거절 ${s.human_decisions.reject} · 보류 ${s.human_decisions.hold} · 미검토 ${s.unreviewed}`;
+  $('channels').replaceChildren();
+  for (const split of ['train', 'dev', 'test']) {
+    const n = s.approved_channels[split];
+    $('channels').append(el('span', `${split}: ${n}개 채널${split === 'train' ? '' : ` / 10${n >= 10 ? ' (목표 도달)' : ''}`}　`, n >= 10 && split !== 'train' ? 'reached' : ''));
+  }
+  $('rejectHint').hidden = !s.unapplied_rejects;
+  $('rejectHint').textContent = `받은 영상의 거절 ${s.unapplied_rejects}건이 아직 반영되지 않았습니다. 음성 보관 위치 반영: .\\.venv\\Scripts\\python.exe pipeline/collect.py apply-decisions`;
+}
+function render() {
+  renderSummary();
+  const filter = $('filter').value;
+  visible = state.videos.filter(v => (!$('downloaded').checked || v.status === 'downloaded') &&
+    (filter === 'all' || (v.human ? v.human.decision : 'unreviewed') === filter));
+  if (!visible.some(v => v.video_id === activeId)) activeId = visible[0]?.video_id || null;
+  $('visibleCount').textContent = `${visible.length}개 표시`;
+  $('cards').replaceChildren();
+  if (!visible.length) $('cards').append(el('p', '이 조건에 맞는 영상이 없습니다. 다른 필터를 선택해 주세요.'));
+  for (const v of visible) {
+    const card = el('article'); card.dataset.id = v.video_id; card.tabIndex = 0;
+    card.addEventListener('focusin', () => select(v.video_id));
+    card.addEventListener('click', () => select(v.video_id));
+    card.append(el('h2', v.title || v.video_id));
+    const date = /^\d{8}$/.test(v.upload_date) ? `${v.upload_date.slice(0,4)}-${v.upload_date.slice(4,6)}-${v.upload_date.slice(6)}` : v.upload_date;
+    card.append(el('p', `${v.channel || '채널 미상'} · ${v.duration_s ? time(v.duration_s) : '길이 미상'} · ${date || '날짜 미상'} · ${v.status === 'downloaded' ? '받은 영상' : '후보'} · ${v.split || '분할 없음'}`, 'meta'));
+    card.append(el('p', `찾은 검색어: ${v.query || '기록 없음'}`, 'meta'));
+    const metrics = el('div', undefined, 'indicators'), m = v.metrics;
+    for (const text of [`말 비중 ${percent(m.speech_share)}`, `발화 수 ${m.utterance_count ?? '자료 없음'}`, `분당 발화 ${m.utterances_per_minute == null ? '자료 없음' : m.utterances_per_minute.toFixed(1)}`, `한글 비율 ${percent(m.hangul_share)}`, `평균 ASR 신뢰도 ${percent(m.asr_confidence)}`]) metrics.append(el('span', text));
+    if (!m.skip_shares.length) metrics.append(el('span', 'silver skip 비율: 자료 없음'));
+    for (const skip of m.skip_shares) metrics.append(el('span', `silver skip ${percent(skip.share)} (${skip.unit === 'block' ? '묶음' : '발화'} ${skip.count}개 · ${skip.run})`));
+    card.append(metrics);
+    if (v.prescreen) card.append(el('p', `사전 의견 · ${names[v.prescreen.decision]} — ${v.prescreen.reason}`, 'prescreen'));
+    card.append(el('p', v.human ? `사람 판정 · ${names[v.human.decision]} (${v.human.decided_by})` : '사람 판정 · 미검토', 'human'));
+    for (const sample of v.listening) {
+      const block = el('div', undefined, 'listen'), link = el('a', `${sample.percent}% 구간 듣기 · ${time(sample.seconds)} ↗`);
+      link.href = sample.url; link.target = '_blank'; link.rel = 'noopener noreferrer'; block.append(link);
+      if (sample.lines.length) {
+        const lines = el('ul', undefined, 'lines');
+        for (const line of sample.lines) lines.append(el('li', `${time(line.start)}  ${line.text}`));
+        block.append(lines);
+      } else block.append(el('p', '전사 없음 · 영상 길이 기준 링크입니다.', 'muted'));
+      card.append(block);
+    }
+    const label = el('label', '코멘트 (최대 500자)'), input = el('textarea');
+    input.rows = 2; input.maxLength = 500; input.value = drafts.has(v.video_id) ? drafts.get(v.video_id) : v.human?.comment || '';
+    input.addEventListener('input', () => drafts.set(v.video_id, input.value));
+    label.append(input); card.append(label);
+    const actions = el('div', undefined, 'actions');
+    for (const decision of ['approve', 'reject', 'hold']) {
+      const button = el('button', `${names[decision]} · ${{approve:'A',reject:'R',hold:'H'}[decision]}`, decision);
+      button.type = 'button'; button.setAttribute('aria-pressed', String(v.human?.decision === decision));
+      button.addEventListener('click', () => save(v.video_id, decision)); actions.append(button);
+    }
+    const saveComment = el('button', '코멘트 저장 · Enter');
+    saveComment.type = 'button'; saveComment.addEventListener('click', () => save(v.video_id, v.human?.decision)); actions.append(saveComment);
+    card.append(actions); $('cards').append(card);
+  }
+  select(activeId);
+}
+async function save(id, decision) {
+  if (saving || !id) return;
+  if (!decision) { $('notice').textContent = '승인 · 거절 · 보류 중 하나를 선택하면 코멘트도 함께 저장됩니다.'; return; }
+  saving = true;
+  const oldIndex = visible.findIndex(v => v.video_id === id);
+  const card = [...$('cards').querySelectorAll('article')].find(c => c.dataset.id === id);
+  const comment = card.querySelector('textarea').value;
+  for (const control of document.querySelectorAll('button, select, textarea, input')) control.disabled = true;
+  try {
+    await api('/api/decision', {video_id: id, decision, comment});
+    drafts.delete(id);
+    state = await api('/api/state');
+    render();
+    if (!visible.some(v => v.video_id === id) && visible.length) select(visible[Math.min(oldIndex, visible.length - 1)].video_id, true);
+    $('notice').textContent = `${names[decision]} 및 코멘트를 저장했습니다.`;
+  } catch (error) { $('notice').textContent = error.message; }
+  finally {
+    saving = false;
+    for (const control of document.querySelectorAll('button, select, textarea, input')) control.disabled = false;
+  }
+}
+for (const id of ['filter', 'downloaded']) $(id).addEventListener('change', render);
+document.addEventListener('keydown', event => {
+  if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey || saving) return;
+  const typing = ['TEXTAREA', 'INPUT', 'SELECT'].includes(event.target.tagName);
+  const v = visible.find(v => v.video_id === activeId);
+  if (event.key === 'Enter' && event.target.tagName !== 'BUTTON' && event.target.tagName !== 'A' && event.target.tagName !== 'SELECT') {
+    event.preventDefault(); if (v) save(v.video_id, v.human?.decision); return;
+  }
+  if (typing) return;
+  const key = event.key.toLowerCase(), decisions = {a: 'approve', r: 'reject', h: 'hold'};
+  if (decisions[key]) { event.preventDefault(); if (v) save(v.video_id, decisions[key]); }
+  else if (key === 'c') {
+    event.preventDefault();
+    [...$('cards').querySelectorAll('article')].find(c => c.dataset.id === activeId)?.querySelector('textarea').focus();
+  } else if (['j','k','arrowdown','arrowup','arrowright','arrowleft'].includes(key)) {
+    event.preventDefault();
+    const step = ['j','arrowdown','arrowright'].includes(key) ? 1 : -1;
+    const index = Math.max(0, Math.min(visible.length - 1, visible.findIndex(v => v.video_id === activeId) + step));
+    if (visible[index]) select(visible[index].video_id, true);
+  }
+});
+api('/api/state').then(data => { state = data; render(); }).catch(error => { $('notice').textContent = error.message; });
+</script>
+</html>

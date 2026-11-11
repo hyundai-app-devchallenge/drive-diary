@@ -1,0 +1,21 @@
+.local/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+*.log
+# Raw data and model artifacts belong in .local/.
+*.wav
+*.pcm
+*.mp3
+*.mp4
+*.pt
+*.pth
+*.onnx
+*.safetensors

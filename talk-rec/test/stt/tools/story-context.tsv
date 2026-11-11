@@ -1,0 +1,13 @@
+id	lang	label	previous	current
+c01	mix	1	옛날 그날 kiosk가 먹통이라 주문표를 직접 써 줬잖아.	응, 아직 내 지갑에 접어 놨어.
+c02	mix	0	지금 kiosk가 먹통이라 주문표를 손으로 썼어요.	응, 일단 지갑에 접어 놨어.
+c03	ko	1	저기서 네가 처음으로 내 편을 들어 줬잖아. 아무도 네 말을 안 들었는데.	그래서 아직도 그 길만 보면 그래.
+c04	ko	0	저기서 좌회전하면 앞차 때문에 항상 신호를 한 번 더 받아.	그래서 아직도 그 길만 보면 그래.
+c05	mix	1	아빠가 눈이 잘 안 보이면서도 매일 우리한테 손으로 postcard를 썼대.	다음에 집에 가면 한번 찾아보자.
+c06	mix	0	보내야 하는 postcard가 집 현관에 있는지 모르겠어.	다음에 집에 가면 한번 찾아보자.
+c07	en	1	You slipped at the school gate and Mom carried you all the way home.	Yeah, with all the groceries too.
+c08	en	0	Please meet Mom at the school gate at four and pick up her bags.	Yeah, with all the groceries too.
+c09	ko	1	새벽에 응급실에 있는데 언니가 버스 두 번 갈아타고 담요 들고 왔었잖아.	그때 나 하나도 안 춥다고 거짓말했어.
+c10	ko	0	히터가 고장 난 것 같으니 정비소에 가면 온도 조절부터 봐 달라고 해.	그때 나 하나도 안 춥다고 거짓말했어.
+c11	mix	1	어린이날에 나만 LEGO 한 조각 잃어버려서 다 같이 손전등 들고 운동장을 찾았지.	찾은 건 그다음 해였어.
+c12	mix	0	LEGO 빠진 조각 수리 요청하려면 제품 번호 적어야 돼.	찾은 건 그다음 해였어.
