@@ -65,6 +65,9 @@ dependencies {
     // Pleos NaviHelper SDK (읽기만 함: 현재 위치, 목적지, 도착 이벤트)
     implementation(libs.pleos.navihelper)
 
+    // Pleos FusedLocation SDK (차량 위치. 못 쓰면 Android GPS 로 대체)
+    implementation(libs.pleos.fusedlocation)
+
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

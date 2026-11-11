@@ -116,8 +116,9 @@ fun DongbanNavHost(
             }
             LaunchedEffect(tripId) {
                 vm.startVehicleSignalTracking()
-                if (LocationReader.hasPermission(context)) vm.startLocationTracking()
-                else locationPermission.launch(LocationReader.PERMISSIONS)
+                val missing = LocationReader.missingPermissions(context)
+                if (missing.isEmpty()) vm.startLocationTracking()
+                else locationPermission.launch(missing)
             }
             WithMessages(state.message, vm::consumeMessage) {
                 TripScreen(

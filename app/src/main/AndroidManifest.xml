@@ -8,6 +8,8 @@
     <!-- 주행 경로·거리·타임라인: 여행 화면에 들어갈 때 요청 (런타임 권한, 앱 사용 중에만 수집) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Pleos FusedLocation: 차량 위치 (protection level: dangerous → 사용자에게 요청) -->
+    <uses-permission android:name="pleos.car.permission.FUSED_LOCATION" />
 
     <!--
         Pleos Vehicle SDK 읽기 전용 권한 (사용하는 도메인만 선언)
