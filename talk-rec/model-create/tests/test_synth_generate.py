@@ -298,3 +298,80 @@ def test_concurrent_duplicate_budget_exhaustion_skips_only_that_batch(tmp_path):
     meta = json.loads(out.with_suffix('.meta.json').read_text(encoding='utf-8'))
     assert meta['failed_cards'] == [5, 6, 7, 8]
     assert meta['failure_counts'] == dict(validation_errors=3, backend_errors=0)
+
+
+def test_one_bad_card_preserves_three_and_resumes_only_missing(batch, tmp_path):
+    cards, scenes = batch
+    bad = deepcopy(scenes)
+    bad[1]['lines'][0]['spk'] = '창작 외부인'
+    out = tmp_path / 'scenes.jsonl'
+    backend = FakeBackend([json.dumps(bad)] * 3)
+    result = generate(cards, out, lambda: backend, {})
+    assert [s['card'] for s in result] == [cards[i]['card'] for i in (0, 2, 3)]
+    meta = json.loads(out.with_suffix('.meta.json').read_text(encoding='utf-8'))
+    assert meta['failed_cards'] == [cards[1]['card']]
+    assert meta['failure_reasons'] == {'speaker_outside_family': 3}
+    assert meta['failure_counts']['validation_errors'] == 3
+    resumed = SynthFakeBackend()
+    assert len(generate(cards, out, lambda: resumed, {})) == 4
+    assert len(resumed.calls) == 1
+    assert [c['card'] for c in json.loads(resumed.calls[0][1])] == [cards[1]['card']]
+
+
+def test_multiple_validation_reasons_and_partial_card_count(batch):
+    from synth.generate import FailureCounts
+    cards, scenes = batch
+    bad = deepcopy(scenes)
+    bad[0]['why'] = ''
+    bad[1]['lines'][0]['t'] = 1
+    bad.pop()
+    failures = FailureCounts()
+    backend = FakeBackend([json.dumps(bad)] * 3)
+    result, used = request_batch(cards, lambda: backend, [], failures=failures)
+    assert used == 3 and [s['card'] for s in result] == [cards[2]['card']]
+    assert failures.reason_snapshot() == dict(scene_count_mismatch=3, why_missing=3,
+        scene_must_start_at_zero=3, scene_missing_or_duplicate_identity=3)
+
+
+def test_compressed_times_stretch_before_validation_and_can_be_disabled(tmp_path):
+    from synth.generate import checked_subset, stretch_duration
+    card = dict(sample_cards(4)[0], seconds=80, n_turns=24)
+    original = fake_scene(dict(card, seconds=32))
+    saved = deepcopy(original)
+    fixed = stretch_duration(original, card)
+    assert original == saved
+    assert [l['text'] for l in fixed['lines']] == [l['text'] for l in original['lines']]
+    assert max(l['t'] + l['dur'] for l in fixed['lines']) == pytest.approx(80)
+    assert fixed['lines'][3]['t'] == pytest.approx(original['lines'][3]['t'] * 2.5)
+    assert fixed['lines'][3]['dur'] == pytest.approx(original['lines'][3]['dur'] * 2.5)
+    assert checked_subset([original], [card])[0] == [fixed]
+    assert checked_subset([original], [card], stretch_short=False)[1] == ['duration_outside_50pct']
+    backend = FakeBackend([json.dumps([original])])
+    result = generate([card], tmp_path / 'scenes.jsonl', lambda: backend, {})
+    assert result == [fixed]
+    with pytest.raises(ValueError, match='configuration'):
+        generate([card], tmp_path / 'scenes.jsonl', lambda: backend, {}, stretch_short=False)
+
+
+def test_stretch_preserves_overlap_and_rejects_invalid_times():
+    from synth.generate import checked_subset, stretch_duration
+    card = dict(sample_cards(4)[0], seconds=80, n_turns=5)
+    scene = fake_scene(dict(card, seconds=20))
+    scene['lines'][1].update(t=1, overlap=True)
+    fixed = stretch_duration(scene, card)
+    assert fixed['lines'][1]['t'] < fixed['lines'][0]['t'] + fixed['lines'][0]['dur']
+    assert fixed['lines'][1]['overlap']
+    assert stretch_duration(fake_scene(card), card) == fake_scene(card)
+    for t in (-1, float('nan'), True):
+        bad = deepcopy(scene)
+        bad['lines'][0]['t'] = t
+        assert not checked_subset([bad], [card])[0]
+
+
+def test_phone_remote_speaker_only_allowed_in_work_call():
+    card = dict(sample_cards(4)[0], pattern='phone_work', label='none')
+    scene = fake_scene(card)
+    scene['lines'][0]['spk'] = '통화상대'
+    validate_scenes([scene], [card])
+    with pytest.raises(ValueError, match='speaker'):
+        validate_scenes([scene], [dict(card, pattern='errand')])

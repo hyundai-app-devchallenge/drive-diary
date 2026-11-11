@@ -1,12 +1,11 @@
 from collections import Counter
-from statistics import median
 
 import pytest
 
 from pipeline.label import AgyBackend, windows_command_length
 from synth.cards import sample_cards
 from synth.generate import render_prompt, validate_cards
-from synth.patterns import BOUNDARY_PATTERNS, BY_ID, DEFINITIONS, SITUATIONS, TOPICS
+from synth.patterns import BOUNDARY_PATTERNS, BY_ID, DEFINITIONS, QUIET_NONE, SITUATIONS, TOPICS
 
 
 def test_cards_exact_quotas_and_targets():
@@ -14,8 +13,6 @@ def test_cards_exact_quotas_and_targets():
     assert len(cards) == 200
     assert Counter(c['label'] for c in cards) == {'story': 80, 'moment': 40, 'none': 80}
     assert sum(c['boundary'] for c in cards) == 30
-    assert median(c['n_turns'] for c in cards) == 9
-    assert sum(c['n_turns'] == 1 for c in cards) == 14
     assert max(Counter((c['pattern'], c['topic']) for c in cards).values()) <= 2
     validate_cards(cards)
     for c in cards:
@@ -27,10 +24,6 @@ def test_cards_exact_quotas_and_targets():
         assert sum(m['role'] == '운전자' for m in c['family']) == 1
         if c['boundary']:
             assert c['pattern'] in BOUNDARY_PATTERNS[c['label']]
-        if c['label'] == 'story':
-            assert c['n_turns'] >= 6
-        if c['boundary'] and c['pattern'] in ('after_none', 'driving_only'):
-            assert c['n_turns'] >= 8
         if c['pattern'] == 'fragments':
             assert c['n_turns'] <= 2
 
@@ -47,7 +40,29 @@ def test_cards_deterministic_and_cover_inventory():
     for label in ('story', 'moment', 'none'):
         counts = Counter(c['pattern'] for c in cards if c['label'] == label)
         # Boundary quotas necessarily raise a few patterns; all remain represented.
-        assert min(counts.values()) >= 3
+        assert min(counts.values()) >= (2 if label == 'none' else 3)
+
+
+@pytest.mark.parametrize('seed', [43, 44, 91])
+def test_overlapping_lengths_and_compositions(seed):
+    cards = sample_cards(400, seed)
+    for label in ('none', 'story', 'moment'):
+        rows = [c for c in cards if c['label'] == label]
+        assert sum(c['seconds'] >= 60 and c['n_turns'] >= 18 for c in rows) == round(.55 * len(rows))
+        assert sum(c['seconds'] <= 30 and c['n_turns'] <= 8 for c in rows) == round(.25 * len(rows))
+        assert sum(not any(m['spk'].startswith('아이') for m in c['family']) for c in rows) == round(.25 * len(rows))
+        energies = Counter(c['energy'] for c in rows)
+        assert max(energies.values()) - min(energies.values()) <= 1
+        assert {len(c['family']) for c in rows} == {2, 3, 4, 5}
+    assert sum(c['pattern'] in QUIET_NONE for c in cards) < .2 * sum(c['label'] == 'none' for c in cards)
+    assert any(c['pattern'] == 'moment_in_errands' and c['seconds'] >= 60 for c in cards)
+    assert any(c['label'] == 'story' and len(c['family']) == 2
+               and not any(m['spk'].startswith('아이') for m in c['family']) for c in cards)
+    assert any(c['label'] == 'none' and c['energy'] == '정신없음'
+               and any(m['spk'].startswith('아이') for m in c['family']) for c in cards)
+    for c in cards:
+        if c['pattern'] == 'adult_planning':
+            assert sum(not m['spk'].startswith('아이') for m in c['family']) >= 2
 
 
 def test_custom_ratio_and_single_pattern_topic_limit():

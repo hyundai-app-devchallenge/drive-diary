@@ -5,11 +5,13 @@ import math
 import random
 
 from synth.io import write_jsonl
-from synth.patterns import (BOUNDARY_PATTERNS, BY_ID, INTERRUPTIONS, LABELS,
-                            SITUATIONS, TOPICS)
+from synth.patterns import (BOUNDARY_PATTERNS, BY_ID, CHILD_PATTERNS, INTERRUPTIONS,
+                            LABELS, QUIET_NONE, SITUATIONS, TOPICS)
 
-TURN_WEIGHTS = {1: .07, 2: .025, 3: .025, 4: .03, 5: .04, 6: .06,
-                7: .08, 8: .10, 9: .22, 10: .15, 11: .10, 12: .10}
+# Use the same joint time/turn mixture for every label, including none.
+LENGTH_WEIGHTS = {'short': .25, 'medium': .20, 'long': .55}
+LENGTH_BOUNDS = {'short': (15, 30, 5, 8), 'medium': (31, 59, 9, 17),
+                 'long': (60, 90, 18, 26)}
 
 
 def quotas(n, weights):
@@ -23,20 +25,28 @@ def quotas(n, weights):
     return result
 
 
-def family(rng, size, pattern):
+def family(rng, size, pattern, children=True):
     adults = ['아빠', '엄마', '할아버지', '할머니', '이모', '삼촌']
     driver = rng.choice(adults)
+    if pattern == 'grandparent_recall' and size == 2:
+        driver = rng.choice(['할아버지', '할머니'])
     members = [dict(spk=driver, role='운전자', age=rng.choice(['청년', '중년'])
                     if driver not in ('할아버지', '할머니') else '노년')]
     if pattern == 'grandparent_recall' and driver not in ('할아버지', '할머니'):
         members.append(dict(spk=rng.choice(['할아버지', '할머니']), role='동승자', age='노년'))
-    # At least one child, including two-person families.
-    members.append(dict(spk='아이1', role='동승자', age=rng.choice(
-        ['유아 3~5세', '초등 저학년', '초등 고학년', '중고생'])))
+    if pattern == 'adult_planning':
+        members.append(dict(spk=rng.choice([a for a in adults if a != driver]), role='동승자', age='중년'))
+    if children:
+        members.append(dict(spk='아이1', role='동승자', age=rng.choice(
+            ['유아 3~5세', '초등 저학년', '초등 고학년', '중고생'])))
+    if pattern == 'sibling_squabble':
+        members.append(dict(spk='아이2', role='동승자', age='초등 저학년'))
     size = max(size, len(members))
     while len(members) < size:
         used = {m['spk'] for m in members}
-        options = [a for a in adults if a not in used] + [f'아이{i}' for i in range(2, 4) if f'아이{i}' not in used]
+        options = [a for a in adults if a not in used]
+        if children:
+            options += [f'아이{i}' for i in range(2, 4) if f'아이{i}' not in used]
         spk = rng.choice(options)
         age = rng.choice(['유아 3~5세', '초등 저학년', '초등 고학년', '중고생']) if spk.startswith('아이') else (
             '노년' if spk in ('할아버지', '할머니') else '중년')
@@ -54,51 +64,49 @@ def sample_cards(n=200, seed=43, ratios=None, boundary_rate=.15, max_repeat=2):
     labels = [label for label, count in quotas(n, ratios).items() for _ in range(count)]
     rng.shuffle(labels)
     boundaries = set(rng.sample(range(n), round(n * boundary_rate)))
+    # Quotas per label prevent accidental composition/energy/size skew.
+    targets = {}
+    for label in LABELS:
+        indices = [i for i, value in enumerate(labels) if value == label]
+        lengths = [key for key, count in quotas(len(indices), LENGTH_WEIGHTS).items() for _ in range(count)]
+        children = [j >= round(len(indices) * .25) for j in range(len(indices))]
+        sizes = [2 + j % 4 for j in range(len(indices))]
+        energies = [['차분', '보통', '정신없음'][j % 3] for j in range(len(indices))]
+        for values in (lengths, children, sizes, energies):
+            rng.shuffle(values)
+        for i, length, child, size, energy in zip(indices, lengths, children, sizes, energies):
+            lo, hi, a, b = LENGTH_BOUNDS[length]
+            targets[i] = dict(seconds=rng.randint(lo, hi), n_turns=rng.randint(a, b),
+                              children=child, size=size, energy=energy, length=length)
     counts, pair_counts = Counter(), Counter()
     cards = []
     for i, label in enumerate(labels):
         boundary = i in boundaries
+        target = targets[i]
         candidates = [p for p, item in BY_ID.items() if item['label'] == label
                       and (not boundary or p in BOUNDARY_PATTERNS[label])
+                      and (target['children'] or p not in CHILD_PATTERNS)
+                      and (p != 'adult_planning' or not target['children'] or target['size'] >= 3)
+                      and (p != 'sibling_squabble' or target['size'] >= 3)
+                      and (p != 'moment_in_errands' or target['length'] == 'long')
+                      and (p not in QUIET_NONE or target['length'] != 'long')
                       and any(pair_counts[p, t] < max_repeat for t in TOPICS[item['group']])]
         if not candidates:
             raise ValueError('pattern×topic capacity exhausted; reduce N or raise --max-repeat')
         rng.shuffle(candidates)
-        pattern = min(candidates, key=lambda p: counts[p])
+        pattern = min(candidates, key=lambda p: counts[p] / (.25 if p in QUIET_NONE else 1))
         topics = [t for t in TOPICS[BY_ID[pattern]['group']] if pair_counts[pattern, t] < max_repeat]
         rng.shuffle(topics)
         topic = min(topics, key=lambda t: (pair_counts[pattern, t], sum(v for (p, x), v in pair_counts.items() if x == t)))
         counts[pattern] += 1
         pair_counts[pattern, topic] += 1
         cards.append(dict(card=i + 1, label=label, pattern=pattern, boundary=boundary,
-                          family=family(rng, 2 + i % 4, pattern), situation=SITUATIONS[i % len(SITUATIONS)],
+                          family=family(rng, target['size'], pattern, target['children']), situation=SITUATIONS[i % len(SITUATIONS)],
                           topic=topic, interruptions=rng.sample(INTERRUPTIONS, rng.randrange(3)),
-                          seconds=rng.randint(15, 90), energy=['차분', '보통', '정신없음'][i % 3]))
-    # Reserve short counts for fragments/questions, long counts for story boundaries.
-    turns = [turn for turn, count in quotas(n, TURN_WEIGHTS).items() for _ in range(count)]
-    remaining = list(cards)
-    rng.shuffle(remaining)
-    def bounds(c):
-        p = c['pattern']
-        if p == 'after_none':
-            return 8, 12
-        if c['label'] == 'story':
-            return 6, 12
-        if p == 'driving_only':
-            return (8 if c['boundary'] else 4), 12
-        return 1, {'fragments': 2, 'greeting': 4, 'unanswered': 5}.get(p, 12)
-    for turn in sorted(turns):
-        choices = [c for c in remaining if bounds(c)[0] <= turn <= bounds(c)[1]]
-        if not choices:
-            # Extreme custom label quotas prioritize a coherent pattern over turn quotas.
-            card = min(remaining, key=lambda c: abs(turn - max(bounds(c)[0], min(turn, bounds(c)[1]))))
-            turn = max(bounds(card)[0], min(turn, bounds(card)[1]))
-        else:
-            tightest = min(bounds(c)[1] for c in choices)
-            card = rng.choice([c for c in choices if bounds(c)[1] == tightest])
-        card['n_turns'] = turn
-        card['seconds'] = min(card['seconds'], 12 + 10 * turn)
-        remaining.remove(card)
+                          seconds=target['seconds'], n_turns=target['n_turns'], energy=target['energy']))
+        if pattern == 'fragments':
+            # Keep quiet fragments as a small exception, never the default none.
+            cards[-1]['n_turns'] = rng.randint(1, 2)
     flow_rng = random.Random(f'{seed}:story-flow')
     stories = [c for c in cards if c['label'] == 'story']
     for card in flow_rng.sample(stories, round(len(stories) * .3)):

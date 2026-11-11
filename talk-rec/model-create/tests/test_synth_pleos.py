@@ -108,7 +108,7 @@ def test_profile_fallback_cli_and_numeric_report(tmp_path, capsys):
 
 def test_examples_cover_labels_seed_pattern_and_copy_rejection():
     examples = load_examples()
-    assert len(examples) == 20
+    assert len(examples) == 28
     assert all(BY_ID[e['card']['pattern']]['label'] == e['card']['label'] for e in examples)
     cards = sample_cards(200)
     for i in range(0, 200, 4):
@@ -126,6 +126,31 @@ def test_examples_cover_labels_seed_pattern_and_copy_rejection():
         scene = dict(card=1, lines=example['lines'], why=example['why'])
         with pytest.raises(ValueError, match='duplicate'):
             validate_scenes([scene], [card])
+
+
+def test_examples_directory_is_sorted_and_new_files_are_included(tmp_path, monkeypatch):
+    import synth.generate as generation
+    directory = tmp_path / 'prompts/synth-examples'
+    directory.mkdir(parents=True)
+    for name, value in [('z.json', 3), ('a.json', 1), ('b.json', 2)]:
+        (directory / name).write_text(json.dumps([value]), encoding='utf-8')
+    (directory / 'ignored.md').write_text('ignored', encoding='utf-8')
+    monkeypatch.setattr(generation, 'ROOT', tmp_path)
+    assert load_examples() == [1, 2, 3]
+
+
+def test_example_selection_prefers_matching_label_and_length(monkeypatch):
+    from synth.generate import length_band
+    cards = [dict(sample_cards(4)[0], label=label, seconds=seconds, n_turns=turns, card=i)
+             for i, (label, seconds, turns) in enumerate([('none', 80, 24), ('story', 20, 6), ('moment', 75, 22)], 1)]
+    for seed in (1, 43, 91):
+        selected = select_examples(cards, seed)
+        assert {(e['card']['label'], length_band(e['card'])) for e in selected} == {
+            ('none', 'long'), ('story', 'short'), ('moment', 'long')}
+    # With no matching band, retain the matching label.
+    pool = [e for e in load_examples() if e['card']['label'] != 'none' or length_band(e['card']) != 'long']
+    monkeypatch.setattr('synth.generate.load_examples', lambda: pool)
+    assert select_examples(cards[:1])[0]['card']['label'] == 'none'
 
 
 def test_tolerances_and_story_flow_variants():

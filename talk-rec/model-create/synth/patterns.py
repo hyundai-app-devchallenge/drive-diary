@@ -13,7 +13,7 @@ PATTERNS = [
     ('shared_memory', 'story', '같이 겪은 일을 서로 보태고 기억을 다르게 말한다', 'memory'),
     ('choice_game', 'story', '둘 중 하나 고르기를 이어가며 서로 이유를 설명한다', 'choice'),
     ('interrupted_story', 'story', '용무나 운전 주의가 끼어들고 화제로 돌아가거나 중간에 끊긴다', 'life'),
-    ('grandparent_recall', 'story', '조부모의 옛일에 아이가 끼어들고 세대가 다른 경험을 주고받는다', 'memory'),
+    ('grandparent_recall', 'story', '조부모의 옛일에 가족이 끼어들고 세대가 다른 경험을 주고받는다', 'memory'),
     ('after_none', 'story', '처음에는 용무와 내비뿐이다가 뒤쪽에서 짧은 이야기가 두세 번 오가기 시작한다', 'life'),
     ('adult_imitation', 'moment', '아이가 어른이나 설교 말투 또는 짧은 영어를 흉내내고 가족이 웃는다', 'play'),
     ('tease_reply', 'moment', '짧은 놀림과 엉뚱한 받아치기 한 번으로 웃는다', 'play'),
@@ -21,6 +21,12 @@ PATTERNS = [
     ('song', 'moment', '즉석에서 지은 짧은 노래 한 소절을 같이 부르다 그친다', 'song'),
     ('novice_reaction', 'moment', '초보 운전을 겪는 가족이 짧고 인상적인 감상을 내뱉는다', 'view'),
     ('unanswered_moment', 'moment', '질문에 답은 없지만 질문 자체나 옆의 한마디가 웃음을 남긴다', 'play'),
+    ('moment_in_errands', 'moment', '긴 길 안내·용무 흐름 한가운데 남길 만한 한마디에 웃고 다시 용무로 돌아간다', 'play'),
+    ('route_parking', 'none', '처음 가는 곳의 길과 주차장 입구를 여러 번 확인하며 길게 주고받는다', 'driving'),
+    ('adult_planning', 'none', '어른끼리 일정·장보기·돈 이체를 길게 의논하지만 지금 처리할 용무뿐이다', 'planning'),
+    ('phone_work', 'none', '스피커폰으로 업무 일정·서류·확인을 주고받는다. 통화상대 화자를 허용하고 아이는 용무나 딴소리만 한다', 'work'),
+    ('sibling_squabble', 'none', '형제가 자리·간식·창문으로 실랑이하고 어른이 말린다. 회상·놀이·남길 한마디 없이 용무로 반복된다', 'errand'),
+    ('service_steps', 'none', '주유·세차·계산 순서와 영수증을 계속 확인한다. 아이가 보채도 화제가 서지 않는다', 'service'),
     ('driving_only', 'none', '길고 여러 번 오가도 방향·속도·주차 지시뿐이다', 'driving'),
     ('navigation', 'none', '내비 안내와 짧은 확인만 이어진다', 'driving'),
     ('errand', 'none', '물건을 찾거나 닦거나 건네는 용무뿐이다', 'errand'),
@@ -30,8 +36,12 @@ PATTERNS = [
     ('unanswered', 'none', '평범한 질문 뒤 대답이 없고 용무로 끊겨 화제가 서지 않는다', 'life'),
 ]
 BY_ID = {p[0]: dict(id=p[0], label=p[1], description=p[2], group=p[3]) for p in PATTERNS}
-BOUNDARY_PATTERNS = {'none': ('driving_only', 'unanswered'),
-                     'moment': ('unanswered_moment',), 'story': ('after_none',)}
+BOUNDARY_PATTERNS = {'none': ('driving_only', 'unanswered', 'route_parking', 'adult_planning',
+                             'phone_work', 'sibling_squabble', 'service_steps'),
+                     'moment': ('unanswered_moment', 'moment_in_errands'), 'story': ('after_none',)}
+# Old quiet patterns stay in the inventory, at a lower sampling weight.
+QUIET_NONE = {'fragments', 'greeting', 'short_answers', 'unanswered'}
+CHILD_PATTERNS = {'parent_interview', 'kid_recount', 'adult_imitation', 'sibling_squabble'}
 TOPICS = {
     'life': ['학교 모둠 만들기', '친구와 자리 바꾸기', '급식 반찬 고르기', '학원 숙제 빼먹기',
              '게임에서 길 잃기', '만화 속 동물', '반려동물 잠버릇', '먹고 싶은 간식',
@@ -54,6 +64,15 @@ TOPICS = {
     'errand': ['휴지 찾기', '물병 건네기', '창문 닦기', '쓰레기 봉투', '안전띠 확인',
                '가방 위치', '신발 정리', '충전선 찾기', '영상 시작 인사', '영상 끝 인사',
                '에어컨 온도', '문 닫기 확인'],
+    'planning': ['이번 주 픽업 일정', '장보기 목록 수정', '학원비 이체 확인', '관리비 납부',
+                 '병원 예약 시간', '택배 수령 순서', '식재료 예산', '주말 이동 시간',
+                 '생활비 계좌 잔액', '카드 결제일', '반품 접수', '세탁물 찾기'],
+    'work': ['서류 전달 시간', '회의실 예약 확인', '작업 순서 확인', '견적서 금액 수정',
+             '납품 수량 확인', '근무 교대 시간', '접수 번호 확인', '일정표 수정',
+             '메일 첨부 확인', '방문 예약', '영수증 발급', '재고 수량 확인'],
+    'service': ['주유 금액 선택', '주유구 방향 확인', '카드 결제 순서', '영수증 출력',
+                '세차 대기 줄', '세차 코스 선택', '창문 닫기 절차', '진공청소기 사용 순서',
+                '주차비 정산', '할인권 입력', '충전 결제 확인', '매트 세척 순서'],
 }
 SITUATIONS = ['등원·등교길', '하원·하교길', '주말 나들이 가는 길', '귀가길', '장거리 고속도로',
               '마트 가는 길', '병원 가는 길', '운전 연습', '명절 이동', '비 오는 날 정체',
