@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 디버그 빌드에만 들어가는 설정. 출시용(release) 앱에는 포함되지 않는다. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- 에뮬레이터에서 내비 도착을 흉내 내는 테스트용 수신기 -->
+        <receiver
+            android:name=".navi.DebugArrivalReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.dongbantest.app.DEBUG_ARRIVAL" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>

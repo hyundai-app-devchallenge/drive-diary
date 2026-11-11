@@ -52,11 +52,26 @@ private object Routes {
     fun diaryDetail(id: Long) = "diary/$id"
 }
 
+/** 도착 알림을 눌렀을 때 여행 화면에 전달할 값. */
+data class ArrivalRequest(val tripId: Long, val destinationName: String)
+
 private val tripIdArg = listOf(navArgument("tripId") { type = NavType.LongType })
 private fun NavBackStackEntry.tripId(): Long = arguments?.getLong("tripId") ?: 0L
 
 @Composable
-fun DongbanNavHost(navController: NavHostController = rememberNavController()) {
+fun DongbanNavHost(
+    navController: NavHostController = rememberNavController(),
+    arrivalRequest: ArrivalRequest? = null,
+    onArrivalHandled: () -> Unit = {},
+) {
+    // 도착 알림으로 들어오면 그 여행 화면으로 이동한다. 종료 확인 창은 여행 화면이 띄운다.
+    LaunchedEffect(arrivalRequest) {
+        val request = arrivalRequest ?: return@LaunchedEffect
+        navController.navigate(Routes.trip(request.tripId)) {
+            popUpTo(Routes.HOME)
+            launchSingleTop = true
+        }
+    }
     NavHost(navController = navController, startDestination = Routes.HOME) {
 
         composable(Routes.HOME) {
@@ -119,6 +134,8 @@ fun DongbanNavHost(navController: NavHostController = rememberNavController()) {
                         }
                     },
                     onBack = { navController.popBackStack() },
+                    arrivedDestination = arrivalRequest?.takeIf { it.tripId == tripId }?.destinationName,
+                    onArrivalPromptShown = onArrivalHandled,
                 )
             }
         }

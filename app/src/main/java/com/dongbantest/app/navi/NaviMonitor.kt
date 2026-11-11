@@ -15,13 +15,16 @@ import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
 /**
  * Pleos NaviHelper 연결.
  *
- * 1단계(연결 확인)에서는 내비가 보내는 값을 로그로만 남긴다.
+ * 내비가 보내는 값을 로그로 남기고, 목적지에 도착하면 [onArrived]를 부른다.
  * 확인 명령: adb logcat -s NaviMonitor
  */
 class NaviMonitor(context: Context) {
 
     private val naviHelper = NaviHelper(context.applicationContext)
     private var started = false
+
+    /** 목적지에 도착했을 때 부를 함수. 인자는 목적지 이름이다. */
+    var onArrived: ((String) -> Unit)? = null
 
     private val listener = object : NaviHelperEventListener {
         override fun onCurrentLocationInfo(currentLocationInfo: CurrentLocationInfo) {
@@ -55,6 +58,7 @@ class NaviMonitor(context: Context) {
 
         override fun onDestinationArrived(destinationArrivedInfo: DestinationArrivedInfo) {
             Log.i(TAG, "목적지 도착: $destinationArrivedInfo")
+            onArrived?.invoke(destinationArrivedInfo.name)
         }
 
         override fun onNavigationStatus(status: NavigationStatus) {
@@ -90,6 +94,12 @@ class NaviMonitor(context: Context) {
             naviHelper.getDestinationInfo()
             naviHelper.getRouteStateInfo()
         }.onFailure { Log.w(TAG, "내비 정보 조회 실패", it) }
+    }
+
+    /** 에뮬레이터는 내비 위치가 움직이지 않아 실제 도착을 만들 수 없다. 디버그 빌드 테스트용. */
+    fun simulateArrival(destinationName: String) {
+        Log.i(TAG, "도착 흉내: $destinationName")
+        onArrived?.invoke(destinationName)
     }
 
     fun stop() {

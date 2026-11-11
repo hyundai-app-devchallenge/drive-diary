@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -62,9 +63,21 @@ fun TripScreen(
     onEndTrip: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    arrivedDestination: String? = null,
+    onArrivalPromptShown: () -> Unit = {},
 ) {
     val trip = uiState.data?.trip
     var confirmEnd by rememberSaveable { mutableStateOf(false) }
+    // 내비 도착 알림을 눌러서 들어오면 목적지 이름이 담겨 온다. 이때는 도착 문구로 종료 확인 창을 띄운다.
+    var arrivalName by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(arrivedDestination, trip) {
+        if (arrivedDestination == null || trip == null) return@LaunchedEffect
+        if (trip.endedAt == null) {
+            arrivalName = arrivedDestination.ifBlank { "목적지" }
+            confirmEnd = true
+        }
+        onArrivalPromptShown()
+    }
     val memoryCount = uiState.data?.memories?.size ?: 0
 
     DiaryBackground(modifier) {
@@ -142,12 +155,19 @@ fun TripScreen(
     }
 
     if (confirmEnd) {
+        val arrived = arrivalName
+        val close = { confirmEnd = false; arrivalName = null }
         AlertDialog(
-            onDismissRequest = { confirmEnd = false },
-            title = { Text("여행을 마칠까요?") },
-            text = { Text("지금까지의 대화, 목소리, 사진이 한 권의 다이어리로 저장돼요.") },
-            confirmButton = { TextButton(onClick = { confirmEnd = false; onEndTrip() }) { Text("여행 종료") } },
-            dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text("계속 여행하기") } },
+            onDismissRequest = close,
+            title = { Text(if (arrived != null) "${arrived}에 도착했어요" else "여행을 마칠까요?") },
+            text = {
+                Text(
+                    if (arrived != null) "여행 기록을 마칠까요? 지금까지의 대화, 목소리, 사진이 한 권의 다이어리로 저장돼요."
+                    else "지금까지의 대화, 목소리, 사진이 한 권의 다이어리로 저장돼요."
+                )
+            },
+            confirmButton = { TextButton(onClick = { close(); onEndTrip() }) { Text("여행 종료") } },
+            dismissButton = { TextButton(onClick = close) { Text(if (arrived != null) "계속 기록" else "계속 여행하기") } },
         )
     }
 }
