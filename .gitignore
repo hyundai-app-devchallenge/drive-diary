@@ -32,19 +32,3 @@ Desktop.ini
 
 # 개인 문서
 /personal-docs/
-
-# Android 빌드 및 로컬 파일
-*.iml
-.gradle
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
-.kotlin
