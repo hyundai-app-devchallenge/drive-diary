@@ -111,6 +111,8 @@ data class DriveSummary(
     val pointCount: Int,
     val distanceMeters: Double,
     val timeline: List<TimelineEvent>,
+    /** 지도에 그릴 경로. 위치가 튄 곳에서 끊긴 구간들. */
+    val path: List<List<LocationPoint>> = emptyList(),
 ) {
     companion object {
         val EMPTY = DriveSummary(pointCount = 0, distanceMeters = 0.0, timeline = emptyList())

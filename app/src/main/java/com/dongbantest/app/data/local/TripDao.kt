@@ -58,6 +58,15 @@ interface TripDao {
     @Query("SELECT * FROM location_points WHERE tripId = :tripId ORDER BY recordedAt ASC")
     fun observeLocationPoints(tripId: Long): Flow<List<LocationPointEntity>>
 
+    /** 끝난 여행들의 위치 기록 전부 (기록 지도용). */
+    @Query(
+        "SELECT location_points.* FROM location_points " +
+            "INNER JOIN trips ON trips.id = location_points.tripId " +
+            "WHERE trips.endedAt IS NOT NULL " +
+            "ORDER BY location_points.tripId, location_points.recordedAt ASC"
+    )
+    fun observeFinishedTripPoints(): Flow<List<LocationPointEntity>>
+
     @Insert
     suspend fun insertVehicleSignal(signal: VehicleSignalEntity): Long
 

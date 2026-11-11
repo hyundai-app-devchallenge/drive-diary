@@ -5,6 +5,7 @@ import com.dongbantest.app.data.local.MemoryEntity
 import com.dongbantest.app.data.local.TripDao
 import com.dongbantest.app.data.local.TripEntity
 import com.dongbantest.app.data.local.VehicleSignalEntity
+import com.dongbantest.app.domain.location.RoutePath
 import com.dongbantest.app.domain.location.summarizeDrive
 import com.dongbantest.app.domain.model.DataSourceType
 import com.dongbantest.app.domain.model.LocationPoint
@@ -28,6 +29,14 @@ class TripRepository(
         combine(dao.observeTrips(), dao.observePhotoMemories()) { trips, photos ->
             val coverByTrip = photos.groupBy { it.tripId }.mapValues { it.value.first().filePath }
             trips.map { it.toDomain(coverByTrip[it.id]) }
+        }
+
+    /** 끝난 여행별 지도 경로 (여행 id → 위치가 튄 곳에서 끊긴 구간들). */
+    fun observeFinishedRoutes(): Flow<Map<Long, List<List<LocationPoint>>>> =
+        dao.observeFinishedTripPoints().map { rows ->
+            rows.groupBy { it.tripId }
+                .mapValues { (_, points) -> RoutePath.segments(points.map { it.toDomain() }) }
+                .filterValues { it.isNotEmpty() }
         }
 
     fun observeOngoingTrip(): Flow<Trip?> = dao.observeOngoingTrip().map { it?.toDomain() }
@@ -131,6 +140,7 @@ class TripRepository(
         SampleData.trips().forEach { sample ->
             val id = dao.insertTrip(sample.trip)
             sample.memories.forEach { dao.insertMemory(it.copy(tripId = id)) }
+            sample.route.forEach { dao.insertLocationPoint(it.copy(tripId = id)) }
         }
     }
 

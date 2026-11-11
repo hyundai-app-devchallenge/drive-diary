@@ -4,6 +4,8 @@
 
     <!-- 음성 메모: 사용자가 버튼을 눌렀을 때만 녹음 (런타임 권한) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- 지도 타일 받기 (MapLibre + OpenFreeMap) -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- 주행 경로·거리·타임라인: 여행 화면에 들어갈 때 요청 (런타임 권한, 앱 사용 중에만 수집) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />

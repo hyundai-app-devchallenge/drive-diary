@@ -1,6 +1,7 @@
 package com.dongbantest.app
 
 import com.dongbantest.app.domain.location.DistanceCalculator
+import com.dongbantest.app.domain.location.RoutePath
 import com.dongbantest.app.domain.location.TimelineBuilder
 import com.dongbantest.app.domain.model.LocationPoint
 import com.dongbantest.app.domain.model.TimelineType
@@ -136,5 +137,26 @@ class LocationLogicTest {
     fun vehicle_currentlyParkedDuringOngoingTripShowsStop() {
         val signals = listOf(signal(10, GEAR_NOT_PARKED), signal(300, PARKED), signal(310, DOOR_OPEN))
         assertEquals(listOf(TimelineType.START, TimelineType.STOP), types(signals, finished = false))
+    }
+
+    // ---- 지도 경로 ----
+
+    @Test
+    fun routePath_splitsAtTeleport() {
+        // 미국 → 서울 순간이동: 선을 이어 그리지 않고 구간을 나눈다.
+        val points = listOf(point(0, 37.422, -122.084), point(3, 37.56654), point(13, 37.56744))
+        val segments = RoutePath.segments(points)
+        assertEquals(listOf(1, 2), segments.map { it.size })
+    }
+
+    @Test
+    fun routePath_dropsJitterAndInaccuratePoints() {
+        val points = listOf(
+            point(0, 37.56654),
+            point(3, 37.56655),                 // 약 1m 흔들림 → 건너뜀
+            point(6, 37.57654, accuracy = 200f), // 오차 큼 → 버림
+            point(9, 37.56744),
+        )
+        assertEquals(listOf(2), RoutePath.segments(points).map { it.size })
     }
 }

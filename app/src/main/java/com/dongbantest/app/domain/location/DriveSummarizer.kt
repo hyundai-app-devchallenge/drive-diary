@@ -17,5 +17,6 @@ fun summarizeDrive(
             pointCount = points.size,
             distanceMeters = DistanceCalculator.totalMeters(points),
             timeline = TimelineBuilder.build(points, finished, signals),
+            path = RoutePath.segments(points),
         )
     }
