@@ -12,6 +12,9 @@ import ai.pleos.playground.navi.data.RouteStateInfo
 import ai.pleos.playground.navi.helper.NaviHelper
 import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -23,11 +26,26 @@ import kotlinx.coroutines.withTimeoutOrNull
 /** 내비에 설정된 목적지 */
 data class NaviDestination(val name: String, val latitude: Double, val longitude: Double)
 
+/** 길 안내 중인 경로의 지금 상태 (길 리본용). 거리는 미터, 시간은 초. */
+data class NaviRoute(
+    val destinationName: String,
+    /** 길 안내를 시작할 때의 전체 거리. 모르면 처음 받은 남은 거리를 쓴다. */
+    val totalMeters: Int,
+    val remainMeters: Int,
+    val remainSeconds: Int,
+)
+
 class NaviMonitor(context: Context) {
 
     private val naviHelper = NaviHelper(context.applicationContext)
     private var started = false
     private val addressWaiters = mutableListOf<CompletableDeferred<String>>()
+
+    private val _route = MutableStateFlow<NaviRoute?>(null)
+    /** 길 안내 중이면 남은 거리·시간, 아니면 null. [refreshRoute] 로 새로 받는다. */
+    val route: StateFlow<NaviRoute?> = _route.asStateFlow()
+    /** 길 안내를 시작할 때 받은 전체 거리 (목적지 이름 → 미터) */
+    @Volatile private var routeStartTotal: Pair<String, Int>? = null
 
     /** 목적지에 도착했을 때 부를 함수. 인자는 목적지 이름이다. */
     var onArrived: ((String) -> Unit)? = null
@@ -49,6 +67,7 @@ class NaviMonitor(context: Context) {
                 if (hasDestination) NaviDestination(destinationInfo.name, destinationInfo.latitude, destinationInfo.longitude)
                 else null
             )
+            updateRoute(if (hasDestination) destinationInfo else null)
         }
 
         override fun onRouteStateInfo(routeStateInfo: RouteStateInfo) {
@@ -62,6 +81,7 @@ class NaviMonitor(context: Context) {
 
         override fun onRouteStarted(routeStartInfo: RouteStartInfo) {
             Log.i(TAG, "길 안내 시작: $routeStartInfo")
+            routeStartTotal = routeStartInfo.name to routeStartInfo.distance
             runCatching { naviHelper.getDestinationInfo() }
         }
 
@@ -72,10 +92,12 @@ class NaviMonitor(context: Context) {
         override fun onRouteCancelled() {
             Log.i(TAG, "길 안내 취소")
             onDestination?.invoke(null)
+            _route.value = null
         }
 
         override fun onDestinationArrived(destinationArrivedInfo: DestinationArrivedInfo) {
             Log.i(TAG, "목적지 도착: $destinationArrivedInfo")
+            _route.value = null
             onArrived?.invoke(destinationArrivedInfo.name)
         }
 
@@ -112,6 +134,24 @@ class NaviMonitor(context: Context) {
             naviHelper.getDestinationInfo()
             naviHelper.getRouteStateInfo()
         }.onFailure { Log.w(TAG, "내비 정보 조회 실패", it) }
+    }
+
+    /** 남은 거리·시간을 새로 물어본다. 답은 [route] 로 온다. */
+    fun refreshRoute() {
+        if (!started) return
+        runCatching { naviHelper.getDestinationInfo() }.onFailure { Log.w(TAG, "목적지 조회 실패", it) }
+    }
+
+    private fun updateRoute(info: DestinationInfo?) {
+        if (info == null) {
+            _route.value = null
+            return
+        }
+        val previous = _route.value?.takeIf { it.destinationName == info.name }
+        val startTotal = routeStartTotal?.takeIf { it.first == info.name }?.second
+        // 전체 거리: 길 안내 시작 때 받은 값 > 이전에 정한 값 > 지금 남은 거리 (앱을 중간에 켠 경우)
+        val total = maxOf(startTotal ?: previous?.totalMeters ?: info.remainDistance, info.remainDistance)
+        _route.value = NaviRoute(info.name, total, info.remainDistance, info.remainTime)
     }
 
     /**

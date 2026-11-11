@@ -17,6 +17,10 @@ import com.dongbantest.app.vehicle.VehicleRepository
 import com.dongbantest.app.vehicle.VehicleSignalTracker
 import com.dongbantest.app.navi.ArrivalManager
 import com.dongbantest.app.navi.TripPlaceRecorder
+import com.dongbantest.app.navi.NaviMonitor
+import com.dongbantest.app.domain.model.RouteRibbon
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +37,8 @@ data class TripUiState(
     val playingPath: String? = null,
     val safety: DrivingSafetyState = DrivingSafetyState(SafetySource.MOCK, false),
     val message: String? = null,
+    /** 진행 중인 여행의 길 리본 (출발지 → 목적지 진행). 끝난 여행이면 null. */
+    val ribbon: RouteRibbon? = null,
 )
 
 private data class LocalState(
@@ -57,17 +63,31 @@ class TripViewModel(
     private val vehicleSignalTracker: VehicleSignalTracker,
     private val arrivalManager: ArrivalManager,
     private val placeRecorder: TripPlaceRecorder,
+    private val naviMonitor: NaviMonitor,
 ) : ViewModel() {
 
     private val player = VoicePlayer()
     private val local = MutableStateFlow(LocalState())
+
+    /** 화면이 보이는 동안 15초마다 내비에 남은 거리·시간을 물어본다. */
+    private val naviRoute = combine(
+        naviMonitor.route,
+        flow {
+            while (true) {
+                naviMonitor.refreshRoute()
+                emit(Unit)
+                delay(ROUTE_REFRESH_MILLIS)
+            }
+        },
+    ) { route, _ -> route }
 
     val uiState: StateFlow<TripUiState> = combine(
         tripRepository.observeTripWithMemories(tripId),
         local,
         player.playingPath,
         safetyMonitor.state,
-    ) { data, l, playing, safety ->
+        naviRoute,
+    ) { data, l, playing, safety, route ->
         TripUiState(
             data = data,
             question = l.question,
@@ -76,6 +96,17 @@ class TripViewModel(
             playingPath = playing,
             safety = safety,
             message = l.message,
+            ribbon = data?.trip?.takeIf { it.endedAt == null }?.let { trip ->
+                RouteRibbon(
+                    originName = trip.startPlace,
+                    destinationName = route?.destinationName ?: trip.destination.ifBlank { null },
+                    startedAt = trip.startedAt,
+                    progress = RouteRibbon.progressOf(route?.totalMeters, route?.remainMeters),
+                    remainMeters = route?.remainMeters,
+                    remainSeconds = route?.remainSeconds,
+                    companionCount = trip.companions.size,
+                )
+            },
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TripUiState())
 
@@ -200,5 +231,9 @@ class TripViewModel(
     override fun onCleared() {
         recorder.cancel()
         player.stop()
+    }
+
+    private companion object {
+        const val ROUTE_REFRESH_MILLIS = 15_000L
     }
 }

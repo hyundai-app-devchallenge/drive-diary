@@ -43,6 +43,7 @@ object AppViewModelProvider {
                 vehicleSignalTracker = c.vehicleSignalTracker,
                 arrivalManager = c.arrivalManager,
                 placeRecorder = c.tripPlaceRecorder,
+                naviMonitor = c.naviMonitor,
             )
         }
     }

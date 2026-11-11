@@ -32,6 +32,7 @@ import com.dongbantest.app.ui.components.DrivingRestrictionBanner
 import com.dongbantest.app.ui.components.PaperCard
 import com.dongbantest.app.ui.components.QuestionCard
 import com.dongbantest.app.ui.components.RecordVoiceButton
+import com.dongbantest.app.ui.components.RouteRibbonView
 import com.dongbantest.app.ui.components.ScreenHeader
 import com.dongbantest.app.ui.components.SoftButton
 import com.dongbantest.app.ui.components.formatKm
@@ -76,8 +77,12 @@ fun TripScreen(
                     PaperCard(m, color = MintLight) {
                         Text("🧳 진행 중인 여행", style = MaterialTheme.typography.titleMedium, color = CocoaSoft)
                         Text(trip?.destination.orEmpty(), style = MaterialTheme.typography.headlineSmall, color = Cocoa)
+                        uiState.ribbon?.let { RouteRibbonView(it, Modifier.fillMaxWidth()) }
                         trip?.let {
-                            Text("${formatTime(it.startedAt)} 출발", style = MaterialTheme.typography.bodyLarge, color = Cocoa)
+                            // 길 리본이 있으면 출발 시각은 리본 아래에 이미 나온다.
+                            if (uiState.ribbon == null) {
+                                Text("${formatTime(it.startedAt)} 출발", style = MaterialTheme.typography.bodyLarge, color = Cocoa)
+                            }
                             if (it.companions.isNotEmpty()) {
                                 Text("함께: ${it.companions.joinToString(", ")}", style = MaterialTheme.typography.bodyLarge, color = Cocoa)
                             }
