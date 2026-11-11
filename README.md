@@ -33,9 +33,28 @@
 
 회의에서 나온 구상이며 제출용 최종 범위는 미정입니다. 장시간 녹음·사진 전송·AI 연동은 구현 가능 여부와 방식을 검토 중입니다.
 
-## SDK / 외부 API
+## 현재 Android MVP 구현
 
-- SDK: Vehicle(누적 거리, 주행 상태), FusedLocation(첫 방문지 판단), NaviHelper(경로), STT·TTS
+앱은 Jetpack Compose로 화면을 구성하고 Room에 여행·위치·메모·음성·사진 기록을 저장합니다. 여행 시작·종료, 주행 기록과 이동 타임라인, 음성 메모 녹음·재생, 사진 첨부를 지원합니다.
+
+- Pleos Vehicle SDK는 차대번호와 누적 주행거리를 읽는 데 사용합니다. 차량 제어 API는 호출하지 않습니다. Pleos 연결에 실패하거나 일반 Android 기기에서 실행하면 Mock 차량 정보로 동작합니다.
+- 위치는 Android `LocationManager`의 GPS_PROVIDER로 수집합니다. 기획 목록의 FusedLocation·NaviHelper 경로 안내는 구현되어 있지 않습니다.
+- AAOS 주행 제한 API로 주행 중 글쓰기·사진 조작과 긴 목록 탐색을 제한합니다.
+- STT·TTS, 내비게이션 및 AI 다이어리 정리는 구현되지 않았습니다. 기획 단계 제안과 실제 구현을 구분해 주세요.
+
+### Android에서 실행
+
+Android SDK가 설치된 환경과 Android 기기 또는 에뮬레이터가 필요합니다. 앱의 최소 지원 API는 28이며, 빌드에는 Android SDK 37이 설정되어 있습니다.
+
+```bash
+./gradlew installDebug
+```
+
+POSIX 환경에서 실행 권한 오류가 나면 `sh ./gradlew installDebug`를 사용합니다. Pleos 에뮬레이터의 user 10 실행 절차, 권한·차량 연결 확인, 기능별 제약은 [Android MVP 실행 및 검증 안내](docs/android-mvp.md)를 참고하세요. 일반 기기에서는 차량 정보가 Mock으로 표시됩니다.
+
+## 기획 단계에서 검토한 SDK / 외부 API
+
+- SDK 검토 목록: Vehicle(누적 거리, 주행 상태), FusedLocation(첫 방문지 판단), NaviHelper(경로), STT·TTS
 - 외부 API: 지도 정적 이미지 API(경로 시각화), 외부 LLM(일기 문장 정리)
 
 ## 유사 서비스·리스크
