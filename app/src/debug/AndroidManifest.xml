@@ -12,7 +12,7 @@
             </intent-filter>
         </receiver>
 
-        <!-- GPX 경로 파일을 끝난 여행으로 넣는 테스트용 수신기 -->
+        <!-- GPX 경로 파일을 끝난 여행으로 넣는 테스트용 수신기 (adb 로 쓸 때) -->
         <receiver
             android:name=".debug.DebugGpxImportReceiver"
             android:exported="true">
@@ -21,11 +21,11 @@
             </intent-filter>
         </receiver>
 
-        <!-- v3 화면 목록: 런처에 "v3 화면" 아이콘으로 따로 보인다 -->
+        <!-- 개발 도구(예시 여행 넣기, v3 화면 목록): 런처에 "동반차 디버그" 아이콘으로 따로 보인다 -->
         <activity
             android:name=".debug.V3CatalogActivity"
             android:exported="true"
-            android:label="v3 화면"
+            android:label="동반차 디버그"
             android:theme="@style/Theme.Dongbantest">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

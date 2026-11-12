@@ -168,6 +168,15 @@ class TripRepository(
         dao.getSampleTrips().forEach { deleteTrip(it.id) }
     }
 
+    /** 예시 여행으로 표시한다. "예시 지우기"([clearSampleTrips])로 한 번에 지울 수 있다. */
+    suspend fun markSample(tripId: Long) {
+        val trip = dao.getTrip(tripId) ?: return
+        dao.updateTrip(trip.copy(isSample = true))
+    }
+
+    /** 이미 들어 있는 예시 여행 제목들 (같은 예시를 두 번 넣지 않으려고 쓴다) */
+    suspend fun sampleTripTitles(): Set<String> = dao.getSampleTrips().map { it.title }.toSet()
+
     private suspend fun addMemory(
         tripId: Long,
         type: MemoryType,
