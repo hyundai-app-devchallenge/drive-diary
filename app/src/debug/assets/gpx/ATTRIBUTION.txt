@@ -1,0 +1,8 @@
+이 폴더의 GPX 경로는 디버그(테스트) 빌드에서 예시 여행을 만들 때만 쓴다. 출시용 앱에는 들어가지 않는다.
+
+경로 데이터 출처: © OpenStreetMap contributors (ODbL 1.0, https://www.openstreetmap.org/copyright)
+경로 계산: OSRM (Open Source Routing Machine, https://project-osrm.org/)
+
+출발지는 모두 서울시립대학교이고, 도착지는 판교역, 대전역, 강릉 경포해변, 동대구역, 부산역, 전주 한옥마을,
+여수엑스포역, 경주 불국사, 속초해수욕장, 남이섬 선착장, 을왕리해수욕장, 수원 화성행궁, 안동 하회마을이다.
+시각은 오전 9시 출발을 기준으로 OSRM 이 계산한 구간별 소요 시간을 더해 붙였다(교통 상황은 반영하지 않음).

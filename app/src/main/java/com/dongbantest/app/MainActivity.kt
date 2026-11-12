@@ -24,10 +24,10 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import com.dongbantest.app.navi.ArrivalNotifier
 import com.dongbantest.app.ui.ArrivalRequest
-import com.dongbantest.app.ui.DongbanNavHost
-import com.dongbantest.app.ui.theme.Cream
-import com.dongbantest.app.ui.theme.DongbantestTheme
+import com.dongbantest.app.ui.v3.theme.DongbanchaV3Theme
+import com.dongbantest.app.ui.v3connect.V3NavHost
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
 
 class MainActivity : ComponentActivity() {
 
@@ -55,9 +55,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            DongbantestTheme {
-                Box(Modifier.fillMaxSize().background(Cream).safeDrawingPadding()) {
-                    DongbanNavHost(
+            // 확정안 v3 화면으로 앱을 띄운다. 예전 화면은 ui/DongbanNavHost.kt 에 그대로 남아 있다.
+            DongbanchaV3Theme {
+                Box(Modifier.fillMaxSize().background(Color.White).safeDrawingPadding()) {
+                    V3NavHost(
                         arrivalRequest = arrivalRequest,
                         onArrivalHandled = { arrivalRequest = null },
                     )

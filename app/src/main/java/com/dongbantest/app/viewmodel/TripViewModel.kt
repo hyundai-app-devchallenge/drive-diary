@@ -7,6 +7,7 @@ import com.dongbantest.app.audio.VoicePlayer
 import com.dongbantest.app.audio.VoiceRecorder
 import com.dongbantest.app.data.repository.MediaFileStore
 import com.dongbantest.app.data.repository.QuestionBank
+import com.dongbantest.app.data.repository.RecordingConsentStore
 import com.dongbantest.app.data.repository.TripRepository
 import com.dongbantest.app.domain.model.TripWithMemories
 import com.dongbantest.app.location.LocationTracker
@@ -39,13 +40,30 @@ data class TripUiState(
     val message: String? = null,
     /** 진행 중인 여행의 길 리본 (출발지 → 목적지 진행). 끝난 여행이면 null. */
     val ribbon: RouteRibbon? = null,
+    /** 녹음 모드 (S03 동의 결과와 "녹음 잠시 멈춰" 같은 말로 바뀐다) */
+    val recordingMode: RecordingMode = RecordingMode.READY,
+    /** "질문 그만": 이번 여행에서는 먼저 묻지 않는다 */
+    val quiet: Boolean = false,
+    /** 음성 명령 결과 알림 (몇 초 뒤 사라진다) */
+    val voiceFeedback: VoiceFeedback? = null,
 )
+
+/** 녹음 모드: 준비됨(동의 전) / 녹음 중 / 잠시 멈춤 / 녹음하지 않는 여행 */
+enum class RecordingMode { READY, ON, PAUSED, OFF }
+
+/** 음성 명령 결과: 성공 / 못 들음 / 확인 필요(잘못 멈췄을 수 있음) */
+data class VoiceFeedback(val kind: Kind, val heard: String, val result: String) {
+    enum class Kind { SUCCESS, NOT_HEARD, CONFIRM }
+}
 
 private data class LocalState(
     val question: String = QuestionBank.questions.first(),
     val isRecording: Boolean = false,
     val recordingStartedAt: Long? = null,
     val message: String? = null,
+    val recordingMode: RecordingMode = RecordingMode.READY,
+    val quiet: Boolean = false,
+    val voiceFeedback: VoiceFeedback? = null,
 )
 
 /**
@@ -64,10 +82,19 @@ class TripViewModel(
     private val arrivalManager: ArrivalManager,
     private val placeRecorder: TripPlaceRecorder,
     private val naviMonitor: NaviMonitor,
+    private val consentStore: RecordingConsentStore,
 ) : ViewModel() {
 
     private val player = VoicePlayer()
-    private val local = MutableStateFlow(LocalState())
+    private val local = MutableStateFlow(
+        LocalState(
+            recordingMode = when (consentStore.get(tripId)) {
+                true -> RecordingMode.ON
+                false -> RecordingMode.OFF
+                null -> RecordingMode.READY
+            },
+        )
+    )
 
     /** 화면이 보이는 동안 15초마다 내비에 남은 거리·시간을 물어본다. */
     private val naviRoute = combine(
@@ -107,6 +134,9 @@ class TripViewModel(
                     companionCount = trip.companions.size,
                 )
             },
+            recordingMode = l.recordingMode,
+            quiet = l.quiet,
+            voiceFeedback = l.voiceFeedback,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TripUiState())
 
@@ -194,7 +224,7 @@ class TripViewModel(
     }
 
     fun endTrip(onEnded: () -> Unit) = viewModelScope.launch {
-        if (recorder.isRecording) stopRecording()
+        if (recorder.isRecording) saveCurrentClip()
         locationTracker.stop(tripId)
         vehicleSignalTracker.stop(tripId)
         tripRepository.endTrip(tripId, vehicleRepository.state.value.odometer)
@@ -219,13 +249,76 @@ class TripViewModel(
     fun showMessage(text: String) = local.update { it.copy(message = text) }
     fun consumeMessage() = local.update { it.copy(message = null) }
 
-    /** 화면을 떠날 때 녹음/재생을 반드시 중단한다 (백그라운드 녹음 금지). */
+    /**
+     * 화면을 떠날 때 녹음/재생을 반드시 멈춘다 (백그라운드 녹음 금지).
+     * v3 에서는 탭으로 화면을 자주 오가므로, 지금까지 녹음한 조각은 버리지 않고 저장한다.
+     * 녹음 모드(ON)는 그대로 두어 여행 화면에 돌아오면 [onScreenShown] 이 다시 녹음을 이어 간다.
+     */
     fun onScreenHidden() {
-        if (recorder.isRecording) {
-            recorder.cancel()
-            local.update { it.copy(isRecording = false, recordingStartedAt = null, message = "화면을 벗어나 녹음을 취소했어요.") }
-        }
+        if (recorder.isRecording) saveCurrentClip()
         player.stop()
+    }
+
+    /** 여행 화면이 보이면, 녹음에 동의한 여행은 녹음을 이어 간다. */
+    fun onScreenShown(hasMicPermission: Boolean) = viewModelScope.launch {
+        if (!tripRepository.isTripOngoing(tripId)) return@launch
+        if (local.value.recordingMode == RecordingMode.ON && hasMicPermission) startRecording()
+    }
+
+    /** S03 녹음 동의 결과를 저장한다. */
+    fun setRecordingConsent(consent: Boolean) {
+        consentStore.set(tripId, consent)
+        local.update { it.copy(recordingMode = if (consent) RecordingMode.ON else RecordingMode.OFF) }
+    }
+
+    /** 지금 질문 카드의 질문을 "나눈 대화"로 남긴다 (메시지 없이). */
+    fun askCurrentQuestion() = viewModelScope.launch {
+        tripRepository.addQuestion(tripId, local.value.question)
+    }
+
+    /**
+     * 음성 명령. 지금은 음성 인식이 없어서 화면의 예시 문장을 누르면 그 말을 한 것으로 본다.
+     * 음성 인식이 붙으면 인식 결과로 이 함수를 부르면 된다.
+     */
+    fun onVoiceCommand(say: String) {
+        when (say) {
+            "다른 질문 해 줘" -> {
+                nextQuestion()
+                local.update { it.copy(quiet = false) }
+                askCurrentQuestion()
+                feedback(VoiceFeedback.Kind.SUCCESS, say, "새 질문을 꺼냈어요")
+            }
+            "질문 그만" -> {
+                local.update { it.copy(quiet = true) }
+                feedback(VoiceFeedback.Kind.SUCCESS, say, "이번 여행에서는 먼저 묻지 않을게요")
+            }
+            "녹음 잠시 멈춰" -> {
+                if (recorder.isRecording) saveCurrentClip()
+                local.update { it.copy(recordingMode = RecordingMode.PAUSED) }
+                feedback(VoiceFeedback.Kind.CONFIRM, say, "녹음을 잠시 멈췄어요")
+            }
+            "다시 녹음해 줘", "녹음 시작해 줘", "아니야" -> {
+                consentStore.set(tripId, true)
+                local.update { it.copy(recordingMode = RecordingMode.ON) }
+                startRecording()
+                feedback(VoiceFeedback.Kind.SUCCESS, say, "녹음을 다시 시작했어요")
+            }
+            else -> feedback(VoiceFeedback.Kind.NOT_HEARD, say, "잘 못 들었어요. 다시 말해 주세요")
+        }
+    }
+
+    fun consumeVoiceFeedback() = local.update { it.copy(voiceFeedback = null) }
+
+    private fun feedback(kind: VoiceFeedback.Kind, heard: String, result: String) =
+        local.update { it.copy(voiceFeedback = VoiceFeedback(kind, heard, result)) }
+
+    /** 녹음 중인 조각을 멈추고 저장한다 (메시지 없이). */
+    private fun saveCurrentClip() {
+        val result = recorder.stop()
+        local.update { it.copy(isRecording = false, recordingStartedAt = null) }
+        if (result != null) {
+            viewModelScope.launch { tripRepository.addVoiceMemo(tripId, result.first.absolutePath, result.second) }
+        }
     }
 
     override fun onCleared() {
