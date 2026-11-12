@@ -45,13 +45,25 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    // 최종 APK에서도 대화 판정 모델을 압축하지 않는다.
+    androidResources {
+        noCompress += "onnx"
+    }
     buildFeatures {
         compose = true
         resValues = true
     }
 }
 
+// 대화 기록 연동: Room 스키마를 app/schemas 에 남긴다(v5부터).
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
+    // 대화 기록 모듈을 연결한다.
+    implementation(project(":talkrec"))
+
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)

@@ -75,6 +75,7 @@ fun MemoryCaptureScreen(
                             uiState.isRecording, uiState.recordingStartedAt,
                             onStartRecording, onStopRecording, onPermissionDenied,
                             Modifier.fillMaxWidth(),
+                            momentMode = uiState.recordingMode == com.dongbantest.app.viewmodel.RecordingMode.ON, // talk-rec: 상시 캡처 중이면 "이 순간 담기"
                         )
                         Text("※ 음성 → 글자 변환(STT)은 아직 지원하지 않아요. 녹음 원본만 저장돼요.", style = MaterialTheme.typography.labelMedium, color = CocoaSoft)
                     }

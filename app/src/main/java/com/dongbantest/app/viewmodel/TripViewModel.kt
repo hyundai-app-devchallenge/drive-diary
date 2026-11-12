@@ -9,6 +9,7 @@ import com.dongbantest.app.data.repository.MediaFileStore
 import com.dongbantest.app.data.repository.QuestionBank
 import com.dongbantest.app.data.repository.RecordingConsentStore
 import com.dongbantest.app.data.repository.TripRepository
+import com.dongbantest.app.data.talk.TalkRecordingController
 import com.dongbantest.app.domain.model.TripWithMemories
 import com.dongbantest.app.location.LocationTracker
 import com.dongbantest.app.vehicle.DrivingSafetyMonitor
@@ -83,6 +84,7 @@ class TripViewModel(
     private val placeRecorder: TripPlaceRecorder,
     private val naviMonitor: NaviMonitor,
     private val consentStore: RecordingConsentStore,
+    private val talkRecording: TalkRecordingController,
 ) : ViewModel() {
 
     private val player = VoicePlayer()
@@ -162,6 +164,12 @@ class TripViewModel(
 
     /** 사용자가 녹음 시작 버튼 + 동승자 동의를 확인한 뒤에만 호출된다. */
     fun startRecording() {
+        if (consentStore.get(tripId) == true) {
+            if (recorder.isRecording) saveCurrentClip()
+            player.stop()
+            viewModelScope.launch { talkRecording.markMoment(tripId) }
+            return
+        }
         if (recorder.isRecording) return
         player.stop()
         try {
@@ -173,6 +181,12 @@ class TripViewModel(
     }
 
     fun stopRecording() {
+        if (consentStore.get(tripId) == true) {
+            if (recorder.isRecording) saveCurrentClip()
+            talkRecording.pause(tripId)
+            local.update { it.copy(recordingMode = RecordingMode.PAUSED) }
+            return
+        }
         val result = recorder.stop()
         local.update { it.copy(isRecording = false, recordingStartedAt = null) }
         if (result == null) {
@@ -250,9 +264,8 @@ class TripViewModel(
     fun consumeMessage() = local.update { it.copy(message = null) }
 
     /**
-     * 화면을 떠날 때 녹음/재생을 반드시 멈춘다 (백그라운드 녹음 금지).
-     * v3 에서는 탭으로 화면을 자주 오가므로, 지금까지 녹음한 조각은 버리지 않고 저장한다.
-     * 녹음 모드(ON)는 그대로 두어 여행 화면에 돌아오면 [onScreenShown] 이 다시 녹음을 이어 간다.
+     * 수동 VoiceRecorder 조각은 화면을 떠날 때 저장한다.
+     * 동의한 여행의 TalkRec FGS는 탭 이동/화면 소멸과 관계없이 여행 종료까지 유지한다.
      */
     fun onScreenHidden() {
         if (recorder.isRecording) saveCurrentClip()
@@ -262,12 +275,24 @@ class TripViewModel(
     /** 여행 화면이 보이면, 녹음에 동의한 여행은 녹음을 이어 간다. */
     fun onScreenShown(hasMicPermission: Boolean) = viewModelScope.launch {
         if (!tripRepository.isTripOngoing(tripId)) return@launch
-        if (local.value.recordingMode == RecordingMode.ON && hasMicPermission) startRecording()
+        if (consentStore.get(tripId) != true) {
+            talkRecording.stopForTrip(tripId)
+            return@launch
+        }
+        if (local.value.recordingMode == RecordingMode.ON && hasMicPermission) {
+            if (recorder.isRecording) saveCurrentClip()
+            talkRecording.startForTrip(tripId)
+        }
     }
 
     /** S03 녹음 동의 결과를 저장한다. */
     fun setRecordingConsent(consent: Boolean) {
         consentStore.set(tripId, consent)
+        if (!consent) talkRecording.stopForTrip(tripId)
+        else {
+            if (recorder.isRecording) saveCurrentClip()
+            viewModelScope.launch { talkRecording.startForTrip(tripId) }
+        }
         local.update { it.copy(recordingMode = if (consent) RecordingMode.ON else RecordingMode.OFF) }
     }
 
@@ -293,6 +318,7 @@ class TripViewModel(
                 feedback(VoiceFeedback.Kind.SUCCESS, say, "이번 여행에서는 먼저 묻지 않을게요")
             }
             "녹음 잠시 멈춰" -> {
+                talkRecording.pause(tripId)
                 if (recorder.isRecording) saveCurrentClip()
                 local.update { it.copy(recordingMode = RecordingMode.PAUSED) }
                 feedback(VoiceFeedback.Kind.CONFIRM, say, "녹음을 잠시 멈췄어요")
@@ -300,7 +326,8 @@ class TripViewModel(
             "다시 녹음해 줘", "녹음 시작해 줘", "아니야" -> {
                 consentStore.set(tripId, true)
                 local.update { it.copy(recordingMode = RecordingMode.ON) }
-                startRecording()
+                if (recorder.isRecording) saveCurrentClip()
+                viewModelScope.launch { talkRecording.resume(tripId) }
                 feedback(VoiceFeedback.Kind.SUCCESS, say, "녹음을 다시 시작했어요")
             }
             else -> feedback(VoiceFeedback.Kind.NOT_HEARD, say, "잘 못 들었어요. 다시 말해 주세요")

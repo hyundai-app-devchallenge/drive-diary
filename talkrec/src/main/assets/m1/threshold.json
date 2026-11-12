@@ -1,0 +1,13 @@
+{
+  "threshold": 0.9573729634284973,
+  "int8_recalibrated_threshold": 0.9783868789672852,
+  "decided": "2026-11-13 user: original T55 dev cutoff",
+  "torch_threshold": 0.9573729634284973,
+  "comparison": "keep_probability >= threshold",
+  "calibrated_on": "child_family_dev",
+  "n": 37,
+  "target_keep_recall": 0.85,
+  "unsure_included": true,
+  "rule": "eval.v3.metrics.select_threshold: feasible recall>=.85; max specificity, max recall, closest to .5, lower threshold; fallback max recall then specificity",
+  "model": "model.int8.onnx"
+}

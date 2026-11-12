@@ -39,6 +39,13 @@
             </intent-filter>
         </receiver>
 
+        <!-- talk-rec 연동(I5b): 대화 요약 설정 화면. 디버그 전용(런처 아이콘 없음, 동반차 디버그에서 연다) -->
+        <activity
+            android:name=".debug.SummarySettingsActivity"
+            android:exported="false"
+            android:label="대화 요약 설정"
+            android:theme="@style/Theme.Dongbantest" />
+
         <!-- 개발 도구(예시 여행 넣기, v3 화면 목록): 런처에 "동반차 디버그" 아이콘으로 따로 보인다 -->
         <activity
             android:name=".debug.V3CatalogActivity"

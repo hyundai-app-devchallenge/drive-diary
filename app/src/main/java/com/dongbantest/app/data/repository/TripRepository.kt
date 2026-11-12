@@ -2,6 +2,20 @@ package com.dongbantest.app.data.repository
 
 import com.dongbantest.app.data.local.LocationPointEntity
 import com.dongbantest.app.data.local.MemoryEntity
+import com.dongbantest.app.data.local.MemoryWithTalk
+import com.dongbantest.app.data.local.TalkMetaEntity
+import com.dongbantest.app.data.talk.ClipPersistence
+import com.dongbantest.app.data.talk.ClipRow
+import com.dongbantest.app.data.talk.clipTranscript
+import com.dongbantest.app.domain.model.TalkMeta
+import com.dongbantest.app.domain.model.TalkSource
+import com.dongbantest.app.domain.model.SummaryStatus
+import com.drivediary.talkrec.sink.KeptBlock
+import java.io.File
+import java.util.Locale
+import org.json.JSONArray
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.dongbantest.app.data.local.TripDao
 import com.dongbantest.app.data.local.TripEntity
 import com.dongbantest.app.data.local.VehicleSignalEntity
@@ -24,6 +38,10 @@ class TripRepository(
     private val dao: TripDao,
     private val files: MediaFileStore,
 ) {
+    private val clips = ClipPersistence(files.talkJournalDir)
+    private var recoveredClips = false
+    /** AppContainer binds this to capture stop; covers manual end, arrival and trip deletion. */
+    var onTripEnding: (Long) -> Unit = {}
 
     fun observeTrips(): Flow<List<Trip>> =
         combine(dao.observeTrips(), dao.observePhotoMemories()) { trips, photos ->
@@ -44,7 +62,7 @@ class TripRepository(
     fun observeTripWithMemories(tripId: Long): Flow<TripWithMemories?> =
         combine(
             dao.observeTrip(tripId),
-            dao.observeMemories(tripId),
+            dao.observeMemoriesWithTalk(tripId),
             dao.observeLocationPoints(tripId),
             dao.observeVehicleSignals(tripId),
         ) { trip, memories, points, signals ->
@@ -62,7 +80,67 @@ class TripRepository(
             }
         }
 
-    suspend fun isTripOngoing(tripId: Long): Boolean = dao.getTrip(tripId)?.endedAt == null
+    suspend fun isTripOngoing(tripId: Long): Boolean = dao.getTrip(tripId)?.let { it.endedAt == null } == true
+
+    /** One ownership boundary for encoding + atomic Room insert; no asynchronous PCM retention. */
+    suspend fun saveTalkClip(
+        block: KeptBlock,
+        canSave: () -> Boolean,
+        sendToAi: () -> Boolean,
+        writeAudio: suspend (File) -> Long,
+    ): Long? = withContext(Dispatchers.IO) {
+        clips.locked {
+            recoverTalkClipsLocked()
+            if (!canSave() || !isTripOngoing(block.tripId)) return@locked null
+            val file = files.talkVoiceFile(block.tripId, block.id)
+            if (clips.wasDeleted(file)) return@locked null
+            clips.save(file,
+                existing = { dao.getMemoryByPath(file.absolutePath)?.id },
+                write = { writeAudio(file) },
+                insert = { duration ->
+                    check(canSave() && isTripOngoing(block.tripId)) { "Capture no longer authorized" }
+                    dao.insertTalkMemory(
+                        MemoryEntity(tripId = block.tripId, type = MemoryType.VOICE.name,
+                            createdAt = System.currentTimeMillis(), text = null, filePath = file.absolutePath,
+                            transcript = clipTranscript(block.lines.map { it.text }), durationMs = duration),
+                        TalkMetaEntity(memoryId = 0, source = block.source.name,
+                            blockStartMs = block.startMs, blockEndMs = block.endMs,
+                            keepScore = block.keepScore, kind = block.kind?.name?.lowercase(Locale.ROOT),
+                            summaryStatus = if (sendToAi()) SummaryStatus.PENDING.name else SummaryStatus.SKIPPED.name),
+                    )
+                },
+            )
+        }
+    }
+
+    suspend fun updateTalkSummary(
+        memoryId: Long, status: SummaryStatus, title: String? = null, tags: List<String>? = null,
+        kind: String? = null, model: String? = null,
+    ) = dao.updateTalkSummary(memoryId, title, tags?.let { JSONArray(it).toString() }, kind, status.name, model)
+
+    suspend fun listPendingTalkSummaries(): List<Memory> = dao.pendingTalkMemories().map { it.toDomain() }
+
+    suspend fun getPendingTalkSummary(memoryId: Long): Memory? = dao.pendingTalkMemory(memoryId)?.toDomain()
+
+    /** Across ALL trips, counted at save time; MANUAL clips are excluded. */
+    suspend fun savedAutoDurationMs(sinceMs: Long, untilMs: Long): Long = dao.savedAutoDurationMs(sinceMs, untilMs)
+
+    suspend fun deletePreviousSavedClip(tripId: Long, refusalId: String): Boolean = withContext(Dispatchers.IO) {
+        clips.deleteLatest(tripId, refusalId,
+            latest = { dao.latestTalkMemory(tripId)?.clipRow() },
+            find = { dao.getMemory(it)?.clipRow() }, delete = { dao.deleteMemory(it) })
+    }
+
+    suspend fun recoverTalkClips() = withContext(Dispatchers.IO) { clips.locked { recoverTalkClipsLocked() } }
+
+    private suspend fun recoverTalkClipsLocked() {
+        if (recoveredClips) return
+        clips.recover(find = { dao.getMemory(it)?.clipRow() }, delete = { dao.deleteMemory(it) })
+        files.talkFiles().forEach { file ->
+            if (file.extension == "part" || dao.getMemoryByPath(file.absolutePath) == null) ClipPersistence.remove(file)
+        }
+        recoveredClips = true
+    }
 
     suspend fun addLocationPoint(point: LocationPoint): Long = dao.insertLocationPoint(
         LocationPointEntity(
@@ -104,8 +182,11 @@ class TripRepository(
     )
 
     suspend fun endTrip(tripId: Long, odometer: Float?, now: Long = System.currentTimeMillis()) {
-        val trip = dao.getTrip(tripId) ?: return
-        dao.updateTrip(trip.copy(endedAt = now, endOdometer = odometer ?: trip.endOdometer))
+        onTripEnding(tripId)
+        clips.locked {
+            val trip = dao.getTrip(tripId) ?: return@locked
+            dao.updateTrip(trip.copy(endedAt = now, endOdometer = odometer ?: trip.endOdometer))
+        }
     }
 
     suspend fun setStartPlace(tripId: Long, place: String) {
@@ -143,16 +224,19 @@ class TripRepository(
     suspend fun addQuestion(tripId: Long, question: String) =
         addMemory(tripId, MemoryType.QUESTION, text = question)
 
-    suspend fun deleteMemory(memoryId: Long) {
-        val memory = dao.getMemory(memoryId) ?: return
-        files.delete(memory.filePath)
-        dao.deleteMemory(memoryId)
+    suspend fun deleteMemory(memoryId: Long): Unit = withContext(Dispatchers.IO) {
+        clips.deleteLatest(0, "memory:$memoryId", latest = { dao.getMemory(memoryId)?.clipRow() },
+            find = { dao.getMemory(it)?.clipRow() }, delete = { dao.deleteMemory(it) })
+        Unit
     }
 
     /** 기록 삭제 시 관련 음성/사진 파일도 함께 정리한다. */
     suspend fun deleteTrip(tripId: Long) {
-        dao.getMemories(tripId).forEach { files.delete(it.filePath) }
-        dao.deleteTrip(tripId)
+        onTripEnding(tripId)
+        clips.locked {
+            dao.getMemories(tripId).forEach { files.delete(it.filePath) }
+            dao.deleteTrip(tripId)
+        }
     }
 
     suspend fun seedSampleTrips() {
@@ -190,7 +274,7 @@ class TripRepository(
             createdAt = System.currentTimeMillis(),
             text = text,
             filePath = filePath,
-            transcript = null, // STT 미연동: 녹음 원본과 별도 필드로 남겨둔다.
+            transcript = null, // 수동 메모 등 기존 경로는 전사 없이 저장한다.
             durationMs = durationMs,
         )
     )
@@ -212,7 +296,20 @@ private fun TripEntity.toDomain(coverPhotoPath: String? = null) = Trip(
     endPlace = endPlace,
 )
 
-private fun MemoryEntity.toDomain() = Memory(
+private fun MemoryWithTalk.toDomain() = memory.toDomain(talk?.toDomain())
+
+private fun TalkMetaEntity.toDomain() = TalkMeta(
+    memoryId = memoryId, source = TalkSource.valueOf(source), blockStartMs = blockStartMs,
+    blockEndMs = blockEndMs, keepScore = keepScore, kind = kind, title = title,
+    tags = tags?.let { raw ->
+        val array = JSONArray(raw)
+        List(array.length()) { array.getString(it) }
+    }, summaryStatus = SummaryStatus.valueOf(summaryStatus), summaryModel = summaryModel,
+)
+
+private fun MemoryEntity.clipRow() = ClipRow(id, filePath)
+
+private fun MemoryEntity.toDomain(talk: TalkMeta? = null) = Memory(
     id = id,
     tripId = tripId,
     type = runCatching { MemoryType.valueOf(type) }.getOrDefault(MemoryType.TEXT),
@@ -221,6 +318,7 @@ private fun MemoryEntity.toDomain() = Memory(
     filePath = filePath,
     transcript = transcript,
     durationMs = durationMs,
+    talk = talk,
 )
 
 private fun LocationPointEntity.toDomain() = LocationPoint(

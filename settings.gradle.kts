@@ -32,3 +32,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "Dongbantest"
 include(":app")
+// 대화 기록 라이브러리 모듈을 등록한다.
+include(":talkrec")

@@ -8,17 +8,34 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [TripEntity::class, MemoryEntity::class, LocationPointEntity::class, VehicleSignalEntity::class],
-    version = 4,
-    exportSchema = false,
+    entities = [TripEntity::class, MemoryEntity::class, LocationPointEntity::class, VehicleSignalEntity::class, TalkMetaEntity::class],
+    version = 5,
+    exportSchema = true,
 )
 abstract class DongbanDatabase : RoomDatabase() {
     abstract fun tripDao(): TripDao
 
     companion object {
+        /** v5 only adds metadata; the four team tables are untouched. */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `talk_meta` (
+                        `memoryId` INTEGER NOT NULL, `source` TEXT NOT NULL,
+                        `blockStartMs` INTEGER NOT NULL, `blockEndMs` INTEGER NOT NULL,
+                        `keepScore` REAL, `kind` TEXT, `title` TEXT, `tags` TEXT,
+                        `summaryStatus` TEXT NOT NULL, `summaryModel` TEXT,
+                        PRIMARY KEY(`memoryId`),
+                        FOREIGN KEY(`memoryId`) REFERENCES `memories`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_talk_meta_summaryStatus` ON `talk_meta` (`summaryStatus`)")
+            }
+        }
+
         fun create(context: Context): DongbanDatabase =
             Room.databaseBuilder(context, DongbanDatabase::class.java, "dongbancha.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
 
         /** v2: 위치 기록 테이블 추가. 기존 여행·추억 데이터는 그대로 유지한다. */

@@ -4,6 +4,8 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.room.Embedded
+import androidx.room.Relation
 
 @Entity(tableName = "trips")
 data class TripEntity(
@@ -49,6 +51,30 @@ data class MemoryEntity(
     /** 음성 → 텍스트 변환 결과. 녹음 원본과 별도로 관리한다. */
     val transcript: String?,
     val durationMs: Long?,
+)
+
+@Entity(
+    tableName = "talk_meta",
+    foreignKeys = [ForeignKey(entity = MemoryEntity::class, parentColumns = ["id"],
+        childColumns = ["memoryId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("summaryStatus")],
+)
+data class TalkMetaEntity(
+    @PrimaryKey val memoryId: Long,
+    val source: String,
+    val blockStartMs: Long,
+    val blockEndMs: Long,
+    val keepScore: Double?,
+    val kind: String?,
+    val title: String? = null,
+    val tags: String? = null,
+    val summaryStatus: String,
+    val summaryModel: String? = null,
+)
+
+data class MemoryWithTalk(
+    @Embedded val memory: MemoryEntity,
+    @Relation(parentColumn = "id", entityColumn = "memoryId") val talk: TalkMetaEntity?,
 )
 
 /** 여행 중 GPS 로 받은 위치. 여행을 지우면 함께 지워진다. */

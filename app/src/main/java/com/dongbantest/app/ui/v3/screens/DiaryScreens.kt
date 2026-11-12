@@ -360,7 +360,7 @@ private fun DiaryTalks(state: DiaryUiState, onPlay: (TalkUi) -> Unit) {
         ) {
             Text(talk.time, style = t.bodySm, color = c.muted, modifier = Modifier.width(52.dp).align(Alignment.Top).padding(top = Spacing.s3xs))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s3xs)) {
-                Text(talk.title, style = t.title, color = c.ink)
+                Text(talk.title, style = t.title, color = c.ink, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 if (on) {
                     Box(Modifier.padding(top = Spacing.s2xs).fillMaxWidth().height(3.dp).clip(DbShapes.pill).background(c.ruleSoft)) {
                         Box(Modifier.fillMaxWidth(0.3f).height(3.dp).background(c.accent))
@@ -369,7 +369,13 @@ private fun DiaryTalks(state: DiaryUiState, onPlay: (TalkUi) -> Unit) {
                 } else {
                     Text("음성 ${talk.audio}", style = t.bodySm, color = c.muted)
                 }
-                if (talk.fromQuestion) Tag(state.fromQuestionTag, small = true)
+                // talk-rec 연동: 태그 칩(작은 Tag 재사용). 동반이 질문 표시와 같은 줄에 둔다.
+                if (talk.fromQuestion || talk.tags.isNotEmpty()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                        if (talk.fromQuestion) Tag(state.fromQuestionTag, small = true)
+                        talk.tags.take(3).forEach { Tag(it, small = true) }
+                    }
+                }
             }
             PlayButton(on, "${talk.title} 재생", { onPlay(talk) })
         }

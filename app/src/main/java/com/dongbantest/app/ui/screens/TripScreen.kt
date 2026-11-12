@@ -112,6 +112,7 @@ fun TripScreen(
                             onStop = onStopRecording,
                             onPermissionDenied = onPermissionDenied,
                             modifier = Modifier.fillMaxWidth(),
+                            momentMode = uiState.recordingMode == com.dongbantest.app.viewmodel.RecordingMode.ON, // talk-rec: 상시 캡처 중이면 "이 순간 담기"
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             BigActionButton(

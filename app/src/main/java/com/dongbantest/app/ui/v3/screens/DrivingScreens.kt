@@ -101,7 +101,15 @@ data class DrivingUiState(
     val nowText: String? = null,
     val footnote: String = "대화 내용은 여행이 끝난 뒤 다이어리로 정리돼요",
     val toast: VoiceToastUi? = null,
+    // talk-rec 연동: 설정 "주행 중 제목 보이기"(기본 켬). 꺼져 있고 주행 중이면 제목·태그를 숨긴다. 저장·설정 화면은 나중에.
+    val showTitlesWhileDriving: Boolean = true,
 )
+
+/** 주행 중(= 정차가 아님)에 제목·태그를 숨겨야 하는지 */
+private fun DrivingUiState.hideTitles() = !stopped && !showTitlesWhileDriving
+
+/** 주행 중에는 최근 3개만, 정차 중에는 전부 (asked 는 최신순) */
+private fun DrivingUiState.visibleAsked() = if (stopped) asked else asked.take(3)
 
 /** 주행 화면 이벤트. 음성 예시·녹음 칩·말풍선·진행 알약은 데모 지름길(버튼 모양 없음). */
 data class DrivingEvents(
@@ -126,7 +134,8 @@ fun DrivingLayout(
     AdaptiveLayout(Modifier.fillMaxSize()) {
         val layout = DbTheme.layout
         val toast = state.toast
-        val now = state.nowText ?: state.asked.firstOrNull { it.now }?.title
+        // talk-rec 연동: 제목 숨김이면 "지금: 제목" 줄도 숨긴다(직접 준 nowText 는 유지)
+        val now = state.nowText ?: if (state.hideTitles()) null else state.asked.firstOrNull { it.now }?.title
         AppShell(
             selectedTab = DbTab.Trip,
             onTab = events.onTab,
@@ -156,7 +165,10 @@ private fun AdaptiveDrivingBody(state: DrivingUiState, events: DrivingEvents) {
         AskedPanel(
             title = state.askedTitle,
             countText = "${state.asked.size}개",
-            items = state.asked,
+            items = state.visibleAsked(),
+            driving = !state.stopped,
+            hideTitles = state.hideTitles(),
+            hiddenLabel = state.askedCountLabel,
             footnote = if (state.toast == null) state.footnote else null,
             bottom = state.toast?.let { t ->
                 {

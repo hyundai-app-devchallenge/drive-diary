@@ -22,7 +22,13 @@ enum class TripTone {
 enum class RecordingState { On, Paused, Off, Ready, Saved }
 
 /** "지금까지 나눈 대화" 한 줄. now = 지금 이야기 중 */
-data class AskedItem(val time: String, val title: String, val now: Boolean = false)
+data class AskedItem(
+    val time: String,
+    val title: String,
+    val now: Boolean = false,
+    // talk-rec 연동: 대화 태그(주행 중에는 2개까지만 보임)
+    val tags: List<String> = emptyList(),
+)
 
 /** 음성 확인 알림 종류: 성공 / 못 들음 / 확인 필요 */
 enum class ToastKind { Success, NotHeard, Confirm }

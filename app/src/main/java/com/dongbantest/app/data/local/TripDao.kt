@@ -4,10 +4,53 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TripDao {
+
+    @Transaction
+    @Query("SELECT * FROM memories WHERE tripId = :tripId ORDER BY createdAt ASC, id ASC")
+    fun observeMemoriesWithTalk(tripId: Long): Flow<List<MemoryWithTalk>>
+
+    @Insert
+    suspend fun insertTalkMeta(meta: TalkMetaEntity)
+
+    @Transaction
+    suspend fun insertTalkMemory(memory: MemoryEntity, meta: TalkMetaEntity): Long {
+        val id = insertMemory(memory)
+        insertTalkMeta(meta.copy(memoryId = id))
+        return id
+    }
+
+    @Query("SELECT * FROM memories WHERE filePath = :path LIMIT 1")
+    suspend fun getMemoryByPath(path: String): MemoryEntity?
+
+    @Query("""SELECT memories.* FROM memories INNER JOIN talk_meta ON talk_meta.memoryId = memories.id
+        WHERE memories.tripId = :tripId AND memories.type = 'VOICE' AND talk_meta.source IN ('AUTO', 'MANUAL')
+        ORDER BY memories.id DESC LIMIT 1""")
+    suspend fun latestTalkMemory(tripId: Long): MemoryEntity?
+
+    @Transaction
+    @Query("""SELECT memories.* FROM memories INNER JOIN talk_meta ON talk_meta.memoryId = memories.id
+        WHERE talk_meta.summaryStatus = 'PENDING' AND memories.type = 'VOICE' ORDER BY memories.id ASC""")
+    suspend fun pendingTalkMemories(): List<MemoryWithTalk>
+
+    @Transaction
+    @Query("""SELECT memories.* FROM memories INNER JOIN talk_meta ON talk_meta.memoryId = memories.id
+        WHERE memories.id = :memoryId AND memories.type = 'VOICE' AND talk_meta.summaryStatus = 'PENDING' LIMIT 1""")
+    suspend fun pendingTalkMemory(memoryId: Long): MemoryWithTalk?
+
+    @Query("""UPDATE talk_meta SET title = :title, tags = :tags, kind = :kind,
+        summaryStatus = :status, summaryModel = :model WHERE memoryId = :memoryId AND summaryStatus = 'PENDING'""")
+    suspend fun updateTalkSummary(memoryId: Long, title: String?, tags: String?, kind: String?, status: String, model: String?)
+
+    @Query("""SELECT COALESCE(SUM(memories.durationMs), 0) FROM memories
+        INNER JOIN talk_meta ON talk_meta.memoryId = memories.id
+        WHERE memories.type = 'VOICE' AND talk_meta.source = 'AUTO'
+        AND memories.createdAt > :sinceMs AND memories.createdAt <= :untilMs""")
+    suspend fun savedAutoDurationMs(sinceMs: Long, untilMs: Long): Long
 
     @Query("SELECT * FROM trips ORDER BY startedAt DESC")
     fun observeTrips(): Flow<List<TripEntity>>

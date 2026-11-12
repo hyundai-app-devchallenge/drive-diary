@@ -6,6 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
+import com.dongbantest.app.data.talk.clipKey
 
 /**
  * 앱 전용 내부 저장소(filesDir) 에 음성/사진 파일을 관리한다.
@@ -21,6 +22,16 @@ class MediaFileStore(context: Context) {
 
     fun newVoiceFile(): File = File(voiceDir, "voice_${System.currentTimeMillis()}.m4a")
 
+    /** Stable per block for save retries, in the same folder/format as VoiceRecorder. */
+    fun talkVoiceFile(tripId: Long, blockId: String): File =
+        File(voiceDir, "voice_talk_${clipKey("$tripId:$blockId")}.m4a")
+
+    internal val talkJournalDir = File(appContext.filesDir, "talkrec-journal")
+
+    internal fun talkFiles(): List<File> = voiceDir.listFiles { file ->
+        file.name.startsWith("voice_talk_")
+    }?.toList().orEmpty()
+
     suspend fun copyPhotoToAppStorage(source: Uri): File = withContext(Dispatchers.IO) {
         val target = File(photoDir, "photo_${UUID.randomUUID()}.jpg")
         val input = appContext.contentResolver.openInputStream(source)
@@ -34,6 +45,8 @@ class MediaFileStore(context: Context) {
         if (path.isNullOrBlank()) return@withContext
         val file = File(path)
         val root = appContext.filesDir.canonicalPath
-        if (file.canonicalPath.startsWith(root) && file.exists()) file.delete()
+        if (file.canonicalPath.startsWith(root + File.separator) && file.exists()) {
+            check(file.delete()) { "Cannot delete media file" }
+        }
     }
 }

@@ -1,5 +1,6 @@
 package com.dongbantest.app.debug
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -60,6 +61,13 @@ class V3CatalogActivity : ComponentActivity() {
                     var busy by remember { mutableStateOf(false) }
                     LazyColumn(Modifier.fillMaxSize().background(Color.White)) {
                         item {
+                            // talk-rec 연동(I5b): 대화 요약 설정 화면으로 가는 버튼
+                            Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 24.dp)) {
+                                Text("대화 요약 설정", style = MaterialTheme.typography.titleLarge)
+                                Text("제공자·모델·API 키·연결 시험 (정차 중에만 변경)", style = MaterialTheme.typography.bodyMedium)
+                                Button(onClick = { startActivity(Intent(this@V3CatalogActivity, SummarySettingsActivity::class.java)) }, modifier = Modifier.padding(top = 8.dp)) { Text("대화 요약 설정 열기") }
+                            }
+                            HorizontalDivider(Modifier.padding(top = 16.dp))
                             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Text("예시 여행 (실제 도로 경로)", style = MaterialTheme.typography.titleLarge)
                                 Text(

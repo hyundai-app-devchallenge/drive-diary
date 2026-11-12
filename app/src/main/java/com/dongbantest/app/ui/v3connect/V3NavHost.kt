@@ -33,6 +33,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.drivediary.talkrec.TalkRec
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
@@ -41,6 +42,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.dongbantest.app.DongbanApplication
 import com.dongbantest.app.data.repository.RecordingConsentStore
 import com.dongbantest.app.location.LocationReader
 import com.dongbantest.app.ui.ArrivalRequest
@@ -142,6 +144,9 @@ fun V3NavHost(
     val homeVm: HomeViewModel = viewModel(factory = AppViewModelProvider.Home)
     val home by homeVm.uiState.collectAsStateWithLifecycle()
     val restricted = home.safety?.isRestricted == true
+    // talk-rec 연동(I5b): debug 설정의 "주행 중 제목 보이기"를 여행 중 화면에 적용한다.
+    val summaryStore = remember { (context.applicationContext as DongbanApplication).container.summarySettingsStore }
+    val summarySettings by summaryStore.settings.collectAsStateWithLifecycle()
 
     // 홈 진행률을 위해 15초마다 내비에 남은 거리를 묻는다.
     LaunchedEffect(Unit) {
@@ -193,14 +198,14 @@ fun V3NavHost(
             var askConsent by rememberSaveable { mutableStateOf(false) }
             val homeBackground = home.toV3()
 
-            fun start(consent: Boolean) {
+            fun start(consent: Boolean, sendToAi: Boolean = false) { // talk-rec 연동: 외부 AI 전송 동의 추가
                 val dest = naviDestination ?: "어딘가 멋진 곳"
                 // 제목을 비워 두면 목적지로 "○○ 여행"을 만든다.
                 val title = tripTitle.trim().ifBlank { naviDestination?.let { "$it 여행" } ?: "우리의 여행" }
                 // v3 는 이름 대신 관계와 인원만 받는다. 다이어리 "함께한 사람" 칸에는 나 + 관계 번호로 남긴다.
                 val people = listOf("나") + (1 until headcount).map { "$companion$it" }
                 homeVm.startTrip(title = title, destination = dest, companions = people) { id ->
-                    RecordingConsentStore(context).set(id, consent)
+                    RecordingConsentStore(context).set(id, consent, sendToAi)
                     navController.go(V3Routes.trip(id, guide = true))
                 }
             }
@@ -210,8 +215,8 @@ fun V3NavHost(
                 ConsentScreen(
                     state = ConsentUiState(home = homeBackground),
                     onTab = onTab,
-                    onConsent = { start(consent = true) },
-                    onWithoutRecording = { start(consent = false) },
+                    // talk-rec 연동: 동의 세 가지 선택(기록 / 외부 AI 전송 / 녹음 없이) 한 번에 받는다
+                    onStart = { record, ai -> start(consent = record, sendToAi = ai) },
                 )
             } else {
                 TripSetupScreen(
@@ -241,6 +246,7 @@ fun V3NavHost(
             val vm: TripViewModel = viewModel(factory = AppViewModelProvider.trip(tripId))
             val state by vm.uiState.collectAsStateWithLifecycle()
             val now = rememberNow()
+            val capture by TalkRec.state.collectAsStateWithLifecycle() // talk-rec: 상시 캡처 상태(녹음 칩)
             var showGuide by rememberSaveable { mutableStateOf(entry.arguments?.getBoolean("guide") == true) }
             var confirmEnd by rememberSaveable { mutableStateOf(false) }
 
@@ -269,7 +275,7 @@ fun V3NavHost(
                 }
             }
 
-            val driving = state.toDriving(now)
+            val driving = state.toDriving(now, capture).copy(showTitlesWhileDriving = summarySettings.showTitlesWhileDriving)
             val events = DrivingEvents(
                 onTab = onTab,
                 onVoiceExample = vm::onVoiceCommand,
@@ -321,8 +327,9 @@ fun V3NavHost(
             val vm: TripViewModel = viewModel(factory = AppViewModelProvider.trip(tripId))
             val state by vm.uiState.collectAsStateWithLifecycle()
             val now = rememberNow()
+            val capture by TalkRec.state.collectAsStateWithLifecycle() // talk-rec: 상시 캡처 상태
             ArrivalScreen(
-                state = state.toArrival(entry.arguments?.getString("name").orEmpty(), now),
+                state = state.toArrival(entry.arguments?.getString("name").orEmpty(), now, capture),
                 events = DrivingEvents(onTab = onTab),
                 onConfirm = { navController.go(V3Routes.making(tripId)) },
                 onTimeline = { navController.go(V3Routes.diary(tripId)) },
