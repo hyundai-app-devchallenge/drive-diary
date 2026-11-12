@@ -209,9 +209,14 @@ fun HomeBody(
 /* ───────── S02 여행 설정 ───────── */
 
 data class TripSetupUiState(
-    val title: String = "오늘은 어디로 가요?",
+    val title: String = "여행 제목을 지어 주세요",
+    val tripTitleLabel: String = "여행 제목",
+    val tripTitle: String = "강릉 바다 여행",
+    val tripTitlePlaceholder: String = "예: 판교 여행",
     val destinationLabel: String = "목적지",
-    val destination: String = "강릉 경포해변",
+    /** 내비에 찍힌 목적지 이름. 아직 없으면 null. */
+    val naviDestination: String? = "강릉 경포해변",
+    val noDestination: String = "내비에서 목적지를 찍으면 여기에 나와요",
     val withLabel: String = "누구와 가요?",
     val companions: List<String> = listOf("가족", "연인", "친구"),
     val selectedCompanion: String = "친구",
@@ -228,7 +233,7 @@ data class TripSetupUiState(
 fun TripSetupScreen(
     state: TripSetupUiState = TripSetupUiState(),
     onTab: (DbTab) -> Unit = {},
-    onDestinationChange: (String) -> Unit = {},
+    onTripTitleChange: (String) -> Unit = {},
     onCompanionSelect: (String) -> Unit = {},
     onHeadcountChange: (Int) -> Unit = {},
     onStart: () -> Unit = {},
@@ -243,20 +248,37 @@ fun TripSetupScreen(
             overlay = {
                 DbBottomSheet(state.title) {
                     Text(state.title, style = t.titleLg, color = c.ink, modifier = Modifier.semantics { heading() })
-                    // 목적지 입력: 높이 56, 왼쪽 위치 아이콘
+                    // 여행 제목 입력: 높이 56. 여기 쓴 글이 여행 화면의 제목(예: "판교 여행")이 된다.
                     Box(
                         Modifier.fillMaxWidth().height(56.dp).border(1.dp, c.muted, DbShapes.button).clip(DbShapes.button).background(c.paper),
                         contentAlignment = Alignment.CenterStart,
                     ) {
-                        DbIcon(DbIcons.MapPin, 24.dp, c.muted, Modifier.padding(start = Spacing.md))
                         BasicTextField(
-                            value = state.destination,
-                            onValueChange = onDestinationChange,
+                            value = state.tripTitle,
+                            onValueChange = onTripTitleChange,
                             singleLine = true,
                             textStyle = t.body.copy(color = c.ink),
                             cursorBrush = SolidColor(c.accent),
-                            modifier = Modifier.fillMaxWidth().padding(start = Spacing.xxl, end = Spacing.md)
-                                .semantics { contentDescription = state.destinationLabel },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md)
+                                .semantics { contentDescription = state.tripTitleLabel },
+                            decorationBox = { field ->
+                                if (state.tripTitle.isEmpty()) Text(state.tripTitlePlaceholder, style = t.body, color = c.muted)
+                                field()
+                            },
+                        )
+                    }
+                    // 목적지: 내비에 찍힌 곳을 그대로 보여준다(여기서 고치지 않는다).
+                    Row(
+                        Modifier.fillMaxWidth().semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        DbIcon(DbIcons.MapPin, 20.dp, if (state.naviDestination != null) c.ink else c.muted)
+                        Text(state.destinationLabel, style = t.bodySm, color = c.muted)
+                        Text(
+                            state.naviDestination ?: state.noDestination,
+                            style = if (state.naviDestination != null) t.body.copy(fontWeight = FontWeight.Medium) else t.bodySm,
+                            color = if (state.naviDestination != null) c.ink else c.muted,
                         )
                     }
                     Column(Modifier.fillMaxWidth()) {

@@ -185,17 +185,21 @@ fun V3NavHost(
 
         /* S02 여행 설정 → S03 녹음 동의 → 여행 시작 */
         composable(V3Routes.SETUP) {
-            var destination by rememberSaveable { mutableStateOf("") }
+            var tripTitle by rememberSaveable { mutableStateOf("") }
+            // 목적지는 직접 쓰지 않고 내비에 찍힌 곳을 쓴다. 아직 안 찍었으면 null.
+            val naviDestination = home.route?.destinationName?.takeIf { it.isNotBlank() }
             var companion by rememberSaveable { mutableStateOf("가족") }
             var headcount by rememberSaveable { mutableIntStateOf(2) }
             var askConsent by rememberSaveable { mutableStateOf(false) }
             val homeBackground = home.toV3()
 
             fun start(consent: Boolean) {
-                val dest = destination.trim().ifBlank { "어딘가 멋진 곳" }
+                val dest = naviDestination ?: "어딘가 멋진 곳"
+                // 제목을 비워 두면 목적지로 "○○ 여행"을 만든다.
+                val title = tripTitle.trim().ifBlank { naviDestination?.let { "$it 여행" } ?: "우리의 여행" }
                 // v3 는 이름 대신 관계와 인원만 받는다. 다이어리 "함께한 사람" 칸에는 나 + 관계 번호로 남긴다.
                 val people = listOf("나") + (1 until headcount).map { "$companion$it" }
-                homeVm.startTrip(title = "$dest 여행", destination = dest, companions = people) { id ->
+                homeVm.startTrip(title = title, destination = dest, companions = people) { id ->
                     RecordingConsentStore(context).set(id, consent)
                     navController.go(V3Routes.trip(id, guide = true))
                 }
@@ -212,13 +216,14 @@ fun V3NavHost(
             } else {
                 TripSetupScreen(
                     state = TripSetupUiState(
-                        destination = destination,
+                        tripTitle = tripTitle,
+                        naviDestination = naviDestination,
                         selectedCompanion = companion,
                         headcount = headcount,
                         home = homeBackground,
                     ),
                     onTab = onTab,
-                    onDestinationChange = { destination = it },
+                    onTripTitleChange = { tripTitle = it },
                     onCompanionSelect = { companion = it },
                     onHeadcountChange = { headcount = it.coerceIn(1, 9) },
                     onStart = { askConsent = true },
