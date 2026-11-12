@@ -36,4 +36,12 @@ class DomainLogicTest {
         assertNull(base.copy(endOdometer = null).drivenDistance)
         assertNull(base.copy(endOdometer = 90f).drivenDistance)
     }
+
+    @Test
+    fun formatElapsed_readsNaturally() {
+        assertEquals("1분 미만", com.dongbantest.app.ui.components.formatElapsed(30_000))
+        assertEquals("45분", com.dongbantest.app.ui.components.formatElapsed(45 * 60_000L))
+        assertEquals("2시간", com.dongbantest.app.ui.components.formatElapsed(120 * 60_000L))
+        assertEquals("2시간 10분", com.dongbantest.app.ui.components.formatElapsed(130 * 60_000L))
+    }
 }

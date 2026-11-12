@@ -19,6 +19,10 @@ data class TripEntity(
     /** DataSourceType.name 또는 null */
     val odometerSource: String?,
     val isSample: Boolean,
+    /** 출발한 곳 이름 (내비 주소). 모르면 null */
+    val startPlace: String? = null,
+    /** 도착한 곳 이름 (내비 목적지 또는 주소). 모르면 null */
+    val endPlace: String? = null,
 )
 
 @Entity(
@@ -67,4 +71,25 @@ data class LocationPointEntity(
     val latitude: Double,
     val longitude: Double,
     val accuracyMeters: Float?,
+)
+
+/** 여행 중 차량 신호(기어·운전석·안전벨트·문) 기록. 여행을 지우면 함께 지워진다. */
+@Entity(
+    tableName = "vehicle_signals",
+    foreignKeys = [
+        ForeignKey(
+            entity = TripEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["tripId"],
+            onDelete = ForeignKey.CASCADE,
+        )
+    ],
+    indices = [Index("tripId")],
+)
+data class VehicleSignalEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val tripId: Long,
+    val recordedAt: Long,
+    /** VehicleSignalType 이름 */
+    val type: String,
 )

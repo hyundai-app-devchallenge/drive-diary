@@ -21,6 +21,10 @@ data class Trip(
     /** 예시(테스트) 데이터 여부 — 실제 사용자 기록과 구분한다. */
     val isSample: Boolean,
     val coverPhotoPath: String? = null,
+    /** 출발한 곳 이름 (PRD S14 소요 시간). 모르면 null */
+    val startPlace: String? = null,
+    /** 도착한 곳 이름. 모르면 null */
+    val endPlace: String? = null,
 ) {
     val isOngoing: Boolean get() = endedAt == null
 
@@ -71,6 +75,26 @@ data class LocationPoint(
     val accuracyMeters: Float? = null,
 )
 
+/** 여행 중 차량에서 받은 정차 관련 신호. 정차 판단(타임라인)에 쓴다. */
+enum class VehicleSignalType {
+    /** 기어 P */
+    PARKED,
+    /** 기어 P 가 아닌 상태 (D·R·N) */
+    GEAR_NOT_PARKED,
+    DRIVER_SEAT_EMPTY,
+    DRIVER_SEAT_OCCUPIED,
+    DRIVER_BELT_OFF,
+    DRIVER_BELT_ON,
+    DOOR_OPEN,
+    DOOR_CLOSED,
+}
+
+data class VehicleSignal(
+    val tripId: Long,
+    val recordedAt: Long,
+    val type: VehicleSignalType,
+)
+
 enum class TimelineType(val label: String) {
     START("출발"),
     STOP("정차"),
@@ -91,6 +115,8 @@ data class DriveSummary(
     val pointCount: Int,
     val distanceMeters: Double,
     val timeline: List<TimelineEvent>,
+    /** 지도에 그릴 경로. 위치가 튄 곳에서 끊긴 구간들. */
+    val path: List<List<LocationPoint>> = emptyList(),
 ) {
     companion object {
         val EMPTY = DriveSummary(pointCount = 0, distanceMeters = 0.0, timeline = emptyList())

@@ -14,6 +14,13 @@ import com.dongbantest.app.vehicle.DrivingSafetyMonitor
 import com.dongbantest.app.vehicle.DrivingSafetyState
 import com.dongbantest.app.vehicle.SafetySource
 import com.dongbantest.app.vehicle.VehicleRepository
+import com.dongbantest.app.vehicle.VehicleSignalTracker
+import com.dongbantest.app.navi.ArrivalManager
+import com.dongbantest.app.navi.TripPlaceRecorder
+import com.dongbantest.app.navi.NaviMonitor
+import com.dongbantest.app.domain.model.RouteRibbon
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +37,8 @@ data class TripUiState(
     val playingPath: String? = null,
     val safety: DrivingSafetyState = DrivingSafetyState(SafetySource.MOCK, false),
     val message: String? = null,
+    /** 진행 중인 여행의 길 리본 (출발지 → 목적지 진행). 끝난 여행이면 null. */
+    val ribbon: RouteRibbon? = null,
 )
 
 private data class LocalState(
@@ -51,17 +60,34 @@ class TripViewModel(
     private val files: MediaFileStore,
     private val recorder: VoiceRecorder,
     private val locationTracker: LocationTracker,
+    private val vehicleSignalTracker: VehicleSignalTracker,
+    private val arrivalManager: ArrivalManager,
+    private val placeRecorder: TripPlaceRecorder,
+    private val naviMonitor: NaviMonitor,
 ) : ViewModel() {
 
     private val player = VoicePlayer()
     private val local = MutableStateFlow(LocalState())
+
+    /** 화면이 보이는 동안 15초마다 내비에 남은 거리·시간을 물어본다. */
+    private val naviRoute = combine(
+        naviMonitor.route,
+        flow {
+            while (true) {
+                naviMonitor.refreshRoute()
+                emit(Unit)
+                delay(ROUTE_REFRESH_MILLIS)
+            }
+        },
+    ) { route, _ -> route }
 
     val uiState: StateFlow<TripUiState> = combine(
         tripRepository.observeTripWithMemories(tripId),
         local,
         player.playingPath,
         safetyMonitor.state,
-    ) { data, l, playing, safety ->
+        naviRoute,
+    ) { data, l, playing, safety, route ->
         TripUiState(
             data = data,
             question = l.question,
@@ -70,6 +96,17 @@ class TripViewModel(
             playingPath = playing,
             safety = safety,
             message = l.message,
+            ribbon = data?.trip?.takeIf { it.endedAt == null }?.let { trip ->
+                RouteRibbon(
+                    originName = trip.startPlace,
+                    destinationName = route?.destinationName ?: trip.destination.ifBlank { null },
+                    startedAt = trip.startedAt,
+                    progress = RouteRibbon.progressOf(route?.totalMeters, route?.remainMeters),
+                    remainMeters = route?.remainMeters,
+                    remainSeconds = route?.remainSeconds,
+                    companionCount = trip.companions.size,
+                )
+            },
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TripUiState())
 
@@ -144,6 +181,13 @@ class TripViewModel(
         tripRepository.deleteMemory(memoryId)
     }
 
+    /** 진행 중인 여행이면 정차 판단용 차량 신호(기어·운전석·안전벨트·문) 기록을 시작한다. */
+    fun startVehicleSignalTracking() = viewModelScope.launch {
+        if (!tripRepository.isTripOngoing(tripId)) return@launch
+        vehicleSignalTracker.start(tripId)
+        placeRecorder.recordStart(tripId)
+    }
+
     /** 진행 중인 여행이면 GPS 위치 수집을 시작한다. 위치 권한이 있을 때만 동작한다. */
     fun startLocationTracking() = viewModelScope.launch {
         if (tripRepository.isTripOngoing(tripId)) locationTracker.start(tripId)
@@ -152,13 +196,22 @@ class TripViewModel(
     fun endTrip(onEnded: () -> Unit) = viewModelScope.launch {
         if (recorder.isRecording) stopRecording()
         locationTracker.stop(tripId)
+        vehicleSignalTracker.stop(tripId)
         tripRepository.endTrip(tripId, vehicleRepository.state.value.odometer)
+        placeRecorder.recordEnd(tripId)
         onEnded()
+    }
+
+    /** S11 "아직 여행 중이에요": 자동 종료된 여행을 다시 연다. */
+    fun keepTraveling(onReopened: () -> Unit) = viewModelScope.launch {
+        arrivalManager.keepTraveling(tripId).join()
+        onReopened()
     }
 
     fun deleteTrip(onDeleted: () -> Unit) = viewModelScope.launch {
         player.stop()
         locationTracker.stop(tripId)
+        vehicleSignalTracker.stop(tripId)
         tripRepository.deleteTrip(tripId)
         onDeleted()
     }
@@ -178,5 +231,9 @@ class TripViewModel(
     override fun onCleared() {
         recorder.cancel()
         player.stop()
+    }
+
+    private companion object {
+        const val ROUTE_REFRESH_MILLIS = 15_000L
     }
 }

@@ -36,7 +36,7 @@ class LocationTracker(
                             recordedAt = location.time,
                             latitude = location.latitude,
                             longitude = location.longitude,
-                            accuracyMeters = if (location.hasAccuracy()) location.accuracy else null,
+                            accuracyMeters = location.accuracyMeters,
                         )
                     )
                 }

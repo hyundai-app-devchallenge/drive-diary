@@ -62,6 +62,15 @@ dependencies {
     // Pleos Vehicle SDK (read-only usage: CarInfo, Odometer, Gear)
     implementation(libs.pleos.vehicle)
 
+    // Pleos NaviHelper SDK (읽기만 함: 현재 위치, 목적지, 도착 이벤트)
+    implementation(libs.pleos.navihelper)
+
+    // Pleos FusedLocation SDK (차량 위치. 못 쓰면 Android GPS 로 대체)
+    implementation(libs.pleos.fusedlocation)
+
+    // 지도: 다이어리 경로(S14)와 기록 지도(R01)
+    implementation(libs.maplibre.android)
+
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

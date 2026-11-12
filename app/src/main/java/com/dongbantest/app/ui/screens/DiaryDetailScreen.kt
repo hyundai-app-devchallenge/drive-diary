@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -27,6 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.dongbantest.app.domain.model.DataSourceType
@@ -35,12 +37,16 @@ import com.dongbantest.app.domain.model.MemoryType
 import com.dongbantest.app.domain.model.Trip
 import com.dongbantest.app.ui.components.DiaryBackground
 import com.dongbantest.app.ui.components.DrivingRestrictionBanner
+import com.dongbantest.app.ui.components.MapRoute
 import com.dongbantest.app.ui.components.MemoryRow
 import com.dongbantest.app.ui.components.PhotoPickButton
 import com.dongbantest.app.ui.components.PolaroidPhoto
+import com.dongbantest.app.ui.components.RouteColors
+import com.dongbantest.app.ui.components.RouteMap
 import com.dongbantest.app.ui.components.ScreenHeader
 import com.dongbantest.app.ui.components.formatDate
 import com.dongbantest.app.ui.components.formatDistance
+import com.dongbantest.app.ui.components.formatElapsed
 import com.dongbantest.app.ui.components.formatKm
 import com.dongbantest.app.ui.components.formatTime
 import com.dongbantest.app.ui.theme.Cocoa
@@ -97,7 +103,7 @@ fun DiaryDetailScreen(
                             DiaryPage(Modifier.weight(1f)) {
                                 DrivingRestrictionBanner(uiState.safety)
                                 TripHeader(data.trip)
-                                DriveSection(data.drive)
+                                DriveSection(data.trip.id, data.drive)
                                 stories.forEach { MemoryRow(it, uiState.playingPath == it.filePath, onPlay, if (restricted) null else onDeleteMemory) }
                             }
                             // 책 가운데 접히는 부분
@@ -110,7 +116,7 @@ fun DiaryDetailScreen(
                         DiaryPage(Modifier.fillMaxSize()) {
                             DrivingRestrictionBanner(uiState.safety)
                             TripHeader(data.trip)
-                            DriveSection(data.drive)
+                            DriveSection(data.trip.id, data.drive)
                             PhotoPage(photos.map { it.filePath to formatTime(it.createdAt) }, restricted, onPhotoPicked, onPhotoPickerUnavailable)
                             stories.forEach { MemoryRow(it, uiState.playingPath == it.filePath, onPlay, if (restricted) null else onDeleteMemory) }
                         }
@@ -144,8 +150,17 @@ private fun DiaryPage(modifier: Modifier, content: @Composable ColumnScope.() ->
 private fun TripHeader(trip: Trip) {
     Text(formatDate(trip.startedAt), style = MaterialTheme.typography.titleMedium, color = PeachDeep)
     Text(trip.title, style = MaterialTheme.typography.headlineMedium, color = Cocoa)
+    // PRD S14 소요 시간: 함께 달린 시간, 출발지·출발 시각, 도착지·도착 시각
+    val end = trip.endedAt
+    if (end != null) {
+        Text("⏱️ 함께 달린 시간 ${formatElapsed(end - trip.startedAt)}", style = MaterialTheme.typography.titleMedium, color = Cocoa)
+    }
     Text(
-        "📍 ${trip.destination}  ·  ${formatTime(trip.startedAt)} ~ ${trip.endedAt?.let { formatTime(it) } ?: "여행 중"}",
+        placeLine("🚩 출발", trip.startPlace, trip.startedAt),
+        style = MaterialTheme.typography.bodyLarge, color = Cocoa,
+    )
+    Text(
+        if (end != null) placeLine("📍 도착", trip.endPlace ?: trip.destination.ifBlank { null }, end) else "📍 여행 중",
         style = MaterialTheme.typography.bodyLarge, color = Cocoa,
     )
     if (trip.companions.isNotEmpty()) {
@@ -158,10 +173,27 @@ private fun TripHeader(trip: Trip) {
     if (trip.isSample) Text("※ 예시로 만든 다이어리예요.", style = MaterialTheme.typography.labelMedium, color = CocoaSoft)
 }
 
-/** GPS 기록으로 만든 주행거리와 타임라인. 위치 기록이 없으면 아무것도 그리지 않는다. */
+/** "🚩 출발 수정구 시흥동 · 오후 6:58" (장소를 모르면 "🚩 출발 · 오후 6:58") */
+private fun placeLine(label: String, place: String?, time: Long): String =
+    if (place.isNullOrBlank()) "$label · ${formatTime(time)}" else "$label $place · ${formatTime(time)}"
+
+/** GPS 기록으로 만든 경로 지도, 주행거리, 타임라인. 위치 기록이 없으면 아무것도 그리지 않는다. */
 @Composable
-private fun DriveSection(drive: DriveSummary) {
+private fun DriveSection(tripId: Long, drive: DriveSummary) {
     if (drive.pointCount == 0) return
+    if (drive.path.isNotEmpty()) {
+        RouteMap(
+            routes = listOf(
+                MapRoute(
+                    tripId = tripId,
+                    color = RouteColors.forTrip(tripId),
+                    segments = drive.path,
+                    events = drive.timeline,
+                )
+            ),
+            modifier = Modifier.fillMaxWidth().height(280.dp).clip(MaterialTheme.shapes.medium),
+        )
+    }
     Text(
         "🛣️ GPS로 기록한 거리: ${formatKm(drive.distanceMeters)} km",
         style = MaterialTheme.typography.bodyMedium, color = CocoaSoft,

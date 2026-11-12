@@ -4,10 +4,14 @@
 
     <!-- 음성 메모: 사용자가 버튼을 눌렀을 때만 녹음 (런타임 권한) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- 지도 타일 받기 (MapLibre + OpenFreeMap) -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- 주행 경로·거리·타임라인: 여행 화면에 들어갈 때 요청 (런타임 권한, 앱 사용 중에만 수집) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Pleos FusedLocation: 차량 위치 (protection level: dangerous → 사용자에게 요청) -->
+    <uses-permission android:name="pleos.car.permission.FUSED_LOCATION" />
 
     <!--
         Pleos Vehicle SDK 읽기 전용 권한 (사용하는 도메인만 선언)
@@ -18,6 +22,18 @@
     -->
     <uses-permission android:name="pleos.car.permission.CAR_INFO" />
     <uses-permission android:name="pleos.car.permission.CAR_DRIVE" />
+
+    <!-- Pleos NaviHelper: 현재 위치·목적지 조회와 도착 이벤트 (protection level: normal) -->
+    <uses-permission android:name="pleos.car.permission.NAVI_ROUTE" />
+
+    <!-- 정차 판단: 운전석 착석·안전벨트(Seat), 문 열림(Door) — Pleos, protection level: normal -->
+    <uses-permission android:name="pleos.car.permission.CAR_SEATS" />
+    <uses-permission android:name="pleos.car.permission.CAR_DOORS" />
+    <!-- 정차 판단: 기어(AAOS GEAR_SELECTION) -->
+    <uses-permission android:name="android.car.permission.CAR_POWERTRAIN" />
+
+    <!-- 목적지 도착 알림 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- 개발 중에는 일반 기기에서도 Mock 모드로 실행할 수 있도록 required=false -->
     <uses-feature android:name="android.hardware.type.automotive" android:required="false" />
@@ -40,6 +56,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:label="@string/app_name"
             android:theme="@style/Theme.Dongbantest"
             android:windowSoftInputMode="adjustResize"

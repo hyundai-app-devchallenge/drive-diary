@@ -1,5 +1,6 @@
 package com.dongbantest.app.ui
 
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
@@ -27,6 +28,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.dongbantest.app.location.LocationReader
+import com.dongbantest.app.ui.screens.ArrivalScreen
 import com.dongbantest.app.ui.screens.DiaryDetailScreen
 import com.dongbantest.app.ui.screens.DiaryListScreen
 import com.dongbantest.app.ui.screens.HomeScreen
@@ -47,16 +49,34 @@ private object Routes {
     const val CAPTURE = "capture/{tripId}"
     const val DIARY = "diary"
     const val DIARY_DETAIL = "diary/{tripId}"
+    const val ARRIVAL = "arrival/{tripId}?name={name}"
     fun trip(id: Long) = "trip/$id"
     fun capture(id: Long) = "capture/$id"
     fun diaryDetail(id: Long) = "diary/$id"
+    fun arrival(id: Long, name: String) = "arrival/$id?name=${Uri.encode(name)}"
 }
+
+/** 목적지 도착으로 여행이 자동 종료됐을 때 S11 도착 화면에 전달할 값. */
+data class ArrivalRequest(val tripId: Long, val destinationName: String)
 
 private val tripIdArg = listOf(navArgument("tripId") { type = NavType.LongType })
 private fun NavBackStackEntry.tripId(): Long = arguments?.getLong("tripId") ?: 0L
 
 @Composable
-fun DongbanNavHost(navController: NavHostController = rememberNavController()) {
+fun DongbanNavHost(
+    navController: NavHostController = rememberNavController(),
+    arrivalRequest: ArrivalRequest? = null,
+    onArrivalHandled: () -> Unit = {},
+) {
+    // 여행이 자동 종료되면(앱 안에서든 알림을 눌러서든) S11 도착 화면으로 이동한다.
+    LaunchedEffect(arrivalRequest) {
+        val request = arrivalRequest ?: return@LaunchedEffect
+        navController.navigate(Routes.arrival(request.tripId, request.destinationName)) {
+            popUpTo(Routes.HOME)
+            launchSingleTop = true
+        }
+        onArrivalHandled()
+    }
     NavHost(navController = navController, startDestination = Routes.HOME) {
 
         composable(Routes.HOME) {
@@ -100,8 +120,10 @@ fun DongbanNavHost(navController: NavHostController = rememberNavController()) {
                 else vm.showMessage("위치 권한이 없어 주행 경로를 기록하지 않아요.")
             }
             LaunchedEffect(tripId) {
-                if (LocationReader.hasPermission(context)) vm.startLocationTracking()
-                else locationPermission.launch(LocationReader.PERMISSIONS)
+                vm.startVehicleSignalTracking()
+                val missing = LocationReader.missingPermissions(context)
+                if (missing.isEmpty()) vm.startLocationTracking()
+                else locationPermission.launch(missing)
             }
             WithMessages(state.message, vm::consumeMessage) {
                 TripScreen(
@@ -121,6 +143,27 @@ fun DongbanNavHost(navController: NavHostController = rememberNavController()) {
                     onBack = { navController.popBackStack() },
                 )
             }
+        }
+
+        composable(
+            Routes.ARRIVAL,
+            arguments = tripIdArg + navArgument("name") { type = NavType.StringType; defaultValue = "" },
+        ) { entry ->
+            val tripId = entry.tripId()
+            val vm: TripViewModel = viewModel(factory = AppViewModelProvider.trip(tripId))
+            val state by vm.uiState.collectAsStateWithLifecycle()
+            ArrivalScreen(
+                uiState = state,
+                destinationName = entry.arguments?.getString("name").orEmpty(),
+                onConfirm = {
+                    navController.navigate(Routes.diaryDetail(tripId)) { popUpTo(Routes.HOME) }
+                },
+                onKeepTraveling = {
+                    vm.keepTraveling {
+                        navController.navigate(Routes.trip(tripId)) { popUpTo(Routes.HOME) }
+                    }
+                },
+            )
         }
 
         composable(Routes.CAPTURE, arguments = tripIdArg) { entry ->

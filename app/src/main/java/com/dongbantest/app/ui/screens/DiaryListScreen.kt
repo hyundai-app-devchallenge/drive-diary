@@ -1,5 +1,10 @@
 package com.dongbantest.app.ui.screens
 
+import com.dongbantest.app.ui.components.RouteMap
+import com.dongbantest.app.ui.components.RouteColors
+import com.dongbantest.app.ui.components.MapRoute
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -65,8 +70,10 @@ fun DiaryListScreen(
     DiaryBackground(modifier) {
         Column(Modifier.fillMaxSize()) {
             ScreenHeader("우리의 추억 책장", onBack) {
-                if (hasSamples && !uiState.isRestricted) {
-                    TextButton(onClick = onClearSamples) { Text("예시 지우기", color = CocoaSoft) }
+                if (!uiState.isRestricted) {
+                    // 기록이 있어도 예시를 넣고 뺄 수 있게 한다 (기록 지도 시연·확인용).
+                    if (hasSamples) TextButton(onClick = onClearSamples) { Text("예시 지우기", color = CocoaSoft) }
+                    else TextButton(onClick = onAddSamples) { Text("예시 넣기", color = CocoaSoft) }
                 }
             }
             if (!uiState.isLoading && uiState.trips.isEmpty()) {
@@ -79,29 +86,65 @@ fun DiaryListScreen(
                 }
                 return@Column
             }
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 260.dp),
-                modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(20.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp),
-            ) {
-                if (uiState.isRestricted && uiState.trips.size > 3) {
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Text("주행 중에는 최근 3권만 보여드려요.", style = MaterialTheme.typography.bodyLarge, color = CocoaSoft)
+            // R01 기록 지도: 왼쪽(좁은 화면은 위)에 기록마다 다른 색 경로, 경로를 누르면 그 다이어리로 간다.
+            val mapRoutes = trips.mapNotNull { trip ->
+                uiState.routes[trip.id]?.let { MapRoute(trip.id, RouteColors.forTrip(trip.id), it) }
+            }
+            val showMap = !uiState.isRestricted && mapRoutes.isNotEmpty()
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val wide = maxWidth >= 840.dp
+                if (showMap && wide) {
+                    Row(Modifier.fillMaxSize()) {
+                        RouteMap(
+                            routes = mapRoutes,
+                            onRouteClick = onOpenTrip,
+                            modifier = Modifier.weight(1.2f).fillMaxHeight()
+                                .padding(start = 24.dp, bottom = 24.dp).clip(MaterialTheme.shapes.large),
+                        )
+                        TripGrid(trips, uiState, onOpenTrip, Modifier.weight(1f))
+                    }
+                } else {
+                    Column(Modifier.fillMaxSize()) {
+                        if (showMap) {
+                            RouteMap(
+                                routes = mapRoutes,
+                                onRouteClick = onOpenTrip,
+                                modifier = Modifier.fillMaxWidth().height(280.dp)
+                                    .padding(horizontal = 24.dp).clip(MaterialTheme.shapes.large),
+                            )
+                            Spacer(Modifier.height(16.dp))
+                        }
+                        TripGrid(trips, uiState, onOpenTrip, Modifier.weight(1f))
                     }
                 }
-                items(trips, key = { it.id }) { trip ->
-                    DiaryBookCard(trip, bookColors[(trip.id % bookColors.size).toInt()], showPhoto = !uiState.isRestricted) {
-                        onOpenTrip(trip.id)
-                    }
-                }
-                item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(24.dp)) }
             }
         }
     }
 }
 
-/** 책 표지 모양 카드 */
+@Composable
+private fun TripGrid(trips: List<Trip>, uiState: DiaryListUiState, onOpenTrip: (Long) -> Unit, modifier: Modifier) {
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 260.dp),
+        modifier = modifier.fillMaxSize().padding(horizontal = 24.dp),
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+    ) {
+        if (uiState.isRestricted && uiState.trips.size > 3) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text("주행 중에는 최근 3권만 보여드려요.", style = MaterialTheme.typography.bodyLarge, color = CocoaSoft)
+            }
+        }
+        items(trips, key = { it.id }) { trip ->
+            DiaryBookCard(trip, bookColors[(trip.id % bookColors.size).toInt()], showPhoto = !uiState.isRestricted) {
+                onOpenTrip(trip.id)
+            }
+        }
+        item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+/** 책 표지 모양 카드. 책등 색은 기록 지도의 경로 색과 같다. */
 @Composable
 private fun DiaryBookCard(trip: Trip, color: Color, showPhoto: Boolean, onClick: () -> Unit) {
     Surface(
@@ -111,7 +154,7 @@ private fun DiaryBookCard(trip: Trip, color: Color, showPhoto: Boolean, onClick:
         shadowElevation = 4.dp,
     ) {
         Row {
-            Box(Modifier.width(18.dp).fillMaxHeight().background(Leather.copy(alpha = 0.55f)))
+            Box(Modifier.width(18.dp).fillMaxHeight().background(Color(android.graphics.Color.parseColor(RouteColors.forTrip(trip.id)))))
             Column(
                 Modifier.fillMaxSize().padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
