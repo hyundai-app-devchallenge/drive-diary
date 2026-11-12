@@ -214,7 +214,6 @@ data class DiaryUiState(
     val record: TripRecordUi = Sample.GANGNEUNG,
     /** 정차 중이지만 여행이 아직 진행 중(P02 이어서 열기 뒤): 머리줄에 정차 아이콘 + 작은 녹음 칩, 편집 숨김 */
     val live: Boolean = false,
-    val title: String = "다이어리",
     val edit: String = "편집",
     val next: String = "다음 장",
     val peopleLabel: String = "함께한 사람",
@@ -271,7 +270,6 @@ private fun DiaryTopBar(state: DiaryUiState, onBack: () -> Unit, onNextPage: () 
     TopBarFrame {
         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
             CircleIconButton(DbIcons.ArrowLeft, "뒤로", onBack)
-            Text(state.title, style = DbTheme.type.title, color = c.ink, modifier = Modifier.semantics { heading() })
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (state.live) Spacing.xs else Spacing.s2xs)) {
             if (state.live) {
@@ -389,7 +387,7 @@ data class RecordMapUiState(
     val title: String = "기록",
     val subtitle: String = "함께 달린 길 3개",
     val subtitleLive: String = "함께 달린 길 2개, 지금 달리는 길 1개",
-    val listTitle: String = "지난 여행 다이어리",
+    val listTitle: String = "지난 여행",
     val liveDate: String = "지금 여행 중",
     val liveOpen: String = "여행 화면으로",
     val savedChip: String = "기록 3개 저장됨",
