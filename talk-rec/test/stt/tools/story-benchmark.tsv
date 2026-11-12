@@ -1,0 +1,107 @@
+split	id	lang	label	text
+train	t01	ko	1	아빠가 계곡에서 미끄러졌는데 들고 있던 수박은 끝까지 안 놓더라.
+train	t02	ko	0	계곡에 가려면 다음 교차로에서 오른쪽으로 빠지면 돼.
+train	t03	mix	1	할머니랑 첫 road trip 갔을 때 휴게소마다 엽서를 골라 주셨지.
+train	t04	mix	0	road trip 경로에 휴게소 두 군데 추가해 줘.
+train	t05	ko	1	눈길에서 차가 멈췄을 때 모르는 아저씨가 장갑을 벗어 주셨어.
+train	t06	ko	0	눈길 사고로 오늘 이 구간 통행이 제한됩니다.
+train	t07	mix	1	예전에 karaoke에서 삼촌이 반주도 없이 노래를 불러서 온 식구가 박수쳤어.
+train	t08	mix	0	근처 karaoke 검색하고 영업시간 알려줘.
+train	t09	ko	1	처음 혼자 장을 보러 간 날 엄마가 몰래 뒤에서 따라왔대.
+train	t10	ko	0	엄마가 우유하고 양파 사 오라고 문자했어.
+train	t11	mix	1	그 camping 때 텐트가 날아가서 옆자리 사람들이 다 붙잡아 줬잖아.
+train	t12	mix	0	camping 자리 예약번호는 앱에 들어가면 보여.
+train	t13	ko	1	비 맞고 돌아오니까 동생이 자기 수건을 내 어깨에 덮어 줬어.
+train	t14	ko	0	수건은 뒷좌석 가방에 있으니까 내려서 가져와.
+train	t15	mix	1	옛날에 taxi 타고 면접 가는데 기사님이 긴장 풀라고 장난을 쳐 주셨어.
+train	t16	mix	0	taxi 불렀어? 앱에서 기사님 위치 한번 봐 줘.
+train	t17	ko	1	시장 아주머니가 내가 잔돈 잃어버린 걸 보고 호떡을 하나 더 주셨어.
+train	t18	ko	0	시장에서 호떡 사 갈지 단체 채팅방에 물어봐.
+train	t19	mix	1	마지막 concert 날 목이 다 쉬었는데 우리가 차에서 또 따라 불렀어.
+train	t20	mix	0	concert 표는 모바일 티켓이라 화면 밝기만 올리면 돼.
+train	t21	ko	1	우리가 버스 반대편에서 서로 못 알아보고 한참 전화만 했던 거 기억나?
+train	t22	ko	0	버스가 늦으니까 먼저 들어가서 자리 잡아 줘.
+train	t23	mix	1	졸업식 selfie 찍으려는데 선생님이 뒤에서 몰래 브이 했더라.
+train	t24	mix	0	selfie 파일은 갤러리에서 찾으면 돼. 오늘 찍은 것만 보내.
+train	t25	en	1	When we missed the ferry, a fisherman invited us to eat soup with his family.
+train	t26	en	0	Does the ferry ticket include parking? Check the booking email.
+train	t27	ko	1	아이가 생일 초를 끄기 전에 소원이 엄마 덜 피곤하기라고 하더라.
+train	t28	ko	0	생일 초를 미리 살 건지 케이크 가게에 물어봐.
+train	t29	mix	1	할아버지가 처음 video call 받고 화면 속 손주한테 귤을 건네시더라.
+train	t30	mix	0	video call 끝나면 와이파이 설정 다시 확인해 줘.
+train	t31	ko	1	둘 다 길을 몰라서 돌았는데 끝내 마주친 새벽 빵집 냄새가 아직도 생각나.
+train	t32	ko	0	빵집 새벽에 열어? 오늘 영업시간 바뀌었나 봐.
+train	t33	mix	1	이모가 내 첫 audition 전에 손바닥에 괜찮다고 써 주셨어.
+train	t34	mix	0	audition 지원 서류 오늘까지 제출해야 해.
+train	t35	ko	1	외삼촌이 고장 난 자전거 종을 고쳐 주면서 같이 한 바퀴 돌았지.
+train	t36	ko	0	자전거 공기 주입기는 건물 현관 안쪽에 있어.
+train	t37	mix	1	그때 picnic 가서 도시락을 안 가져온 줄 알았는데 동생이 자기 몫을 반 나눠 줬어.
+train	t38	mix	0	picnic 예약을 취소하면 환불 수수료가 있는지 봐 줘.
+train	t39	en	1	My brother hid a tiny paper boat under my seat so I would feel brave on my first flight.
+train	t40	en	0	Which terminal is the flight leaving from tomorrow morning?
+train	t41	ko	1	매년 그 사진을 보면 엄마가 빗속에서도 춤을 추던 게 생각나.
+train	t42	ko	0	사진 파일을 작은 사이즈로 줄여서 첨부해 줘.
+train	t43	mix	1	그때 surprise party 숨기려다 나만 깜빡하고 불을 켜 버렸잖아.
+train	t44	mix	0	surprise party 시작 시간을 캘린더에 추가해 줘.
+train	t45	ko	1	강아지가 우리가 이사 가는 줄 알고 신발을 한 짝씩 숨겨 놨어.
+train	t46	ko	0	강아지 물그릇이 차에 있는지 트렁크 열어 봐.
+train	t47	mix	1	수학여행에서 GPS가 고장 나서 종이 지도를 반대로 들고 온 마을을 돌았어.
+train	t48	mix	0	GPS가 늦게 잡히면 지도 앱을 한번 껐다 켜 봐.
+dev	d01	mix	1	호텔 elevator 앞에서 우리가 내내 기다렸는데 알고 보니 종이문이었잖아.
+dev	d02	mix	0	호텔 elevator는 객실 카드 찍고 층을 누르면 돼.
+dev	d03	ko	1	새벽 낚시 끝나고 할머니가 밥그릇 제일 위에 생선을 얹어 주셨어.
+dev	d04	ko	0	새벽 낚시 배 탑승장은 다음 안내판에서 좌회전하세요.
+dev	d05	mix	1	동네 marathon 마지막에 할아버지가 우리 이름을 제일 크게 외치셨어.
+dev	d06	mix	0	marathon 참가번호를 현장에서도 받을 수 있는지 찾아봐.
+dev	d07	ko	1	이사 날 새집에 불이 안 들어와서 셋이 바닥에 앉아 손전등으로 그림자극을 했어.
+dev	d08	ko	0	이사 당일 엘리베이터는 관리실에 연락해서 신청해.
+dev	d09	en	1	At the school play I forgot my line and my sister whispered it from the audience.
+dev	d10	en	0	Please buy two tickets for the school play online.
+dev	d11	mix	1	친구가 병원 앞에서 내 graduation gown을 들고 세 시간이나 기다렸대.
+dev	d12	mix	0	graduation gown은 반납할 때 이름표만 떼면 돼.
+dev	d13	ko	1	저 돌담. 응, 우리 둘이 이름 적어 놓고 들킬까 봐 줄행랑쳤던 데.
+dev	d14	ko	0	아까 그 돌담 근처에 세웠으니까 거기로 가면 돼.
+dev	d15	mix	1	할머니가 김치전 pizza를 처음 맛보고 집에서 똑같이 만들어 주셨지.
+dev	d16	mix	0	오늘 저녁 pizza 주문했으니까 도착하면 받아.
+test	e01	mix	1	제주도에서 Bluetooth가 끊겨서 아빠가 반주 없이 노래를 불렀잖아.
+test	e02	mix	0	제주도 가기 전에 Bluetooth 연결하고 음악 틀어 줘.
+test	e03	mix	1	엄마가 첫 drive through에서 앞 차 사람 커피까지 사 줬어.
+test	e04	mix	0	drive through 가려면 이 차선에서 유턴 가능해?
+test	e05	mix	1	할머니랑 picnic 갔을 때 비 오니까 우산 아래서 김밥을 먹었지.
+test	e06	mix	0	picnic 가는 날 비 오면 장소를 실내로 바꿔 줘.
+test	e07	mix	1	할아버지가 첫 highway 운전 때 내 손이 떨리니까 조수석에서 노래해 주셨어.
+test	e08	mix	0	highway 진입하면 맨 오른쪽 차선으로 계속 가.
+test	e09	mix	1	우리 둘이 festival 가서 서로 모르는 사람 손을 잡고 뛰었던 날 있잖아.
+test	e10	mix	0	festival 끝날 시간에 맞춰 주차 요금 정산해.
+test	e11	mix	1	졸업하고 받은 postcard에 언니가 그때 아무한테도 못 했던 말을 써 줬어.
+test	e12	mix	0	그 postcard 우편함에 넣기 전에 받는 사람 주소 확인해.
+test	e13	mix	1	그날 우리 둘 다 okay라고만 했잖아. 근데 집에 가는 길에 네가 나보다 더 울더라.
+test	e14	mix	0	okay, 어제 주차장에서 흰 차가 우리 차 옆에 있었어. 블랙박스 파일 지워도 돼?
+test	e15	mix	1	버스 놓친 날 스피커에서 Happy Birthday가 나오니까 다 같이 나한테 불러 줬어.
+test	e16	mix	0	Happy Birthday 플레이리스트 틀고 볼륨 두 칸 줄여 줘.
+test	e17	ko	1	다리 밑을 지날 때 그 애가 매번 손을 흔들던 이유가 할아버지가 거기서 일했대.
+test	e18	ko	0	어제 다리 밑에서 작업하던 구간은 오늘도 막혔대.
+test	e19	ko	1	아침에 방문 열었는데 신발 속에 작은 사과가 있었어. 걔가 나 깨우기 싫어서 넣어 둔 거래.
+test	e20	ko	0	아침에 신발장 위에 사과 놔뒀어. 오는 길에 가져와.
+test	e21	ko	1	저 계단 보니까 생각난다. 너 처음 혼자 내려가던 날 우리가 양옆에서 모른 척했잖아.
+test	e22	ko	0	저 계단 보이지? 주차는 바로 위에 하면 된대.
+test	e23	ko	1	다들 축하한다고 했는데 그 애만 내 표정 보고 조용히 밖에 나와 줬어.
+test	e24	ko	0	다들 축하한다고 했으니 단체방에 답장 하나 남겨 줘.
+test	e25	ko	1	소풍 도시락을 통째로 쏟아서 울고 있었는데 선생님이 자기 주먹밥을 나눠 주셨어.
+test	e26	ko	0	소풍 도시락이 가방에서 샜으니까 편의점에서 휴지를 사야 해.
+test	e27	ko	1	그때 셋이 우체국 앞에서 새벽까지 앉아 있던 거. 응, 말 한마디도 안 해도 괜찮았던 날.
+test	e28	ko	0	우체국 앞에서 내릴 거니까 네비 목적지를 바꿔 줘.
+test	e29	en	1	We lost the map at midnight, so Dad followed the music and found our campsite.
+test	e30	en	0	Check the map and call me when you reach the campsite.
+test	e31	en	1	Grandma hid a note in my lunchbox on the day I moved away, and I still have it.
+test	e32	en	0	The lunchbox is in the back seat next to the charger.
+test	e33	en	1	Remember when she pretended not to know us, then held both our hands all the way home?
+test	e34	en	0	Remember to lock both doors when you get home tonight.
+test	e35	mix	1	그 떡볶이집에서 주문한 건 하나였는데 주인아주머니가 french fries도 주시면서 힘내랬지.
+test	e36	mix	0	french fries는 하나만 주문했고 떡볶이는 포장해 달라고 했어.
+test	e37	mix	1	마지막 ski 수업에 강사님이 나랑 같이 끝까지 걸어서 내려와 줬잖아.
+test	e38	mix	0	ski 장갑 잊었어. 렌털 센터에 파는지 알아봐 줘.
+test	e39	ko	0	계좌 비밀번호 네 자리 말해 줄게. 메모해 둬.
+test	e40	mix	0	글레오, 블루투스 끄고 내일 meeting 시간 알려 줘.
+test	e41	ko	0	아까 그게 진짜, 그러니까 그 사람이, 어 잠깐만.
+test	e42	mix	0	광고입니다. 이번 여행에 꼭 필요한 premium package를 소개합니다.

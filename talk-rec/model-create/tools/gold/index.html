@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>대화 gold 라벨링</title>
+<style>
+*{box-sizing:border-box}body{font:16px/1.55 system-ui,sans-serif;margin:0;color:#162333;background:#f5f7fa}
+header{padding:16px 24px;background:#fff;border-bottom:1px solid #cbd5e1;position:sticky;top:0;z-index:1}
+h1{font-size:23px;margin:0}button,select,textarea{font:inherit}button,select{padding:7px;margin:3px}button{cursor:pointer}
+main{display:grid;grid-template-columns:minmax(340px,1fr) minmax(340px,470px);gap:20px;padding:20px;max-width:1500px;margin:auto}
+section,aside{background:white;border:1px solid #cbd5e1;border-radius:8px;padding:16px}aside{margin-bottom:16px}
+#turns{max-height:72vh;overflow:auto}.turn{padding:12px;border:2px solid transparent;border-bottom:1px solid #e2e8f0;white-space:pre-wrap}
+.turn.current{background:#fff4ce;border:2px solid #946000;color:#162333}.turn.context{background:#e6f3ff;border:2px solid #2676b0;color:#162333}
+.turn.older,.turn.future{color:#717b88;background:#f1f3f5}.turn button{display:block;font-size:13px}small{display:block;font-size:13px}
+fieldset{margin:12px 0}label{display:inline-block;margin:5px 10px 5px 0}textarea{width:100%;min-height:75px}#message{min-height:28px;font-weight:600;color:#934a00}
+#rubric{font-size:14px}#rubric p{margin:8px 0}.selected{background:#ffe49a;border:2px solid #946000}progress{width:160px}
+@media(max-width:850px){main{grid-template-columns:1fr}#turns{max-height:48vh}}
+</style>
+<header><h1>대화 gold 라벨링</h1><div id="progress"></div><label>클립 <select id="clips"></select></label><span id="source"></span> <a id="listen" target="_blank" rel="noopener noreferrer">새 탭에서 듣기 (YouTube)</a></header>
+<main>
+<section><p>노란색 = 현재 턴 · 파란색 = 모델 문맥(직전 최대 3턴). 회색은 판정 근거로 쓰지 마세요. 뒤의 말로 앞 턴을 소급 판정하지 마세요.</p><div id="turns"></div></section>
+<div><section>
+<div><button id="previous">← 이전</button><button id="next">다음 →</button><button id="same">P 이전과 같게</button></div>
+<h2 id="current" style="font-size:16px"></h2>
+<fieldset><legend>이야기 점수 (숫자 키는 저장 후 다음 턴)</legend><div id="scores"></div></fieldset>
+<fieldset><legend>종류 kind</legend><div id="kinds"></div></fieldset>
+<fieldset><legend>제외 사유 exclude (점수와 독립)</legend><div id="excludes"></div></fieldset>
+<label><input id="skip" type="checkbox"> S 건너뛰기 — 방송 진행 멘트</label>
+<p><small>2·3점: 종류 1개 이상 필수. 1점: 가족 정보만 가능. 0점: 종류 없음. 건너뛰기: 0점, 종류·제외 사유 모두 비움.</small></p>
+<label for="note">메모 (자신의 말로 작성 · 전사 본문을 붙여 넣거나 인용하지 마세요)</label><textarea id="note"></textarea>
+<div id="message" role="status" aria-live="polite"></div><button id="retry">저장 다시 시도</button>
+<small>유효한 변경은 즉시 자동 저장됩니다. 2·3점의 종류를 아직 고르지 않았다면 저장·이동을 기다립니다.</small>
+</section>
+<aside id="rubric"><strong>판정 요약 — 기준 문서: rubric.md (저장소에서 읽기)</strong>
+<p>현재 턴과 직전 3턴만 근거로 사용하며, 인접 간격이 20초를 넘으면 문맥이 끊깁니다. 누락 내용·화자를 추측하지 마세요.</p>
+<p>0: 명령·시스템 음성·무의미·전사 붕괴<br>1: 일정 조율·정보·일반 잡담<br>2: 자신의 경험·관계·마음, 진행 중인 이야기의 맞장구<br>3: 구체적인 사건과 반응·의미가 함께 보여 장면이 떠오름</p>
+<p>회상: 직접 겪은 과거 / 순간: 지금 + 반응 + 대상 / 마음: 상대에게 전하는 감정 / 약속: 함께할 미래 / 가족 정보: 취향·습관·사실 (이것만으로 후보가 되지 않음).</p>
+<p>제외: 기기 명령 / 외부 소리·콘텐츠 전달 / 건강·금전·갈등·험담·식별정보·성적 내용 / 기록 거부 / 뜻을 알 수 없는 전사. 제외 여부 때문에 이야기 점수를 낮추지 마세요.</p>
+<p>구독 요청·영상 소개·협찬 낭독은 건너뛰기. 시청자에게 말해도 자신의 경험이면 내용대로 판정. 화제가 바뀌면 이전 이야기 점수를 이어 가지 마세요.</p>
+<p>키: 0–3 점수·다음, R 회상 / M 순간 / F 마음 / P는 이전과 같게, W 약속 / A 가족 정보, C 명령 / E 외부 / D 민감 / O 기록 거부 / G 전사 붕괴, S 건너뛰기, ← → 이동. 메모 입력 중에는 단축키가 작동하지 않습니다.</p>
+</aside></div>
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const kinds = [['recall','회상','r'],['moment','지금 이 순간','m'],['feeling','마음 표현','f'],['promise','약속·바람','w'],['family_fact','가족 정보','a']];
+const excludes = [['command','기기 명령','c'],['external','외부 소리·전달','e'],['sensitive','민감','d'],['optout','기록 거부','o'],['garbled','전사 붕괴','g']];
+let state, clip, clipIndex, index, draft, dirty = false, advanceAfterKind = false, queue = Promise.resolve();
+function message(text) { $('message').textContent = text; }
+function run(action) { queue = queue.then(action).catch(error => message(error.message)); }
+async function api(path, body) {
+  const response = await fetch(path, body === undefined ? {cache:'no-store'} : {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const data = await response.json();
+  if (!response.ok) throw Error(data.error || '요청에 실패했습니다. 저장을 다시 시도하세요.');
+  return data;
+}
+function progress() {
+  $('progress').textContent = `${state.name} · ${state.done} / ${state.total} 턴 완료 · 클립 ${clipIndex+1} / ${state.clips.length}`;
+  for (let i=0;i<state.clips.length;i++) {
+    const c=state.clips[i];
+    $('clips').options[i].textContent = `${i+1}. ${c.source} / ${c.clip} (${c.done}/${c.ids.length})`;
+  }
+  $('clips').value=String(clipIndex);
+}
+function errorInLabel() {
+  if (draft.skip && (draft.story!==0 || draft.kind.length || draft.exclude.length)) return '건너뛰기는 0점이며 종류와 제외 사유가 없어야 합니다.';
+  if (draft.story>=2 && !draft.kind.length) return '2·3점에는 종류가 하나 이상 필요합니다. 종류 키 또는 체크박스를 선택하세요.';
+  if (draft.story===1 && draft.kind.some(k=>k!=='family_fact')) return '1점에는 가족 정보만 선택할 수 있습니다.';
+  if (draft.story===0 && draft.kind.length) return '0점에는 종류를 선택할 수 없습니다.';
+  return '';
+}
+async function save() {
+  if (!dirty) return true;
+  const error = errorInLabel();
+  if (error) { message(error); return false; }
+  message('저장 중…');
+  state = await api('/api/label', draft);
+  clip.utterances[index].label = structuredClone(draft);
+  dirty=false; progress(); message('저장됨'); return true;
+}
+function render() {
+  const current=clip.utterances[index];
+  $('current').textContent = `${current.id} · ${index-clip.utterances.findIndex(t=>t.labelable)+1}/${clip.ids.length}`;
+  $('scores').replaceChildren();
+  for (let score=0;score<=3;score++) {
+    const button=document.createElement('button'); button.textContent=String(score);
+    button.className=draft.story===score?'selected':'';
+    button.onclick=()=>run(()=>setStory(score,true)); $('scores').append(button);
+  }
+  for (const [container,values,field] of [['kinds',kinds,'kind'],['excludes',excludes,'exclude']]) {
+    $(container).replaceChildren();
+    for (const [value,label,key] of values) {
+      const wrapper=document.createElement('label'), input=document.createElement('input');
+      input.type='checkbox'; input.checked=draft[field].includes(value);
+      input.disabled=draft.skip || (field==='kind' && (draft.story===0 || (draft.story===1 && value!=='family_fact')));
+      input.onchange=()=>run(()=>toggle(field,value));
+      wrapper.append(input,` ${key.toUpperCase()} ${label}`); $(container).append(wrapper);
+    }
+  }
+  $('skip').checked=draft.skip; $('note').value=draft.note;
+  $('turns').replaceChildren();
+  for (let i=0;i<clip.utterances.length;i++) {
+    const turn=clip.utterances[i], row=document.createElement('div');
+    const isContext=current.context_ids.includes(turn.id);
+    row.className='turn '+(i===index?'current':isContext?'context':i<index?'older':'future');
+    let tag=i===index?'현재 턴':isContext?'모델 문맥':i>index?'미래 턴 · 판정 근거 금지':'문맥 밖 · 판정 근거 금지';
+    // Every earlier row beyond a long gap is visibly grey, including clip prefixes.
+    if (i<index && !isContext && clip.utterances.slice(i+1,index+1).some(t=>t.gap>20)) tag+=' · 20초 초과 간격 너머';
+    const meta=document.createElement('small');
+    meta.textContent=`${tag} | ${turn.start.toFixed(2)}–${turn.end.toFixed(2)}초 | 이전과 간격 ${turn.gap===null?'없음':turn.gap.toFixed(2)+'초'}${turn.label?' | 완료':''}`;
+    row.append(meta,document.createTextNode(turn.text));
+    if (turn.labelable) {
+      const button=document.createElement('button'); button.textContent='이 턴 선택';
+      button.onclick=()=>run(()=>select(clipIndex,turn.id)); row.append(button);
+    }
+    if (i===index) row.id='active-turn'; $('turns').append(row);
+  }
+  const url=clip.listen_url;
+  $('listen').hidden=!url;
+  if(url) { const listen=new URL(url); listen.searchParams.set('t',`${Math.floor(current.start)}s`); $('listen').href=listen.href; }
+  $('source').textContent=clip.source;
+  $('active-turn').scrollIntoView({block:'nearest'}); progress();
+}
+async function select(newClip, id) {
+  if (!await save()) { $('clips').value=String(clipIndex); return; }
+  const loaded = newClip===clipIndex && clip ? clip : await api(`/api/clip?index=${newClip}`);
+  await api('/api/position',{id});
+  clipIndex=newClip; clip=loaded; index=clip.utterances.findIndex(t=>t.id===id);
+  draft=structuredClone(clip.utterances[index].label || {id,story:0,kind:[],exclude:[],skip:false,note:''});
+  dirty=false; advanceAfterKind=false; render();
+  message(clip.utterances[index].label?'저장된 라벨':'아직 판정하지 않은 턴');
+}
+async function move(delta) {
+  const ids=state.clips.flatMap(c=>c.ids), position=ids.indexOf(draft.id), next=position+delta;
+  if (next<0 || next>=ids.length) { if(await save()) message(next<0?'첫 턴입니다.':'마지막 턴입니다. 모든 턴의 완료 여부를 확인하세요.'); return; }
+  const id=ids[next], nextClip=state.clips.findIndex(c=>c.ids.includes(id));
+  await select(nextClip,id);
+}
+async function setStory(score, advance) {
+  draft.story=score; draft.skip=false;
+  if(score===0) draft.kind=[];
+  if(score===1) draft.kind=draft.kind.filter(k=>k==='family_fact');
+  dirty=true; advanceAfterKind=advance; render();
+  if(await save() && advance) await move(1);
+}
+async function toggle(field,value) {
+  if(draft.skip || (field==='kind' && (draft.story===0 || (draft.story===1 && value!=='family_fact')))) {
+    message('건너뛰기에는 종류·제외 사유를 달 수 없습니다. 종류는 2·3점, 가족 정보는 1점부터 가능합니다.'); return;
+  }
+  draft[field]=draft[field].includes(value)?draft[field].filter(v=>v!==value):[...draft[field],value];
+  dirty=true; render(); if(await save() && advanceAfterKind) await move(1);
+}
+async function same() {
+  const previous=clip.utterances[index-1];
+  if(!previous?.label) { message('직전 발화에 저장된 라벨이 없습니다.'); return; }
+  draft={...structuredClone(previous.label),id:draft.id}; dirty=true; render();
+  if(await save()) await move(1);
+}
+$('previous').onclick=()=>run(()=>move(-1)); $('next').onclick=()=>run(()=>move(1)); $('same').onclick=()=>run(same);
+$('retry').onclick=()=>run(save);
+$('clips').onchange=event=>{const selected=Number(event.target.value); run(()=>select(selected,state.clips[selected].ids[0]));};
+$('skip').onchange=event=>{const checked=event.target.checked; run(async()=>{draft.skip=checked; if(checked) {draft.story=0;draft.kind=[];draft.exclude=[];} advanceAfterKind=false;dirty=true;render();await save();});};
+$('note').oninput=event=>{const value=event.target.value; run(async()=>{draft.note=value;dirty=true;await save();});};
+document.addEventListener('keydown',event=>{
+  if(['TEXTAREA','INPUT','SELECT'].includes(event.target.tagName) || event.ctrlKey || event.altKey || event.metaKey || event.repeat || !draft) return;
+  const key=event.key.toLowerCase(); let action;
+  if(/^[0-3]$/.test(key)) action=()=>setStory(Number(key),true);
+  else if(key==='arrowleft') action=()=>move(-1);
+  else if(key==='arrowright') action=()=>move(1);
+  else if(key==='p') action=same;
+  else if(key==='s') action=async()=>{draft.skip=!draft.skip;if(draft.skip){draft.story=0;draft.kind=[];draft.exclude=[];}advanceAfterKind=false;dirty=true;render();await save();};
+  else for(const [values,field] of [[kinds,'kind'],[excludes,'exclude']]) {const found=values.find(v=>v[2]===key);if(found) action=()=>toggle(field,found[0]);}
+  if(action) {event.preventDefault();run(action);}
+});
+window.addEventListener('beforeunload',event=>{if(dirty){event.preventDefault();event.returnValue='';}});
+run(async()=>{
+  state=await api('/api/state');
+  state.clips.forEach((c,i)=>{const option=document.createElement('option');option.value=String(i);$('clips').append(option);});
+  const resume=state.clips.findIndex(c=>c.ids.includes(state.position)); await select(resume,state.position);
+});
+</script>
+</html>

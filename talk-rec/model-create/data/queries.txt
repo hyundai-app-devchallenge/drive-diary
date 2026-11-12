@@ -1,0 +1,13 @@
+# UTF-8. One source per line; # starts a full-line comment.
+# search: QUERY | channel: URL | video: URL
+# Prefix a line with "lowdensity " to make its videos and their channels test-only.
+search: 차 안 대화 브이로그
+search: 가족 여행 차 안 수다
+search: 부부 드라이브 토크
+search: 친구들 로드트립 차 안
+search: 무편집 드라이브 수다
+search: 차박 가는 길 가족
+search: 아이랑 장거리 운전 브이로그
+search: 귀성길 차 안 가족 대화
+search: 커플 드라이브 대화 무편집
+search: 엄마랑 드라이브 수다

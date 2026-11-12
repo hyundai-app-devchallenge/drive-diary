@@ -1,0 +1,258 @@
+video_id	decision	reason	decided_by	comment
+U6Mf2CyODVI	reject	idol group content, not family/friends in-car talk	claude	
+uJ7N0wzfPWE	reject	mostly English speech (hangul share 0.53)	claude	
+F6IAfLSuDR4	reject	human review	vizatae	
+rfD2mZDPDFk	reject	crime talk show	claude	
+3eKrFeTGupY	reject	foreign footage with TTS narration and reactions (found by human gold review)	user	
+STlUZf798-w	reject	human review	vizatae	
+hjjSwsbF-fw	reject	no speech	claude	
+8Yo8kuO7fqY	reject	human review	vizatae	
+UBb2T5huI6k	approve	human review	vizatae	8분5초부터 9분 03초까지만 사용할것.
+zifM3PJTBKQ	approve	human review	vizatae	35초부터 8분 5초까지만 차 상황이고, 어느정도 규모있는 채널의 영상이라 완전 자연스러운 차안 가족 대화는 아님. 컷편집도 되어있음. 저 부분 이외는 사용하지말것.
+IOlxH67P1JM	approve	human review	user	기준 영상: 무편집 차 안 가족 대화
+FJkJnUbJm88	approve	human review	vizatae	컷편집 없는 풀영상이라 가치가 있는듯.
+CNBsQuTxkTg	approve	human review	vizatae	
+0rqGBKrEao4	approve	human review	vizatae	중간 중간 외부짤? 같은 외부 효과음 음성 같은게 있어서 주의해야할듯. 4분부터 7분20초까지는 차 안 상황 아니고 7분 20초부터는 차안에서 다른 친구한테 통화거는 장면이 나옴. 커플의 대화이고 컷편집이 되어있는것으로 보임
+UNTNivh2DxM	reject	human review	vizatae	그냥 혼자 떠드는 영상임
+VfzjQnKeizE	approve	human review	vizatae	0초부터 5분 45초 까지만 사용할것.
+4Z-Pl4aa-6g	approve	human review	vizatae	아기(4살)와 엄마 둘이서의 대화.
+pkGAxu0g0vQ	approve	human review	user	기준 영상: 무편집 차 안 가족 대화
+eicKfWnR3cA	approve	human review	vizatae	중간에 웃음도 나오고 컷편집이 중간중간 되긴해서 구분만 잘하면 될듯
+zeFFCX_oku8	reject	human review	vizatae	
+ljdZIUyCgiM	reject	human review	vizatae	
+Cs4mYcCVEsc	reject	human review	vizatae	
+0_qX1N2IXTU	reject	human review	vizatae	차안에서는 중국어 나옴.
+4vEns7QH7R4	reject	human review	vizatae	
+w_vP5TjI68o	reject	human review	vizatae	
+X00WlhdkzFw	reject	human review	vizatae	
+Mi3KKPZH720	reject	human review	vizatae	
+5x1SpVWGhDQ	reject	human review	vizatae	
+6p0zHS5mEqo	reject	human review	vizatae	
+oykwvYDNG7Y	reject	no speech after transcription (subtitle-only vlog)	claude	
+YSSc0aUNHyc	reject	human review	vizatae	
+-V1BsWCC8Jk	reject	no speech after transcription (subtitle-only vlog)	claude	
+Jy1Oruo4fZk	reject	human review	vizatae	
+WdM5sso70Z4	reject	human review	vizatae	
+woLJ1b8x-8I	reject	human review	vizatae	
+yO9pbul2DvQ	reject	human review	vizatae	
+GqlRV76skqE	reject	human review	vizatae	
+KQ7N15C1iCc	approve	human review	vizatae	37분24초부터 38분 53초까지 차안에서 노래부르는 장면이 나와서 이부분은 참고하기에 좋을듯함. 나머지는 가치 없
+oCCzZJ1dy7U	reject	human review	vizatae	
+5vSwUj9l7iY	reject	human review	vizatae	
+BEIYkRxq7X4	reject	human review	vizatae	
+2qMkcQbgK6E	reject	human review	vizatae	차 안에서의 상황 아님
+YWrYUrqg0is	reject	human review	vizatae	
+JuOU4RnymqI	reject	human review	vizatae	
+M5_RSrf8Rik	reject	human review	vizatae	
+Uypi3qf82IQ	reject	human review	vizatae	
+vWaVvYE_Fp4	reject	human review	vizatae	
+wtF_ALqbkks	reject	human review	vizatae	
+48-p0eyUWZ0	reject	human review	vizatae	차 안 상황 거의 없음
+WpKricjnSzU	reject	human review	vizatae	
+4i4dDBv4hzA	approve	human review	vizatae	9분5초 부터 10분까지만 차 안 아이들과 엄마 대화 상황임. 나머지 부분은 가치 없음
+H5vQyHx07eU	reject	human review	vizatae	
+Ylx8I0qEMpg	reject	human review	vizatae	
+W8D9ZhiOVoA	reject	human review	vizatae	
+hBh7eAfsTlI	reject	human review	vizatae	
+b_TKOQzBNIE	reject	human review	vizatae	
+yZRvfnRf6XE	reject	human review	vizatae	
+3xvfnBp21_Y	reject	human review	vizatae	일본어가 많이 나오고 차 안 상황이 아님
+bfrn8g6_mB4	reject	panel/studio talk show, not family or in-car	claude	
+F5sJQrh8Y8I	reject	panel/studio talk show, not family or in-car	claude	
+skeV8ByvdNA	reject	panel/studio talk show, not family or in-car	claude	
+Uz43C1Xb3Ts	reject	panel/studio talk show, not family or in-car	claude	
+lnB7BFcZR5g	reject	panel/studio talk show, not family or in-car	claude	
+OxzZ1dutVPI	reject	panel/studio talk show, not family or in-car	claude	
+eiM6pdEyxnc	reject	panel/studio talk show, not family or in-car	claude	
+v8MLLpoocjY	reject	panel/studio talk show, not family or in-car	claude	
+tXbYY21TCBY	reject	panel/studio talk show, not family or in-car	claude	
+AsHvDDsLEP4	reject	panel/studio talk show, not family or in-car	claude	
+ZYUvlqe2rzQ	reject	panel/studio talk show, not family or in-car	claude	
+Pf7x5cPUE_k	reject	panel/studio talk show, not family or in-car	claude	
+Rwx2EGl7i2U	reject	panel/studio talk show, not family or in-car	claude	
+0WFSpZvvP_g	reject	panel/studio talk show, not family or in-car	claude	
+SIYB94Vtjv4	reject	panel/studio talk show, not family or in-car	claude	
+oJnE35jKdA4	reject	panel/studio talk show, not family or in-car	claude	
+v4hohBeoQGg	reject	panel/studio talk show, not family or in-car	claude	
+82m2TFg9l1g	reject	broadcast/drama/idol/reupload	claude	
+Hq6as-J5uNc	reject	broadcast/drama/idol/reupload	claude	
+2B9oGJxKGqk	reject	broadcast/drama/idol/reupload	claude	
+-Hue7uQAvlw	reject	broadcast/drama/idol/reupload	claude	
+12jeV0ir3II	reject	broadcast/drama/idol/reupload	claude	
+v4KLBef7o3Q	reject	broadcast/drama/idol/reupload	claude	
+lCcDZhKeNSc	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+qdtcTMnc6ew	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+IqigwO_xnO0	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+v8oUQGpemg4	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+u0_S76y2P64	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+4_00TRauSSc	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+x6dRSBwGKJc	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+nEchiCK_tn4	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+X26pwkWbMsA	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+-4sOd3lv7lQ	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+OMDmE-fBQ8Y	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+u3eP_pZL2HY	reject	solo creator monologue to camera (mukbang, GRWM, ASMR, advice)	claude	
+UXO0IbU6Zio	reject	scripted role-play	claude	
+VoMwZ2JWv9A	reject	language lesson or non-Korean	claude	
+QzhAnx1odzs	reject	language lesson or non-Korean	claude	
+ii-9qOq4k9o	reject	language lesson or non-Korean	claude	
+enAQO4fK1Bg	reject	scenery/music, little speech expected	claude	
+i0Au5zX5tcU	reject	scenery/music, little speech expected	claude	
+p6Q4jUoVLhA	reject	scenery/music, little speech expected	claude	
+-uETC3J0gKI	reject	scenery/music, little speech expected	claude	
+VgS7R_ONTS0	reject	documentary narration	claude	
+FEeIEWe1WsM	reject	metadata incomplete (sign-in wall), under 8 min	claude	
+23aRFY7cOhA	reject	human review	vizatae	
+XFPBoGHRau4	reject	human review	vizatae	
+JKwwUhkBxQ0	reject	human review	vizatae	
+T_Sz7MSyiQk	reject	human review	vizatae	
+YkIDdqXQYB4	reject	human review	vizatae	
+YB-ACc5dbHc	reject	human review	vizatae	
+NLCUZnbp2NU	reject	human review	vizatae	
+VYjfiGo8vCY	reject	human review	vizatae	
+_X_02V4ZROE	reject	human review	vizatae	
+XOSPauRbNK8	reject	human review	vizatae	
+n-dAQX0KueI	reject	human review	vizatae	
+zn4tDPT4RLQ	approve	human review	user	기준 영상: 무편집 차 안 가족 대화
+-pHfhfz-yK4	reject	human review	vizatae	
+0L8N-nLVl6E	reject	human review	vizatae	
+0_VZzg0C3A8	reject	human review	vizatae	
+0nsuxOgzeqc	reject	human review	vizatae	
+1twt9koAbzU	reject	human review	vizatae	
+2Ojwi_BiR_0	reject	human review	vizatae	
+2iHTcXOkZuw	reject	human review	vizatae	
+3w8zeFIy3Zs	reject	human review	vizatae	
+4keKt76dPXQ	reject	human review	vizatae	
+4wHQyHLRiAU	reject	human review	vizatae	
+593mDE2d6rc	reject	human review	vizatae	
+597ywwN9q0Q	reject	human review	vizatae	
+5UgG-12wb4I	reject	human review	vizatae	
+6r0ANk6n1nM	reject	human review	vizatae	
+6yi4-DFkfHg	reject	human review	vizatae	
+7ENPvrw6zFs	reject	human review	vizatae	
+8Ob07oEoRuM	reject	human review	vizatae	
+9BoNY4XYzIc	reject	human review	vizatae	
+AMOg0WM3eZY	reject	human review	vizatae	
+B8oRH3PBbyg	reject	human review	vizatae	
+BmFOikw97nY	reject	human review	vizatae	
+CAZGk0ErHU8	reject	human review	vizatae	
+D1zjXY0Y1aw	reject	human review	vizatae	
+D9SCaE9DBX8	reject	human review	vizatae	
+E0pm3qKYJEM	reject	human review	vizatae	
+E3EwnIVfe3M	reject	human review	vizatae	
+E77K285_-gs	reject	human review	vizatae	
+EHAG0WL0ZVg	reject	human review	vizatae	
+EisD5TroU18	reject	human review	vizatae	
+EyiKP1c0MsU	reject	human review	vizatae	
+FCpPHoBg3QU	reject	human review	vizatae	
+GLXyFZTl5j8	reject	human review	vizatae	
+GqGZWRfUW2Q	reject	human review	vizatae	
+HeGxtgDFl8I	reject	human review	vizatae	
+I6yjPRzvocg	reject	human review	vizatae	
+IZVbIaW0OXA	reject	human review	vizatae	
+J2GRHqa0xyc	reject	human review	vizatae	
+KCuGZmXHiLQ	reject	human review	vizatae	
+Kb1Lf914AU0	reject	human review	vizatae	
+LHsKvA0WhgE	reject	human review	vizatae	
+LZzJdAahOjk	reject	human review	vizatae	
+MWEBO7idPhQ	reject	human review	vizatae	
+Niu_uYmWYqw	reject	human review	vizatae	
+OAVlUGDVEjE	reject	human review	vizatae	
+OEsMbpN_svU	reject	human review	vizatae	
+PwvVfsgcnBs	reject	human review	vizatae	
+QZNRkSHEevg	reject	human review	vizatae	
+RiARbgDoekg	reject	human review	vizatae	커플?
+SMuyr6a8D0k	reject	human review	vizatae	
+-OUt4JcJ2Mg	reject	human review	vizatae	
+35nWrWFsa2M	approve	human review	vizatae	
+5Z4TkRueNgI	approve	human review	vizatae	차량안에서 한 대화는 아님. 집 식탁에서 하는 대화인듯
+AI7XVHiM3CY	reject	human review	vizatae	
+BoVQAZSBDZA	reject	human review	vizatae	
+CzItgxWOjhM	approve	human review	vizatae	친구끼리 대화임
+KaMwl4-fWjY	reject	human review	vizatae	
+O3w3XwEXaxs	reject	human review	vizatae	
+OMKZoD26IrI	reject	human review	vizatae	
+P5vMsReRNKo	approve	human review	vizatae	23분 55초부터 26분 30초까지 사용. 아빠와 성인 아들간의 대화
+QjVSF9F_8XQ	reject	human review	vizatae	
+S70-YWX-_QA	reject	human review	vizatae	
+SYbPYxUiCbk	reject	human review	vizatae	
+T-3l5nhmi20	reject	human review	vizatae	
+TealNr8lwdI	reject	human review	vizatae	
+UPPbPWwJME0	reject	human review	vizatae	
+UfoLy1FT0uE	reject	human review	vizatae	
+WFzmvV3Fxdo	reject	human review	vizatae	
+WI8mgHDmKg0	reject	human review	vizatae	
+WrQNmTm7r6c	reject	human review	vizatae	
+XBna2PCAtcM	reject	human review	vizatae	
+XDLxUDcQC6M	reject	human review	vizatae	
+XOLfa0KMwYI	reject	human review	vizatae	
+XuAxeZGXGvI	reject	human review	vizatae	
+YFKZNhz7JwA	reject	human review	vizatae	
+Yjl2Y307CQA	reject	human review	vizatae	
+YogjMnv1FUs	reject	human review	vizatae	
+YpqZ8EEVDdo	reject	human review	vizatae	
+Zy8tIZs-_wI	reject	human review	vizatae	
+_R5WcJZsV6U	reject	human review	vizatae	
+_TUnGI75plk	approve	human review	vizatae	친구들끼리(성인) 대화. 남자들. 가족간 대화 아니라서 사용 가치는 떨어짐
+_Zr8vvGdDyc	reject	human review	vizatae	
+aEJLFTc0zlg	reject	human review	vizatae	
+b5oVb9uM08Q	reject	human review	vizatae	
+c3afnCoI0hM	reject	human review	vizatae	
+cN-Qo92P_xQ	reject	human review	vizatae	
+cPfLsKldido	reject	human review	vizatae	
+dJ6Rz2EYnlQ	reject	human review	vizatae	
+dOAh7f_rWmA	reject	human review	vizatae	
+dgG2LooAAgo	reject	human review	vizatae	
+eB6UfE-Yt5M	reject	human review	vizatae	
+eJSTtarwVnU	reject	human review	vizatae	
+ePFT9Oq-C9U	reject	human review	vizatae	
+eckvvGo5hz0	reject	human review	vizatae	
+euFK-mQwOao	reject	human review	vizatae	
+frvPIuJH_wY	reject	human review	vizatae	
+hgEC2u9kCCU	reject	human review	vizatae	
+i0fCCojtBXM	reject	human review	vizatae	
+iOZSdgiKVmg	reject	human review	vizatae	
+iSDPIXe3ZXY	reject	human review	vizatae	
+iWxlz7qhBT4	approve	human review	vizatae	아빠랑 아들간의 대화(성인 아들)
+jiN2ADu46sQ	reject	human review	vizatae	
+jyyBDln3LXQ	reject	human review	vizatae	
+kKRhoDYZT3o	reject	human review	vizatae	
+kNcpi6S4FyM	reject	human review	vizatae	
+kiN3B-ryo5U	reject	human review	vizatae	
+klKsWc5cJBI	reject	human review	vizatae	
+l6uuy2Ty1jo	reject	human review	vizatae	
+lRVoxn8NaDY	reject	human review	vizatae	
+lqvqMuY1hO8	reject	human review	vizatae	
+mEcT4bW-Hg0	reject	human review	vizatae	
+nLBn9Gk-UWw	reject	human review	vizatae	
+nUIe43I2bYs	reject	human review	vizatae	
+naCeqAUZOXM	reject	human review	vizatae	
+nm3xJdRCY1o	reject	human review	vizatae	
+oL47d1tv9O4	reject	human review	vizatae	
+oXOzAbZjFPY	approve	human review	vizatae	
+pyuE9zsilNc	reject	human review	vizatae	
+q68gvSenR0g	reject	human review	vizatae	
+qbOPrlNUmwI	reject	human review	vizatae	
+qyX50X56_pA	reject	human review	vizatae	
+rHYRGBG2Dl8	reject	human review	vizatae	
+rqT-ZCcxGCk	reject	human review	vizatae	
+ruCjnOc7i1A	reject	human review	vizatae	
+sQdfXjVeb0s	reject	human review	vizatae	
+sa2d-6_k2nE	reject	human review	vizatae	
+t37e2trW5KA	reject	human review	vizatae	
+taefvtaw4y8	reject	human review	vizatae	
+u-n5Yg000mg	reject	human review	vizatae	
+u9AqURJb0UE	reject	human review	vizatae	
+uXgGWB3vQsE	reject	human review	vizatae	
+vTFjpssiOaY	reject	human review	vizatae	
+vZO3LJ-_0I0	reject	human review	vizatae	
+w2-qHCf6x_E	reject	human review	vizatae	
+wN_KqipEY0g	approve	human review	vizatae	
+wQWV6Rt5eP4	reject	human review	vizatae	
+wXbcHOKRuT0	reject	human review	vizatae	
+wlm4k1-pRMg	reject	human review	vizatae	
+xAyDF9tVRFY	reject	human review	vizatae	
+xlppJdUrAb8	reject	human review	vizatae	
+yB49OuUsZYg	reject	human review	vizatae	
+yJKYx29cTl4	reject	human review	vizatae	
+yp4dj-RRMxA	reject	human review	vizatae	
