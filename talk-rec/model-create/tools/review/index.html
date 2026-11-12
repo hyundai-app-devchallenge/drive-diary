@@ -5,24 +5,49 @@
 <title>영상 검토 · Drive Diary</title>
 <style>
 :root { color-scheme: light; font-family: system-ui, sans-serif; color: #172c32; background: #f4f6f5; }
-* { box-sizing: border-box; } body { margin: 0; } header, main, footer { max-width: 1060px; margin: auto; padding: 24px; }
+* { box-sizing: border-box; } :root { --bar-height: 150px; scroll-padding-bottom: var(--bar-height); }
+body { margin: 0; padding-bottom: calc(var(--bar-height) + 24px); } header, main, footer { max-width: 1060px; margin: auto; padding: 24px; }
 header { padding-bottom: 12px; } h1 { margin: 0 0 8px; font-size: 28px; } h2 { font-size: 20px; margin: 0 0 10px; }
 p { line-height: 1.6; } .muted { color: #52666c; font-size: 14px; } .toolbar { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin: 18px 0; }
-button, select, textarea { font: inherit; } button, select { padding: 10px 14px; border-radius: 7px; border: 1px solid #9aacb1; background: white; color: inherit; }
+button, select, input { font: inherit; } button, select { padding: 10px 14px; border-radius: 7px; border: 1px solid #9aacb1; background: white; color: inherit; }
 button { cursor: pointer; } button:disabled { opacity: .55; cursor: wait; } button:hover { background: #e9f0ee; }
 :focus-visible { outline: 3px solid #267a9b; outline-offset: 3px; } a { color: #075f91; }
 progress { width: 220px; accent-color: #147c61; } #notice { min-height: 24px; color: #9a2f24; }
-article { padding: 24px; margin: 0 0 22px; background: white; border: 2px solid #d8e1de; border-radius: 12px; scroll-margin-top: 16px; }
+article { padding: 24px; margin: 0 0 22px; background: white; border: 2px solid #d8e1de; border-radius: 12px; scroll-margin-top: 16px; overflow-wrap: anywhere; }
 article.active { border-color: #176f61; box-shadow: 0 0 0 2px #176f611c; }
 .meta { color: #465c62; line-height: 1.7; overflow-wrap: anywhere; } .indicators { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 14px 0; font-size: 14px; }
 .prescreen { padding: 10px 14px; border-left: 4px solid #bc9a49; background: #faf5e9; overflow-wrap: anywhere; }
 .human { padding: 10px 14px; background: #edf6f2; font-weight: 600; overflow-wrap: anywhere; }
 .listen { padding: 12px 0; border-bottom: 1px solid #e8eeeb; } .lines { margin: 8px 0 0; padding-left: 24px; color: #384f55; }
-.lines li { margin: 5px 0; white-space: pre-wrap; overflow-wrap: anywhere; } textarea { display: block; width: 100%; padding: 10px; margin: 8px 0 12px; border: 1px solid #9aacb1; border-radius: 7px; resize: vertical; }
-.actions { display: flex; flex-wrap: wrap; gap: 10px; } .approve { border-color: #147c61; color: #086246; } .reject { border-color: #b35348; color: #9a2f24; }
+.lines li { margin: 5px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.approve { border-color: #147c61; color: #086246; } .reject { border-color: #b35348; color: #9a2f24; }
 .actions button[aria-pressed="true"] { box-shadow: inset 0 0 0 2px currentColor; font-weight: 700; }
+.open-video { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 12px 20px; border-radius: 8px; background: #075f91; color: white; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.open-video:hover { background: #064a71; } .open-video[aria-disabled="true"] { opacity: .55; pointer-events: none; }
+#quickBar { position: fixed; z-index: 10; bottom: 0; left: 0; right: 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: #fff; border-top: 2px solid #176f61; box-shadow: 0 -4px 18px #172c3220; }
+.bar-layout { max-width: 1060px; margin: auto; display: grid; grid-template-areas: "info comment nav actions"; grid-template-columns: minmax(0, 1fr) minmax(130px, 180px) auto minmax(350px, 400px); align-items: center; gap: 12px; }
+.bar-layout:focus-within { grid-template-columns: minmax(0, 1fr) minmax(130px, 240px) auto minmax(350px, 400px); }
+.current-info { grid-area: info; display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; white-space: nowrap; }
+#currentTitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; } #currentDuration, #remaining { flex-shrink: 0; }
+.comment-field { grid-area: comment; min-width: 0; } #comment { width: 100%; min-width: 0; height: 44px; border: 1px solid #9aacb1; border-radius: 7px; padding: 8px; }
+.navigation { grid-area: nav; display: flex; gap: 4px; } .navigation button { min-height: 44px; padding: 6px 8px; }
+.bar-actions { grid-area: actions; display: grid; grid-template-columns: 1.4fr repeat(3, 1fr); gap: 6px; }
+.bar-actions button { min-width: 0; min-height: 48px; padding: 8px 6px; font-weight: 700; white-space: nowrap; }
+.bar-actions .open-video { padding: 12px 8px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 footer { border-top: 1px solid #d8e1de; padding-bottom: 40px; } .reached { color: #086246; font-weight: 700; } #rejectHint { padding: 12px; background: #fff0df; overflow-wrap: anywhere; }
+@media (max-width: 1000px) {
+  .bar-layout, .bar-layout:focus-within { grid-template-areas: "info comment nav" "actions actions actions"; grid-template-columns: minmax(0, 1fr) 160px auto; gap: 8px; }
+  .bar-layout:has(#comment:focus) { grid-template-columns: minmax(140px, 1fr) minmax(160px, 2fr) auto; }
+}
 @media (max-width: 600px) { header, main, footer { padding: 16px; } article { padding: 16px; } }
+@media (max-width: 450px) {
+  #quickBar { padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); }
+  .bar-layout, .bar-layout:focus-within { grid-template-columns: minmax(0, 1fr) 104px auto; gap: 6px; }
+  .bar-layout:has(#comment:focus) { grid-template-columns: minmax(112px, 1fr) minmax(104px, 2fr) auto; }
+  .current-info { gap: 4px; font-size: 11px; } .navigation button { padding: 6px; }
+  .bar-actions { gap: 4px; } .bar-actions button { font-size: 14px; } .bar-actions .open-video { font-size: 15px; }
+}
 </style>
 <header>
   <p class="muted">DRIVE DIARY · 학습 영상 검토</p>
@@ -35,7 +60,7 @@ footer { border-top: 1px solid #d8e1de; padding-bottom: 40px; } .reached { color
     <label><input type="checkbox" id="downloaded"> 받은 영상만</label>
     <span id="visibleCount" class="muted"></span>
   </div>
-  <p class="muted">A 승인 · R 거절 · H 보류 (즉시 저장) / J·↓ 다음 / K·↑ 이전 / C 코멘트 / Enter 현재 판정과 코멘트 저장. 입력 중에는 글자 단축키가 작동하지 않습니다.</p>
+  <p class="muted">카드를 누르면 현재 영상이 됩니다. O 영상 열기 / A 승인 · R 거절 · H 보류 (저장 후 다음 미검토) / J·→ 다음 / K·← 이전 / C 코멘트 / Enter 코멘트 저장. 입력 중에는 단축키가 멈춥니다.</p>
   <p id="notice" role="status" aria-live="polite"></p>
   <p id="rejectHint" hidden></p>
 </header>
@@ -46,6 +71,26 @@ footer { border-top: 1px solid #d8e1de; padding-bottom: 40px; } .reached { color
   <p class="muted">현황은 자동 제외 영상을 포함한 매니페스트 전체 기준입니다. 진행률은 이 콘솔에 표시할 수 있는 받은 영상과 후보 기준입니다. dev·test는 각각 사람 승인 채널 10개가 목표입니다.</p>
   <p class="muted">사전 의견은 사람 승인이 아닙니다. 사람 승인 판정은 학습 반영의 기준이며, 실제 학습 진입 제한은 T21과 후속 파이프라인에서 적용합니다. 자동 제외 영상은 이 목록에 표시되지 않습니다.</p>
 </footer>
+<section id="quickBar" aria-label="현재 영상 판정">
+  <div class="bar-layout">
+    <div class="current-info" aria-label="현재 영상">
+      <strong id="currentTitle">현재 영상 없음</strong><span id="currentDuration"></span><span id="remaining"></span>
+    </div>
+    <label class="comment-field"><span class="sr-only">현재 영상 코멘트 (최대 500자, Enter 저장)</span>
+      <input id="comment" type="text" maxlength="500" placeholder="사용 구간: 8:05~9:03" title="사용 구간: 8:05~9:03 · Enter로 코멘트 저장" disabled>
+    </label>
+    <div class="navigation" aria-label="영상 이동">
+      <button id="previous" type="button" aria-label="이전 영상 (← / K)" disabled>←</button>
+      <button id="next" type="button" aria-label="다음 영상 (→ / J)" disabled>→</button>
+    </div>
+    <div class="bar-actions actions">
+      <a id="openVideo" class="open-video" target="_blank" rel="noopener noreferrer" aria-label="현재 영상 열기 (O)" aria-disabled="true">영상 열기 ▶</a>
+      <button type="button" class="approve" data-decision="approve" aria-keyshortcuts="A" disabled>승인(A)</button>
+      <button type="button" class="reject" data-decision="reject" aria-keyshortcuts="R" disabled>거절(R)</button>
+      <button type="button" data-decision="hold" aria-keyshortcuts="H" disabled>보류(H)</button>
+    </div>
+  </div>
+</section>
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
@@ -71,12 +116,39 @@ async function api(path, payload) {
   if (!response.ok) throw new Error(data.error || '요청에 실패했습니다.');
   return data;
 }
-function select(id, scroll = false) {
+function currentVideo() { return visible.find(v => v.video_id === activeId); }
+function videoUrl(v) { return `https://www.youtube.com/watch?v=${encodeURIComponent(v.video_id)}`; }
+function renderBar() {
+  const v = currentVideo(), index = visible.findIndex(v => v.video_id === activeId);
+  $('currentTitle').textContent = v ? v.title || v.video_id : '현재 영상 없음';
+  $('currentTitle').title = v ? `현재 영상: ${v.title || v.video_id}` : '현재 영상 없음';
+  $('currentDuration').textContent = v ? (v.duration_s ? time(v.duration_s) : '길이 미상') : '';
+  const remaining = state.videos.filter(v => !v.human && (!$('downloaded').checked || v.status === 'downloaded')).length;
+  $('remaining').textContent = `미검토 ${remaining}개 남음`;
+  $('comment').value = v ? drafts.get(v.video_id) ?? v.human?.comment ?? '' : '';
+  $('comment').disabled = saving || !v;
+  $('openVideo').setAttribute('aria-disabled', String(!v || saving));
+  if (v && !saving) $('openVideo').href = videoUrl(v);
+  else $('openVideo').removeAttribute('href');
+  $('openVideo').tabIndex = v && !saving ? 0 : -1;
+  $('previous').disabled = saving || index <= 0;
+  $('next').disabled = saving || index < 0 || index >= visible.length - 1;
+  for (const button of document.querySelectorAll('[data-decision]')) {
+    button.disabled = saving || !v;
+    button.setAttribute('aria-pressed', String(v?.human?.decision === button.dataset.decision));
+  }
+}
+function select(id, scroll = false, behavior = 'smooth') {
   activeId = id;
   for (const card of $('cards').querySelectorAll('article')) {
     card.classList.toggle('active', card.dataset.id === id);
-    if (card.dataset.id === id && scroll) { card.focus({preventScroll: true}); card.scrollIntoView({block: 'start', behavior: 'smooth'}); }
+    if (card.dataset.id === id && scroll) { card.focus({preventScroll: true}); card.scrollIntoView({block: 'center', behavior}); }
   }
+  renderBar();
+}
+function move(step) {
+  const index = visible.findIndex(v => v.video_id === activeId) + step;
+  if (!saving && visible[index]) select(visible[index].video_id, true);
 }
 function renderSummary() {
   const s = state.summary, p = s.progress;
@@ -97,18 +169,21 @@ function render() {
   const filter = $('filter').value;
   visible = state.videos.filter(v => (!$('downloaded').checked || v.status === 'downloaded') &&
     (filter === 'all' || (v.human ? v.human.decision : 'unreviewed') === filter));
-  if (!visible.some(v => v.video_id === activeId)) activeId = visible[0]?.video_id || null;
+  if (!visible.some(v => v.video_id === activeId)) activeId = (visible.find(v => !v.human) || visible[0])?.video_id || null;
   $('visibleCount').textContent = `${visible.length}개 표시`;
   $('cards').replaceChildren();
   if (!visible.length) $('cards').append(el('p', '이 조건에 맞는 영상이 없습니다. 다른 필터를 선택해 주세요.'));
   for (const v of visible) {
     const card = el('article'); card.dataset.id = v.video_id; card.tabIndex = 0;
-    card.addEventListener('focusin', () => select(v.video_id));
-    card.addEventListener('click', () => select(v.video_id));
+    card.addEventListener('focusin', () => { if (!saving) select(v.video_id); });
+    card.addEventListener('click', () => { if (!saving) select(v.video_id); });
     card.append(el('h2', v.title || v.video_id));
+    const open = el('a', '영상 열기 ▶', 'open-video');
+    open.href = videoUrl(v); open.target = '_blank'; open.rel = 'noopener noreferrer'; card.append(open);
     const date = /^\d{8}$/.test(v.upload_date) ? `${v.upload_date.slice(0,4)}-${v.upload_date.slice(4,6)}-${v.upload_date.slice(6)}` : v.upload_date;
     card.append(el('p', `${v.channel || '채널 미상'} · ${v.duration_s ? time(v.duration_s) : '길이 미상'} · ${date || '날짜 미상'} · ${v.status === 'downloaded' ? '받은 영상' : '후보'} · ${v.split || '분할 없음'}`, 'meta'));
     card.append(el('p', `찾은 검색어: ${v.query || '기록 없음'}`, 'meta'));
+    card.append(el('p', v.description || '설명 없음', 'meta'));
     const metrics = el('div', undefined, 'indicators'), m = v.metrics;
     for (const text of [`말 비중 ${percent(m.speech_share)}`, `발화 수 ${m.utterance_count ?? '자료 없음'}`, `분당 발화 ${m.utterances_per_minute == null ? '자료 없음' : m.utterances_per_minute.toFixed(1)}`, `한글 비율 ${percent(m.hangul_share)}`, `평균 ASR 신뢰도 ${percent(m.asr_confidence)}`]) metrics.append(el('span', text));
     if (!m.skip_shares.length) metrics.append(el('span', 'silver skip 비율: 자료 없음'));
@@ -126,62 +201,69 @@ function render() {
       } else block.append(el('p', '전사 없음 · 영상 길이 기준 링크입니다.', 'muted'));
       card.append(block);
     }
-    const label = el('label', '코멘트 (최대 500자)'), input = el('textarea');
-    input.rows = 2; input.maxLength = 500; input.value = drafts.has(v.video_id) ? drafts.get(v.video_id) : v.human?.comment || '';
-    input.addEventListener('input', () => drafts.set(v.video_id, input.value));
-    label.append(input); card.append(label);
-    const actions = el('div', undefined, 'actions');
-    for (const decision of ['approve', 'reject', 'hold']) {
-      const button = el('button', `${names[decision]} · ${{approve:'A',reject:'R',hold:'H'}[decision]}`, decision);
-      button.type = 'button'; button.setAttribute('aria-pressed', String(v.human?.decision === decision));
-      button.addEventListener('click', () => save(v.video_id, decision)); actions.append(button);
-    }
-    const saveComment = el('button', '코멘트 저장 · Enter');
-    saveComment.type = 'button'; saveComment.addEventListener('click', () => save(v.video_id, v.human?.decision)); actions.append(saveComment);
-    card.append(actions); $('cards').append(card);
+    if (v.human?.comment) card.append(el('p', `코멘트 · ${v.human.comment}`, 'meta'));
+    $('cards').append(card);
   }
   select(activeId);
 }
-async function save(id, decision) {
+async function save(id, decision, advance = true) {
   if (saving || !id) return;
   if (!decision) { $('notice').textContent = '승인 · 거절 · 보류 중 하나를 선택하면 코멘트도 함께 저장됩니다.'; return; }
   saving = true;
   const oldIndex = visible.findIndex(v => v.video_id === id);
-  const card = [...$('cards').querySelectorAll('article')].find(c => c.dataset.id === id);
-  const comment = card.querySelector('textarea').value;
-  for (const control of document.querySelectorAll('button, select, textarea, input')) control.disabled = true;
+  const order = [...visible.slice(oldIndex + 1), ...visible.slice(0, oldIndex)];
+  const comment = $('comment').value;
+  const restoreCommentFocus = !advance && document.activeElement === $('comment');
+  for (const control of document.querySelectorAll('button, select, input')) control.disabled = true;
+  renderBar();
   try {
     await api('/api/decision', {video_id: id, decision, comment});
+    const updated = await api('/api/state');
+    const next = advance && order.find(v => updated.videos.some(row => row.video_id === v.video_id && !row.human));
+    // Move on the old list before removing the reviewed card from the filter.
+    if (next) select(next.video_id, true, 'instant');
     drafts.delete(id);
-    state = await api('/api/state');
+    state = updated;
     render();
-    if (!visible.some(v => v.video_id === id) && visible.length) select(visible[Math.min(oldIndex, visible.length - 1)].video_id, true);
+    if (next) select(next.video_id, true, 'instant');
     $('notice').textContent = `${names[decision]} 및 코멘트를 저장했습니다.`;
   } catch (error) { $('notice').textContent = error.message; }
   finally {
     saving = false;
-    for (const control of document.querySelectorAll('button, select, textarea, input')) control.disabled = false;
+    for (const control of document.querySelectorAll('button, select, input')) control.disabled = false;
+    renderBar();
+    if (restoreCommentFocus && activeId === id) $('comment').focus();
   }
 }
-for (const id of ['filter', 'downloaded']) $(id).addEventListener('change', render);
+for (const id of ['filter', 'downloaded']) $(id).addEventListener('change', () => { activeId = null; render(); });
+$('comment').addEventListener('input', () => { if (activeId) drafts.set(activeId, $('comment').value); });
+$('previous').addEventListener('click', () => move(-1));
+$('next').addEventListener('click', () => move(1));
+for (const button of document.querySelectorAll('[data-decision]')) {
+  button.addEventListener('click', () => save(activeId, button.dataset.decision));
+}
+new ResizeObserver(() => {
+  document.documentElement.style.setProperty('--bar-height', `${$('quickBar').getBoundingClientRect().height}px`);
+}).observe($('quickBar'));
 document.addEventListener('keydown', event => {
-  if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey || saving) return;
-  const typing = ['TEXTAREA', 'INPUT', 'SELECT'].includes(event.target.tagName);
-  const v = visible.find(v => v.video_id === activeId);
-  if (event.key === 'Enter' && event.target.tagName !== 'BUTTON' && event.target.tagName !== 'A' && event.target.tagName !== 'SELECT') {
-    event.preventDefault(); if (v) save(v.video_id, v.human?.decision); return;
+  if (event.isComposing || event.keyCode === 229 || event.ctrlKey || event.metaKey || event.altKey || saving) return;
+  const typing = ['TEXTAREA', 'INPUT', 'SELECT'].includes(event.target.tagName) || event.target.isContentEditable;
+  const v = currentVideo();
+  if (event.key === 'Enter' && event.target === $('comment')) {
+    event.preventDefault(); if (v) save(v.video_id, v.human?.decision, false); return;
   }
   if (typing) return;
   const key = event.key.toLowerCase(), decisions = {a: 'approve', r: 'reject', h: 'hold'};
+  if (event.repeat) return;
   if (decisions[key]) { event.preventDefault(); if (v) save(v.video_id, decisions[key]); }
+  else if (key === 'o') { event.preventDefault(); if (v) $('openVideo').click(); }
   else if (key === 'c') {
     event.preventDefault();
-    [...$('cards').querySelectorAll('article')].find(c => c.dataset.id === activeId)?.querySelector('textarea').focus();
+    if (v) $('comment').focus();
   } else if (['j','k','arrowdown','arrowup','arrowright','arrowleft'].includes(key)) {
     event.preventDefault();
     const step = ['j','arrowdown','arrowright'].includes(key) ? 1 : -1;
-    const index = Math.max(0, Math.min(visible.length - 1, visible.findIndex(v => v.video_id === activeId) + step));
-    if (visible[index]) select(visible[index].video_id, true);
+    move(step);
   }
 });
 api('/api/state').then(data => { state = data; render(); }).catch(error => { $('notice').textContent = error.message; });

@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -56,7 +57,9 @@ def read_sample(root):
         encoding='utf-8-sig').splitlines() if line.strip()]
 
 
-def base(root):
+def base(root, workspace=None):
+    if workspace is not None:
+        return Path(workspace) / "pleos"
     return root / '.local/demo/pleos'
 
 
@@ -108,9 +111,9 @@ def prepare(root, ids=None, limit=None):
     return entries
 
 
-def manifest(root):
-    entries = read_json(base(root) / 'manifest.json')['clips']
-    if not entries or len({e['name'] for e in entries}) != len(entries):
+def manifest(root, workspace=None):
+    entries = read_json(base(root, workspace) / 'manifest.json')['clips']
+    if (not entries and workspace is None) or len({e['name'] for e in entries}) != len(entries):
         raise ValueError('invalid or empty manifest')
     for entry in entries:
         if not SAFE.fullmatch(entry['name']) or entry['name'] != pcm_name(entry['id']):
@@ -202,23 +205,44 @@ def clean(call, user=None):
     call(['shell', 'rm', '-rf', LEGACY_REMOTE])
 
 
-def push(root, call, user=None):
-    entries = manifest(root)
+def push(root, call, user=None, *, workspace=None, verify_timeout=10,
+         now=time.monotonic, sleep=time.sleep):
+    if not math.isfinite(verify_timeout) or verify_timeout <= 0:
+        raise ValueError('invalid push verification timeout')
+    entries = manifest(root, workspace)
+    if not entries:
+        return
     for entry in entries:
-        if not (base(root) / 'pcm' / entry['name']).is_file():
+        if not (base(root, workspace) / 'pcm' / entry['name']).is_file():
             raise ValueError('prepared PCM missing')
     user = current_user(call, user)
     clean(call, user)
     call(app_shell(user, 'mkdir -p ' + REMOTE))
     for entry in entries:
-        source = base(root) / 'pcm' / entry['name']
+        source = base(root, workspace) / 'pcm' / entry['name']
         destination = REMOTE + '/' + entry['name']
         with source.open('rb') as stream:
             call(run_as(user, 'sh', '-c', 'cat > ' + destination, mode='exec-in'), stdin=stream)
             expected = os.fstat(stream.fileno()).st_size
-        size = call(app_shell(user, 'wc -c < ' + destination)).strip()
-        if not size.isdigit() or int(size) != expected:
-            raise TransferError('push-verify', 'PCM size mismatch')
+        # exec-in can return before the device's cat finishes writing. Retry only
+        # undersized files, using direct stat and a separate deadline per file.
+        deadline = now() + verify_timeout
+        while True:
+            remaining = deadline - now()
+            if remaining <= 0:
+                raise TransferError('push-verify', 'PCM size mismatch')
+            try:
+                size = call(run_as(user, 'stat', '-c', '%s', destination, mode='exec-out'),
+                            timeout=remaining).strip()
+            except AdbError as error:
+                if error.kind == 'TimeoutExpired':
+                    raise TransferError('push-verify', 'PCM size mismatch') from None
+                raise
+            if not size.isdigit() or int(size) > expected or now() > deadline:
+                raise TransferError('push-verify', 'PCM size mismatch')
+            if int(size) == expected:
+                break
+            sleep(min(.2, max(0, deadline - now())))
 
 
 class TransferError(RuntimeError):
@@ -248,8 +272,12 @@ def read_status(call, user=None, timeout=None):
 
 
 def run(root, call, speed=100, padding=0, timeout=3000, poll=2, only=None,
-        now=time.monotonic, sleep=time.sleep, user=None, start_timeout=15):
-    entries = manifest(root)
+        now=time.monotonic, sleep=time.sleep, user=None, start_timeout=15, *, workspace=None):
+    if workspace is not None and speed != 100:
+        raise ValueError('real sources require speed 100')
+    entries = manifest(root, workspace)
+    if not entries:
+        return
     if only:
         if not re.fullmatch(r'[A-Za-z0-9_.-]+', only):
             raise ValueError('unsafe filename prefix')
@@ -258,7 +286,7 @@ def run(root, call, speed=100, padding=0, timeout=3000, poll=2, only=None,
         raise ValueError('prefix selected no clips')
     user = current_user(call, user)
     run_id = uuid.uuid4().hex
-    folder = base(root) / 'raw' / config(speed)
+    folder = base(root, workspace) / 'raw' / config(speed)
     metadata = dict(run_id=run_id, user=user, speed_pct=speed, padding_ms=padding, clips=entries)
     write_json(folder / 'run.json', metadata)
     args = ['shell', 'am', 'start-foreground-service', '--user', str(user), '-n', SERVICE,
@@ -310,8 +338,10 @@ def run(root, call, speed=100, padding=0, timeout=3000, poll=2, only=None,
         sleep(min(poll, max(0, limit - now())))
 
 
-def pull(root, call, speed=100, user=None):
-    folder = base(root) / 'raw' / config(speed)
+def pull(root, call, speed=100, user=None, *, workspace=None):
+    if workspace is not None and not manifest(root, workspace):
+        return
+    folder = base(root, workspace) / 'raw' / config(speed)
     metadata = read_json(folder / 'run.json')
     user = current_user(call, user)
     if metadata.get('user', user) != user:
@@ -360,8 +390,8 @@ def parse_tsv(path):
     return records, broken
 
 
-def load_runs(root):
-    for file in sorted((base(root) / 'raw').glob('pleos*/run.json')):
+def load_runs(root, workspace=None):
+    for file in sorted((base(root, workspace) / 'raw').glob('pleos*/run.json')):
         meta = read_json(file)
         if file.parent.name != config(meta['speed_pct']):
             raise ValueError('run speed mismatch')
@@ -372,8 +402,8 @@ def load_runs(root):
         yield file.parent, meta
 
 
-def results(root):
-    for folder, meta in load_runs(root):
+def results(root, workspace=None):
+    for folder, meta in load_runs(root, workspace):
         for entry in meta['clips']:
             if not SAFE.fullmatch(entry['name']):
                 raise ValueError('unsafe run filename')
@@ -384,8 +414,13 @@ def results(root):
             for record in records:
                 if record['kind'] != 'final':
                     continue
-                end = None if record['audio_ms'] is None else min(entry['seconds'], max(
-                    0., (record['audio_ms'] - meta['padding_ms']) / 1000))
+                if record['audio_ms'] is None:
+                    if workspace is not None:
+                        broken += 1
+                        continue
+                    raise ValueError('missing final audio position')
+                end = max(previous, min(entry['seconds'], max(
+                    0., (record['audio_ms'] - meta['padding_ms']) / 1000)))
                 lines.append(dict(start=previous if end is not None else None, end=end, text=record['text']))
                 previous = end
             row = dict(id=entry['id'], config=config(meta['speed_pct']), lines=lines,
@@ -394,8 +429,17 @@ def results(root):
             yield row, records, meta
 
 
-def collect(root):
-    rows = [row for row, _, _ in results(root)]
+def asr_row(row):
+    from demo.asr.data import validate_result
+    result = {key: row[key] for key in ('id', 'config', 'lines', 'seconds')}
+    result.update(avg_logprob=None, no_speech_prob=None)
+    return validate_result(result)
+
+
+def collect(root, *, workspace=None):
+    if workspace is not None:
+        return collect_sources(root, workspace)
+    rows = [asr_row(row) for row, _, _ in results(root)]
     if not rows:
         raise ValueError('no runs to collect')
     atomic(root / '.local/demo/asr/pleos.jsonl', ''.join(
@@ -428,14 +472,177 @@ def stats(root):
     return report
 
 
+def stream_pcm(source, destination):
+    """Decode a whole source with bounded memory; raw little-endian PCM16."""
+    import av
+    import array
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    samples = 0
+    try:
+        with av.open(str(source)) as container, destination.open('wb') as output:
+            resampler = av.AudioResampler(format='s16', layout='mono', rate=16000)
+            def write(frame):
+                nonlocal samples
+                payload = bytes(frame.planes[0])[:frame.samples * 2]
+                if sys.byteorder != 'little':
+                    values = array.array('h', payload)
+                    values.byteswap()
+                    payload = values.tobytes()
+                output.write(payload)
+                samples += frame.samples
+            for frame in container.decode(audio=0):
+                for converted in resampler.resample(frame):
+                    write(converted)
+            for converted in resampler.resample(None):
+                write(converted)
+        if not samples:
+            raise ValueError('empty source audio')
+        return samples / 16000
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise ValueError('PCM conversion failed') from None
+
+
+def prepare_sources(root, workspace, chunk_seconds=90, ids=None, limit=None):
+    """Split each approved range, retaining original source offsets."""
+    from eval.real import discover_sources, read_objects
+    if not math.isfinite(chunk_seconds) or not 0 < chunk_seconds <= 90:
+        raise ValueError('chunk limit is 90 seconds (device PCM limit is 95 seconds)')
+    rows = [r for r in discover_sources(root, workspace) if r['status'] == 'ready']
+    if ids and set(ids) - {r['id'] for r in rows}:
+        raise ValueError('source not approved or unavailable')
+    rows = [r for r in rows if not ids or r['id'] in ids][:limit]
+    completed = {r['id'] for r in read_objects(Path(workspace) / 'asr.jsonl')}
+    folder = base(root, workspace)
+    old = read_json(folder / 'plan.json') if (folder / 'plan.json').exists() else {}
+    plan = dict(old)
+    def bounds(ranges):
+        return [[r['start'], r['end']] for r in ranges]
+    changed_ranges = False
+    # Preflight every selected source before deleting or generating anything.
+    for row in rows:
+        video = row['id']
+        if video not in old:
+            continue
+        source = Path(root) / '.local/audio' / (video + '.webm')
+        if old[video]['signature'] != [source.stat().st_size, source.stat().st_mtime_ns, chunk_seconds]:
+            raise ValueError('source or chunk size changed; choose a new run')
+        previous = old[video].get('ranges', [dict(start=0, end=row['seconds'])])
+        changed_ranges |= bounds(previous) != bounds(row['ranges'])
+    if changed_ranges:
+        # A successful chunk anywhere in this run freezes its plan, even before collect.
+        protected = bool(completed) or any((folder / 'parts').glob('*.json'))
+        protected |= any(p.read_bytes().strip() for p in (Path(workspace) / 'judgments').glob('*.jsonl'))
+        for path in (folder / 'raw').glob('pleos*/*.tsv'):
+            records, broken = parse_tsv(path)
+            if not broken and not any(r['kind'] == 'error' or
+                                      (r['kind'] == 'final' and r['audio_ms'] is None) for r in records):
+                protected = True
+        if protected:
+            raise ValueError('ranges changed; choose a new run')
+        # Resolve/check all recursive targets within this run before deleting them.
+        workspace_path = Path(workspace).resolve()
+        targets = [folder / 'pcm', folder / 'raw', Path(workspace) / 'clips']
+        if any(not p.resolve().is_relative_to(workspace_path) for p in targets):
+            raise ValueError('unsafe preparation path')
+        for path in targets:
+            if path.exists():
+                shutil.rmtree(path)
+        for path in (folder / 'plan.json', folder / 'manifest.json', Path(workspace) / 'blocks.jsonl'):
+            path.unlink(missing_ok=True)
+        plan = {}
+    for row in rows:
+        video = row['id']
+        source = Path(root) / '.local/audio' / (video + '.webm')
+        signature = [source.stat().st_size, source.stat().st_mtime_ns, chunk_seconds]
+        if video in plan:
+            continue
+        if f'yt:{video}@0' in completed:
+            continue
+        temporary = folder / 'source.pcm'
+        try:
+            seconds = stream_pcm(source, temporary)
+            entries = []
+            with temporary.open('rb') as stream:
+                for range_index, usable in enumerate(row['ranges']):
+                    # Quantize inward: not even a partial sample may escape a range.
+                    offset = math.ceil(usable['start'] * 16000)
+                    stop = min(math.floor(usable['end'] * 16000), int(seconds * 16000))
+                    stream.seek(offset * 2)
+                    while offset < stop:
+                        count = min(stop-offset, max(1, int(chunk_seconds * 16000)))
+                        payload = stream.read(count * 2)
+                        if len(payload) != count * 2:
+                            raise ValueError('source PCM length mismatch')
+                        identity = f'yt:{video}@{len(entries)}'
+                        name = pcm_name(identity)
+                        atomic(folder / 'pcm' / name, payload)
+                        entries.append(dict(id=identity, source_id=f'yt:{video}@0', name=name,
+                                            seconds=count / 16000, offset=offset / 16000,
+                                            range_index=range_index))
+                        offset += count
+            plan[video] = dict(signature=signature, seconds=row['seconds'], entries=entries,
+                               ranges=row['ranges'])
+            write_json(folder / 'plan.json', plan)
+        finally:
+            temporary.unlink(missing_ok=True)
+    entries = [e for r in rows if f"yt:{r['id']}@0" not in completed
+               for e in plan[r['id']]['entries']
+               if not (folder / 'parts' / (e['name'] + '.json')).exists()]
+    write_json(folder / 'manifest.json', dict(version=2, clips=entries))
+    return entries
+
+
+def collect_sources(root, workspace):
+    from eval.real import read_objects, write_objects
+    folder = base(root, workspace)
+    plan = read_json(folder / 'plan.json') if (folder / 'plan.json').exists() else {}
+    failed = False
+    seen = set()
+    pending = manifest(root, workspace)
+    for row, _, meta in results(root, workspace) if pending else []:
+        entry = next(e for e in meta['clips'] if e['id'] == row['id'])
+        seen.add(entry['name'])
+        if meta['speed_pct'] != 100 or row['errors']:
+            failed = True
+            continue
+        write_json(folder / 'parts' / (entry['name'] + '.json'), asr_row(row))
+    if any(e['name'] not in seen for e in pending):
+        failed = True
+    existing = {r['id']: r for r in read_objects(Path(workspace) / 'asr.jsonl')}
+    for video, source in sorted(plan.items()):
+        identity = f'yt:{video}@0'
+        if identity in existing:
+            continue
+        paths = [folder / 'parts' / (e['name'] + '.json') for e in source['entries']]
+        if not all(p.exists() for p in paths):
+            continue
+        lines = []
+        for entry, path in zip(source['entries'], paths):
+            part = read_json(path)
+            for line in part['lines']:
+                lines.append(dict(start=line['start'] + entry['offset'],
+                                  end=line['end'] + entry['offset'], text=line['text']))
+        existing[identity] = asr_row(dict(id=identity, config='pleos', lines=lines, seconds=source['seconds']))
+    write_objects(Path(workspace) / 'asr.jsonl', list(existing.values()))
+    if failed:
+        raise ValueError('invalid chunk result; successful chunks retained')
+    return list(existing.values())
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['prepare', 'push', 'run', 'pull', 'collect', 'stats', 'clean'])
     parser.add_argument('--root', type=Path, default=ROOT)
+    parser.add_argument('--real', help='실제 평가 실행 이름 (예: v1)')
+    parser.add_argument('--chunk-seconds', type=float, default=90, help='구간 내 조각 길이 (최대 90초)')
     parser.add_argument('--serial', default='emulator-5554')
     parser.add_argument('--adb', default=None)
     parser.add_argument('--user', type=int, help='Android user ID (default: am get-current-user)')
     parser.add_argument('--start-timeout', type=float, default=15, help='seconds to observe service startup')
+    parser.add_argument('--push-verify-timeout', type=float, default=10,
+                        help='seconds to wait for each pushed PCM size to match')
     parser.add_argument('--ids', nargs='+')
     parser.add_argument('--limit', type=int)
     parser.add_argument('--speed-pct', type=int, default=100)
@@ -447,29 +654,51 @@ def main(argv=None):
     if (not 25 <= args.speed_pct <= 1600 or not math.isfinite(args.timeout) or not math.isfinite(args.poll)
             or args.timeout <= 0 or args.poll <= 0 or not math.isfinite(args.start_timeout)
             or args.start_timeout <= 0 or (args.user is not None and args.user < 0)
+            or not math.isfinite(args.push_verify_timeout) or args.push_verify_timeout <= 0
             or (args.limit is not None and args.limit <= 0)):
         parser.error('invalid speed, limit, or timeout')
     def call(arguments, **kwargs):
         budget = min(30, args.timeout, kwargs.pop('timeout', 30))
         return adb(arguments, args.serial, args.adb, timeout=budget, **kwargs)
     try:
+        workspace = None
+        if args.real:
+            from eval.real import run_directory
+            workspace = run_directory(args.root, args.real)
         if args.command == 'prepare':
-            prepare(args.root, args.ids, args.limit)
+            if workspace is None:
+                prepare(args.root, args.ids, args.limit)
+            else:
+                entries = prepare_sources(args.root, workspace, args.chunk_seconds, args.ids, args.limit)
+                print(json.dumps(dict(chunks=len(entries), seconds=sum(e['seconds'] for e in entries))))
         elif args.command == 'push':
-            push(args.root, call, args.user)
+            push(args.root, call, args.user, workspace=workspace,
+                 verify_timeout=args.push_verify_timeout)
         elif args.command == 'run':
             run(args.root, call, args.speed_pct, args.padding_ms, args.timeout, args.poll, args.only,
-                user=args.user, start_timeout=args.start_timeout)
+                user=args.user, start_timeout=args.start_timeout, workspace=workspace)
         elif args.command == 'pull':
-            pull(args.root, call, args.speed_pct, args.user)
+            pull(args.root, call, args.speed_pct, args.user, workspace=workspace)
         elif args.command == 'collect':
-            collect(args.root)
+            collect(args.root, workspace=workspace)
         elif args.command == 'stats':
+            if workspace is not None:
+                raise ValueError('use eval.real stats')
             stats(args.root)
         else:
             clean(call, args.user)
     except (OSError, ValueError, KeyError, RuntimeError, TimeoutError) as error:
         # Neither malformed input nor SDK/adb exception messages may reveal speech.
+        if args.real:
+            from eval.real import RangeError
+            if isinstance(error, RangeError):
+                print(str(error), file=sys.stderr)
+                return 1
+            trace = error.__traceback__
+            while trace.tb_next:
+                trace = trace.tb_next
+            print(f'{type(error).__name__} {Path(trace.tb_frame.f_code.co_filename).name}:{trace.tb_lineno}', file=sys.stderr)
+            return 1
         diagnostic = f'Pleos {args.command} failed: stage={args.command}'
         if isinstance(error, AdbError):
             diagnostic += (f'/{error.stage}; exception={type(error).__name__}'

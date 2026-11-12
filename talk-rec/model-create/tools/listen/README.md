@@ -96,3 +96,34 @@ New-Item -ItemType Directory -Force .local/listen | Out-Null
 ```
 
 합성 로컬 fixture와 loopback HTTP만 사용하며 모든 테스트 서버는 finally에서 종료한다.
+## 실제 묶음 v3 (T50)
+
+기존 데모는 아래 본문의 `--name` 명령을 그대로 쓴다. 기존 답 파일은 바꾸지 않는다.
+실제 묶음은 별도 명령으로 연다.
+
+```powershell
+.\.venv\Scripts\python.exe -m tools.listen.serve --real v1 --annotator 민수 --port 8767
+```
+
+`http://127.0.0.1:8767`을 연다. `.local/real/v1/blocks.jsonl`의 모든 묶음을
+같은 시드로 섞어 보여 준다. dev/test 모두 듣는다. 지정 판정자의 답만 읽고 저장한다.
+다른 판정자 이름을 API로 고르는 기능은 없다. 같은 이름의 서버는 하나만 실행한다.
+
+원본에서 앞뒤 2초 여유를 잘라 `.local/real/v1/clips/`에 WAV로 보관한다.
+처음 재생할 때 만든다. 원본 끝에서는 있는 소리까지만 재생한다.
+전사는 처음에 접혀 있고 `전사 보기`로만 펼친다. 먼저 듣고 판정한다.
+
+- K/N: 남길 것/없음, S/M: 이야기/순간, U: 불확실
+- Enter: 저장하고 다음, ←/→: 이전/다음, J: 미판정, T: 전사 보기
+- Space: 재생/멈춤. 입력 칸에서는 단축키가 멈춘다.
+
+남길 것이 필수이고 남길 때 종류도 필수다. 없음일 때 종류는 비우며 없음 이유는 선택이다.
+정책은 여러 개를 고를 수 있다. 실제 재생으로 관측한 서로 다른 구간의 합이
+음성 길이의 80% 이상이면 `listened=true`로 저장한다. 탐색이나 같은 구간 반복은
+청취 비율을 부풀리지 않는다. 이는 주의 깊게 들었다는 보증은 아니다.
+
+답은 `.local/real/v1/judgments/<이름>.jsonl`에 쌓인다. 같은 id는 마지막 답을 쓴다.
+다른 판정자의 답은 보이지 않는다. 코멘트에 실제 전사 글을 옮기지 않는다.
+묶음 설정이나 원본이 바뀌면 새 `--run`을 쓴다. 기존 판정 뒤에는 기존 묶음을 바꾸지 못한다.
+평가용 읽기는 `eval.real.load_labels`로만 한다. test는 기본 잠겨 있으며
+`python -m eval.real open-test stats --run v1`처럼 명시해서 연다.

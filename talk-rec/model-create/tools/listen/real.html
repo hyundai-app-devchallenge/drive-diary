@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>실제 묶음 듣고 판정</title>
+<style>
+body{font:16px system-ui,sans-serif;margin:0;background:#f4f6f8;color:#163545}header{background:#183e50;color:white;padding:18px 24px;line-height:1.7}header p{margin:4px 0}main{max-width:850px;margin:24px auto;padding:0 18px}section{background:white;padding:24px;border-radius:14px}audio,progress,textarea{width:100%;box-sizing:border-box}audio{margin:20px 0}button,select,textarea{font:inherit;padding:10px;margin:5px}button{cursor:pointer}fieldset{margin:18px 0;border:1px solid #bdcbd1}label{display:inline-block;margin:8px}pre{white-space:pre-wrap;line-height:1.8}nav{display:flex;gap:8px;flex-wrap:wrap;margin-top:20px}#error{color:#a21f14}button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid #b6531a}small{color:#546975}
+</style>
+<style>#suggestionBox{background:#eff6fa;border:1px solid #a9c8d8;border-radius:10px;padding:16px;margin-top:16px;line-height:1.7}</style>
+<header>
+<p>① 탑승자끼리 나누는 말인지 먼저 듣습니다. 방송이나 설명만 들리면 없음으로 고릅니다.<br>② 지금 분위기가 다툼·혼내기·무거운 걱정 중심이면 없음으로 고릅니다. 소재보다 말투와 분위기를 봅니다.</p>
+<p>③ 다시 들을 이야기나 한마디가 있으면 남길 것으로 고릅니다. ④ 화제를 받아 이어 가면 이야기, 한마디 자체가 남으면 순간입니다.<br>⑤ 가까운 쪽을 고른 뒤 망설여지면 불확실을 켭니다. ⑥ 기록 거부·명령만 있는 구간·외부 소리 중심은 정책에도 따로 표시합니다.</p>
+</header>
+<main><h1>실제 묶음 듣고 판정</h1><label>묶음 <select id="splitFilter"><option value="test">test만</option><option value="dev">dev만</option><option value="all">전체</option></select></label><p id="progressText"></p><progress id="progress"></progress><p id="done" role="status"></p>
+<section id="card"><small id="identity"></small><audio id="audio" controls preload="metadata"></audio>
+<p><small id="rangeNote"></small></p>
+<small id="listenHelp">사용 구간 안에서 앞뒤 최대 2초 여유를 포함합니다. 먼저 듣고 판정해 주세요. 실제 들은 구간이 80% 이상이면 청취 표시가 켜집니다.</small><p id="listened"></p>
+<aside id="suggestionBox" hidden><strong>Claude 제안 · 전사 글만 보고 판단함</strong><p id="suggestionText"></p><button id="accept">제안 맞음 (A)</button></aside>
+<fieldset><legend>남길 것 (필수)</legend><label><input type="radio" name="keep" value="keep">남길 것 (K)</label><label><input type="radio" name="keep" value="none">없음 (N)</label></fieldset>
+<fieldset id="kindBox" hidden><legend>종류 (남길 때 필수)</legend><label><input type="radio" name="kind" value="story">이야기 (S)</label><label><input type="radio" name="kind" value="moment">순간 (M)</label></fieldset>
+<label id="reasonBox" hidden>없음 이유 (선택) <select id="reason"><option value="">선택 안 함</option value="not_car">차 안 대화 아님</option><option value="negative">부정적 분위기</option></select></label>
+<label><input id="unsure" type="checkbox">불확실 (U)</label>
+<fieldset><legend>정책 (복수 선택)</legend><label><input name="policy" type="checkbox" value="optout">기록 거부</label><label><input name="policy" type="checkbox" value="command">기기 호출·명령뿐</label><label><input name="policy" type="checkbox" value="external">외부 소리 중심</label></fieldset>
+<label for="comment">짧은 메모 (선택)</label><textarea id="comment" rows="2" maxlength="2000" placeholder="전사 글을 옮기지 말고 판단 이유만 적어 주세요."></textarea>
+<button id="save">저장하고 다음 (Enter)</button><p id="saved" role="status"></p>
+<details id="transcript"><summary>전사 보기 (T)</summary><pre id="text"></pre></details>
+<nav><button id="prev">이전 (←)</button><button id="next">다음 (→)</button><button id="unjudged">미판정으로 이동 (J)</button><span id="position"></span></nav>
+<small>Space 재생·멈춤 · K/N 남김/없음 · S/M 이야기/순간 · U 불확실 · T 전사 보기 · A 제안 확인<br>입력 칸에서는 단축키가 멈춥니다. 저장 실패 시 다시 저장해 주세요.</small>
+</section><p id="error" role="alert"></p></main>
+<script>
+const $=id=>document.getElementById(id), audio=$('audio');
+let state,index=0,busy=false,last=null,ranges=[],heard=false,filter='all';
+try{const saved=localStorage.getItem('real-listen-split');if(['test','dev','all'].includes(saved))filter=saved;}catch{}
+$('splitFilter').value=filter;
+const checked=name=>document.querySelector(`input[name="${name}"]:checked`)?.value||'';
+function choose(name,value){document.querySelectorAll(`input[name="${name}"]`).forEach(x=>x.checked=x.value===value);sync();}
+function sync(){const keep=checked('keep');$('kindBox').hidden=keep!=='keep';$('reasonBox').hidden=keep!=='none';if(keep!=='keep')document.querySelectorAll('[name="kind"]').forEach(x=>x.checked=false);if(keep!=='none')$('reason').value='';}
+async function api(path,payload){const response=await fetch(path,payload===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const data=await response.json();if(!response.ok)throw Error(data.error||'요청 실패');return data;}
+function visibleRows(){return (state?.rows||[]).filter(r=>filter==='all'||r.split===filter);}
+function row(){return visibleRows()[index];}
+function suggestion(){const r=row();return r?.split==='dev'?r.suggestion:null;}
+function fill(a){
+  choose('keep',a?.keep||'');choose('kind',a?.kind||'');
+  $('reason').value=a?.none_reason||'';$('unsure').checked=!!a?.unsure;
+  document.querySelectorAll('[name="policy"]').forEach(x=>x.checked=(a?.policy||[]).includes(x.value));
+  $('comment').value=a?.comment||'';
+}
+function show(){
+  audio.pause();last=null;ranges=[];
+  const rows=visibleRows(),count=rows.filter(r=>r.answer).length,total=state.rows.filter(r=>r.answer).length;
+  $('progressText').textContent=`${state.name} · ${filter==='all'?'전체':filter} ${count}/${rows.length} · 전체 ${total}/${state.total}`;
+  $('progress').max=rows.length||1;$('progress').value=count;
+  $('position').textContent=rows.length?`${index+1} / ${rows.length}`:'0 / 0';
+  $('done').textContent=!rows.length?'선택한 묶음이 없습니다.':count===rows.length?'선택한 묶음을 모두 판정했습니다.':'';
+  const r=row();$('card').hidden=!r;$('suggestionBox').hidden=true;$('suggestionText').textContent='';
+  if(!r){audio.removeAttribute('src');audio.load();return;}
+  const s=suggestion(),a=r.answer||s;
+  $('listenHelp').textContent=r.split==='dev'?'dev는 제안을 확인해 저장할 수 있습니다. 필요하면 듣고 고쳐 주세요. 청취 표시는 실제 들은 구간이 80% 이상일 때 켜집니다.':'사용 구간 안에서 앞뒤 최대 2초 여유를 포함합니다. 먼저 듣고 판정해 주세요. 실제 들은 구간이 80% 이상이면 청취 표시가 켜집니다.';
+  heard=!!r.answer?.listened;$('listened').textContent=heard?'청취 표시: 완료':'청취 표시: 아직';
+  $('transcript').open=false;$('text').textContent=r.turns.join('\n');
+  $('identity').textContent=`${r.split} · ${r.id} · ${r.start.toFixed(1)}–${r.end.toFixed(1)}초`;
+  $('rangeNote').textContent=r.note?'승인 메모 (전사 아님): '+r.note:'';
+  fill(a);$('saved').textContent=r.answer?'저장된 판정입니다. 다시 고르면 바꿀 수 있습니다.':s?'제안을 미리 채웠습니다. 맞으면 확인하고, 다르면 고쳐 주세요.':'';
+  if(s){
+    const words={keep:'남길 것',none:'없음',story:'이야기',moment:'순간',not_car:'차 안 대화 아님',negative:'부정적 분위기',optout:'기록 거부',command:'기기 호출·명령뿐',external:'외부 소리 중심'};
+    $('suggestionBox').hidden=false;
+    $('suggestionText').textContent=`판정: ${words[s.keep]} · 종류: ${words[s.kind]||'없음'} · 없음 이유: ${words[s.none_reason]||'없음'} · 불확실: ${s.unsure?'예':'아니요'} · 정책: ${s.policy.map(p=>words[p]).join(', ')||'없음'} · 짧은 이유: ${s.comment||'없음'}`;
+  }
+  $('prev').disabled=index===0;$('next').disabled=index===rows.length-1;
+  audio.src='/audio?id='+encodeURIComponent(r.id);audio.load();
+}
+function setFilter(value){
+  if(busy)return;
+  filter=['test','dev','all'].includes(value)?value:'all';$('splitFilter').value=filter;
+  try{localStorage.setItem('real-listen-split',filter);}catch{}
+  index=Math.max(0,visibleRows().findIndex(r=>!r.answer));show();
+}
+$('splitFilter').onchange=()=>setFilter($('splitFilter').value);
+function move(delta){if(busy)return;index=Math.max(0,Math.min(visibleRows().length-1,index+delta));show();}
+function unjudged(){
+  if(busy)return;
+  const rows=visibleRows();
+  for(let n=1;n<=rows.length;n++){const next=(index+n)%rows.length;if(!rows[next].answer){index=next;show();return;}}
+  $('done').textContent='선택한 묶음을 모두 판정했습니다.';
+}
+function watch(){const now=audio.currentTime;if(!audio.paused&&!audio.seeking&&last!==null&&now>last&&now-last<1){ranges.push([last,now]);ranges.sort((a,b)=>a[0]-b[0]);const merged=[];for(const r of ranges){const tail=merged.at(-1);if(tail&&r[0]<=tail[1]+.01)tail[1]=Math.max(tail[1],r[1]);else merged.push([...r]);}ranges=merged;const seconds=ranges.reduce((n,r)=>n+r[1]-r[0],0);if(Number.isFinite(audio.duration)&&seconds>=audio.duration*.8){heard=true;$('listened').textContent='청취 표시: 완료';}}last=audio.paused||audio.seeking?null:now;}
+audio.addEventListener('timeupdate',watch);audio.addEventListener('play',()=>{last=audio.currentTime;});audio.addEventListener('seeking',()=>{last=null;});audio.addEventListener('pause',()=>{last=null;});audio.addEventListener('error',()=>{$('error').textContent='오디오를 읽지 못했습니다. 원본 파일을 확인하세요.';});
+document.querySelectorAll('[name="keep"]').forEach(x=>x.onchange=sync);
+async function save(){if(busy||!row())return;const keep=checked('keep'),kind=keep==='keep'?checked('kind'):'';if(!keep||(keep==='keep'&&!kind)){$('error').textContent='남길 것과 종류를 골라 주세요.';return;}busy=true;$('save').disabled=true;$('accept').disabled=true;$('splitFilter').disabled=true;$('error').textContent='';try{const result=await api('/api/decision',{id:row().id,keep,kind,none_reason:keep==='none'?$('reason').value:'',unsure:$('unsure').checked,policy:[...document.querySelectorAll('[name="policy"]:checked')].map(x=>x.value),comment:$('comment').value,listened:heard});row().answer=result.saved;if(index<visibleRows().length-1)index++;show();}catch(e){$('error').textContent=e.message;}finally{busy=false;$('save').disabled=false;$('accept').disabled=false;$('splitFilter').disabled=false;}}
+function accept(){if(busy||!suggestion())return;fill(suggestion());return save();}
+$('accept').onclick=accept;
+$('save').onclick=save;$('prev').onclick=()=>move(-1);$('next').onclick=()=>move(1);$('unjudged').onclick=unjudged;
+document.addEventListener('keydown',e=>{if(e.ctrlKey||e.altKey||e.metaKey||e.repeat||busy||!row()||['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName))return;const k=e.key.toLowerCase();if(!['k','n','s','m','u','t','j','a','arrowleft','arrowright','enter',' '].includes(k))return;e.preventDefault();if(k==='k'||k==='n')choose('keep',k==='k'?'keep':'none');else if(k==='s'||k==='m'){choose('keep','keep');choose('kind',k==='s'?'story':'moment');}else if(k==='u')$('unsure').checked=!$('unsure').checked;else if(k==='t')$('transcript').open=!$('transcript').open;else if(k==='j')unjudged();else if(k==='arrowleft')move(-1);else if(k==='arrowright')move(1);else if(k==='a')accept();else if(k==='enter')save();else if(k===' ')audio.paused?audio.play().catch(()=>{$('error').textContent='재생 버튼을 눌러 주세요.';}):audio.pause();});
+api('/api/state').then(s=>{state=s;index=Math.max(0,visibleRows().findIndex(r=>!r.answer));show();}).catch(e=>$('error').textContent=e.message);
+</script></html>

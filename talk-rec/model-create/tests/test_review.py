@@ -217,6 +217,24 @@ def test_http_page_security_rejections_and_logs(root, capsys):
     assert logs.out == logs.err == ""
 
 
+def test_quick_review_bar_markup_and_shortcuts():
+    html = r.Path(r.__file__).with_name("index.html").read_text(encoding="utf-8")
+    assert 'id="quickBar"' in html and 'position: fixed' in html
+    assert 'padding-bottom: calc(var(--bar-height) + 24px)' in html
+    assert 'id="currentTitle"' in html and 'text-overflow: ellipsis' in html
+    assert 'id="currentDuration"' in html and '미검토 ${remaining}개 남음' in html
+    assert '영상 열기 ▶' in html and "el('a', '영상 열기 ▶', 'open-video')" in html
+    assert 'target="_blank" rel="noopener noreferrer"' in html
+    assert 'placeholder="사용 구간: 8:05~9:03"' in html
+    assert "key === 'o'" in html and "$('openVideo').click()" in html
+    assert "{a: 'approve', r: 'reject', h: 'hold'}" in html
+    assert "'arrowright','arrowleft'" in html and "block: 'center'" in html
+    assert "if (typing) return" in html and "event.isComposing" in html
+    assert "save(v.video_id, v.human?.decision, false)" in html
+    assert "grid-template-areas: \"info comment nav\" \"actions actions actions\"" in html
+    assert '@media (max-width: 450px)' in html
+
+
 def test_save_failure_http_keeps_file(root, monkeypatch):
     with running(r.ReviewStore("user", root=root)) as server:
         before = (root / "data/approved.tsv").read_bytes()

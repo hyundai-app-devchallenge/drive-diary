@@ -141,13 +141,8 @@ def read_approvals(path: Path) -> dict[str, dict]:
     raise AssertionError("unreachable")
 
 
-def skip_reason(source, manifest, approvals, allow_prescreened=False):
-    row = source_row(source, manifest)
-    if row is None:
-        return "no manifest row"
-    if row["status"] != "downloaded":
-        return f"status:{row['status']}"
-    approval = approvals.get(row["video_id"])
+def approval_reason(approval, allow_prescreened=False):
+    """Shared human-approval gate, independent of download/manifest state."""
     if approval is None:
         return "no approval row"
     if approval["decision"] != "approve":
@@ -158,6 +153,16 @@ def skip_reason(source, manifest, approvals, allow_prescreened=False):
     if decider.casefold() == "claude" and not allow_prescreened:
         return "prescreened only"
     return None
+
+
+def skip_reason(source, manifest, approvals, allow_prescreened=False):
+    row = source_row(source, manifest)
+    if row is None:
+        return "no manifest row"
+    if row["status"] != "downloaded":
+        return f"status:{row['status']}"
+    approval = approvals.get(row["video_id"])
+    return approval_reason(approval, allow_prescreened)
 
 
 def manifest_errors(sources, manifest, overrides=None):
@@ -186,7 +191,7 @@ def manifest_errors(sources, manifest, overrides=None):
 class Settings:
     silence: float = 20.0
     max_seconds: float = 90.0
-    max_turns: int = 12
+    max_turns: int | None = 12
     prefix_gap: float = 60.0
 
     def __post_init__(self):
@@ -194,7 +199,7 @@ class Settings:
             value = getattr(self, name)
             if not math.isfinite(value) or value < 0 or (name != "prefix_gap" and value == 0):
                 raise ValueError(f"{name} must be finite and positive (prefix_gap may be zero)")
-        if type(self.max_turns) is not int or self.max_turns < 1:
+        if self.max_turns is not None and (type(self.max_turns) is not int or self.max_turns < 1):
             raise ValueError("max_turns must be a positive integer")
 
 
@@ -206,7 +211,7 @@ def closing_reason(turns, following, settings):
         return "silence"
     if max(following["end"], *(u["end"] for u in turns)) - turns[0]["start"] > settings.max_seconds:
         return "length"
-    if len(turns) >= settings.max_turns:
+    if settings.max_turns is not None and len(turns) >= settings.max_turns:
         return "turns"
     return None
 

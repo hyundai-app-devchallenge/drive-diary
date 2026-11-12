@@ -12,8 +12,8 @@ def test_human_short_exception_only_changes_duration():
     for name in ('','claude'):
         assert c.filter_reasons(info,args,decisions(name)) == ['duration_too_short']
     assert c.filter_reasons(info,args,decisions('user','hold')) == ['duration_too_short']
-    assert c.filter_reasons(info | dict(duration=179),args,decisions('user')) == ['duration_too_short']
-    assert c.filter_reasons(info | dict(duration=180),args,decisions('user')) == []
+    assert c.filter_reasons(info | dict(duration=59),args,decisions('user')) == ['duration_too_short']
+    assert c.filter_reasons(info | dict(duration=60),args,decisions('user')) == []
     assert 'live_or_upcoming' in c.filter_reasons(info | dict(is_live=True),args,decisions('user'))
     assert c.filter_reasons(info | dict(duration=10801),args,decisions('user')) == ['duration_too_long']
 

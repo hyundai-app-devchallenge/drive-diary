@@ -86,7 +86,7 @@ def byte_range(header, size):
 
 
 def make_server(store, port=8767):
-    page = Path(__file__).with_name("index.html").read_bytes()
+    page = Path(__file__).with_name(getattr(store, 'page_name', 'index.html')).read_bytes()
 
     class Handler(BaseHTTPRequestHandler):
         timeout = 5
@@ -199,13 +199,29 @@ def make_server(store, port=8767):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--name", required=True)
+    parser.add_argument("--name", help="기존 데모 판정자")
+    parser.add_argument("--real", help="실제 평가 실행 이름")
+    parser.add_argument("--annotator", help="실제 묶음 판정자")
+    parser.add_argument("--suggest", choices=['claude'], help="dev에서 Claude 제안 확인")
     parser.add_argument("--port", type=int, default=8767)
     args = parser.parse_args(argv)
     try:
-        store = ListenStore(args.name)
+        if args.real:
+            from .real import RealListenStore
+            if not args.annotator or args.name:
+                parser.error('--real에는 --annotator를 쓰세요.')
+            store = RealListenStore(args.real, args.annotator, suggest=args.suggest)
+        else:
+            if not args.name or args.annotator or args.suggest:
+                parser.error('데모에는 --name을 쓰세요.')
+            store = ListenStore(args.name)
         server = make_server(store, args.port)
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError, KeyError, TypeError) as exc:
+        if args.real:
+            trace = exc.__traceback__
+            while trace.tb_next:
+                trace = trace.tb_next
+            parser.error(f'{type(exc).__name__} {Path(trace.tb_frame.f_code.co_filename).name}:{trace.tb_lineno}')
         parser.error(str(exc))
     print(f"http://127.0.0.1:{server.server_port} | {len(store.rows)}개 | Ctrl+C 종료")
     try:

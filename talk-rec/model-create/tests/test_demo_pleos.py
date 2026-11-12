@@ -137,14 +137,14 @@ def test_bad_header(root):
 def test_push_exact_selection_and_clean(root):
     entries = prepared(root)
     calls, uploaded = [], []
-    def call(args, stdin=None):
+    def call(args, stdin=None, **kwargs):
         calls.append(list(map(str, args)))
         if args == ['shell', 'am', 'get-current-user']:
             return b'10\n'
         if args[0] == 'exec-in':
             assert stdin is not None and not stdin.closed
             uploaded.append(stdin.read())
-        if args[-1].startswith("'wc -c < "):
+        if args[-4:-1] == ['stat', '-c', '%s']:
             return str(len(uploaded[-1])).encode() + b'\n'
         return b''
     p.push(root, call)
@@ -160,6 +160,9 @@ def test_push_exact_selection_and_clean(root):
                         'cat > files/batch/' + entries[0]['name']]
     assert uploaded == [(p.base(root) / 'pcm' / entries[0]['name']).read_bytes()]
     assert not any(c[0] == 'push' for c in calls)
+    p.push(root, call)
+    assert uploaded == [uploaded[0], uploaded[0]]
+    assert sum(c == p.app_shell(10, 'rm -rf ' + p.REMOTE) for c in calls) == 2
 
 
 def test_run_stale_status_then_completed(root):
@@ -209,8 +212,10 @@ def test_collect_schema_and_speed_config(root):
     rows = p.collect(root)
     assert {r['config'] for r in rows} == {'pleos', 'pleos-200'}
     row = rows[0]
-    assert set(row) == {'id', 'config', 'lines', 'seconds', 'callbacks', 'errors'}
-    assert row['callbacks'] == 2 and row['errors'] == 1
+    from demo.asr.data import validate_result
+    validate_result(row)
+    assert row['avg_logprob'] is None and row['no_speech_prob'] is None
+    assert next(p.results(root))[0]['callbacks'] == 2
     assert row['lines'][0] == dict(start=0., end=.1, text='최종\n문장')
     assert row['lines'][1]['start'] == .1 and row['lines'][1]['end'] == .25
     assert len((root / '.local/demo/asr/pleos.jsonl').read_text(encoding='utf-8').splitlines()) == 2
@@ -218,8 +223,8 @@ def test_collect_schema_and_speed_config(root):
 
 def test_collect_null_positions_and_no_finals(root):
     make_run(root, rows=[('final', 0, '', '결과', '')])
-    row = p.collect(root)[0]
-    assert row['lines'][0]['start'] is None and row['lines'][0]['end'] is None
+    with pytest.raises(ValueError, match='missing final audio position'):
+        p.collect(root)
     make_run(root, rows=[('event', 0, 0, '', 'ready')])
     assert p.collect(root)[0]['lines'] == []
     assert p.stats(root)['no_result_clips'] == 1
@@ -241,8 +246,8 @@ def test_missing_tsv_is_counted(root):
     folder = make_run(root)
     for file in folder.glob('*.tsv'):
         file.unlink()
-    row = p.collect(root)[0]
-    assert row['errors'] == 1 and row['callbacks'] == 0
+    assert next(p.results(root))[0]['errors'] == 1
+    assert p.collect(root)[0]['lines'] == []
 
 
 def test_pull_and_collect_flow(root):
@@ -256,7 +261,7 @@ def test_pull_and_collect_flow(root):
             return b'kind\treceived_ms\taudio_ms\ttext\tmetadata\nfinal\t100\t200\ttest\t\n'
         return original(args)
     p.pull(root, call)
-    assert p.collect(root)[0]['callbacks'] == 1
+    assert len(p.collect(root)[0]['lines']) == 1
 
 
 def test_collect_rejects_previous_run_status(root):
@@ -346,7 +351,7 @@ def test_stopservice_255_and_missing_directory_are_harmless(root, monkeypatch, c
             return adb_result(stdout=b'10\n')
         if args[0] == 'exec-in':
             assert kwargs['stdin'].read()
-        if args[-1].startswith("'wc -c < "):
+        if args[-4:-1] == ['stat', '-c', '%s']:
             return adb_result(stdout=b'8000\n')
         return adb_result()
     monkeypatch.setattr(p.subprocess, 'run', fake)
@@ -498,15 +503,91 @@ def test_clean_does_not_wait_for_another_users_service():
 @pytest.mark.parametrize('size', [b'7999', b'8001', b'', b'Permission denied'])
 def test_push_rejects_unverified_transfer(root, size):
     prepared(root)
-    uploads = []
-    def call(args, stdin=None):
+    uploads, stat_times = [], []
+    now, sleep = clock()
+    def call(args, stdin=None, **kwargs):
         if args[0] == 'exec-in':
             uploads.append(stdin.read())
-        return size if args[-1].startswith("'wc -c < ") else b''
+        if args[-4:-1] == ['stat', '-c', '%s']:
+            stat_times.append(now())
+            return size
+        return b''
     with pytest.raises(p.TransferError) as error:
-        p.push(root, call, user=10)
+        p.push(root, call, user=10, verify_timeout=.45, now=now, sleep=sleep)
     assert error.value.stage == 'push-verify'
+    assert error.value.reason == 'PCM size mismatch'
     assert len(uploads) == 1 and len(uploads[0]) == 8000
+    assert stat_times == ([0, .2, .4] if size == b'7999' else [0])
+    assert now() == (.45 if size == b'7999' else 0)
+
+
+@pytest.mark.parametrize('real_workspace', [False, True])
+def test_push_retries_small_sizes_until_each_file_matches(root, real_workspace):
+    workspace = root / 'real-run' if real_workspace else None
+    entries = [dict(id=identity, name=p.pcm_name(identity), seconds=.25)
+               for identity in (ID, ID2)]
+    folder = p.base(root, workspace)
+    for entry in entries:
+        p.atomic(folder / 'pcm' / entry['name'], b'\0' * 8000)
+    p.write_json(folder / 'manifest.json', dict(version=1, clips=entries))
+    now, sleep = clock()
+    uploads, stats = [], []
+    sizes = iter([b'0\n', b'4000\r\n', b'8000\r\n'] * 2)
+    def call(args, stdin=None, **kwargs):
+        if args[0] == 'exec-in':
+            uploads.append((args[-1], stdin.read()))
+        if args[-4:-1] == ['stat', '-c', '%s']:
+            stats.append(args)
+            assert kwargs['timeout'] > 0
+            return next(sizes)
+        return b''
+    p.push(root, call, user=10, workspace=workspace, verify_timeout=.45, now=now, sleep=sleep)
+    assert len(uploads) == 2 and all(payload == b'\0' * 8000 for _, payload in uploads)
+    assert [args for args in stats] == [
+        p.run_as(10, 'stat', '-c', '%s', p.REMOTE + '/' + entry['name'], mode='exec-out')
+        for entry in entries for _ in range(3)]
+    assert now() == pytest.approx(.8)
+
+
+def test_push_stat_uses_remaining_verification_budget(root):
+    prepared(root)
+    now, sleep = clock()
+    budgets = []
+    def call(args, **kwargs):
+        if args[-4:-1] == ['stat', '-c', '%s']:
+            budgets.append(kwargs['timeout'])
+            if len(budgets) == 1:
+                sleep(.1)
+                return b'4000'
+            sleep(kwargs['timeout'])
+            raise p.AdbError('exec-out.run-as', kind='TimeoutExpired')
+        return b''
+    with pytest.raises(p.TransferError) as error:
+        p.push(root, call, user=10, verify_timeout=.45, now=now, sleep=sleep)
+    assert error.value.stage == 'push-verify'
+    assert budgets == pytest.approx([.45, .15])
+    assert now() == .45
+
+
+def test_push_cli_verification_timeout_override(root, monkeypatch):
+    prepared(root)
+    now, sleep = clock()
+    original = p.push
+    def push(*args, **kwargs):
+        assert kwargs['verify_timeout'] == .45
+        return original(*args, **kwargs, now=now, sleep=sleep)
+    monkeypatch.setattr(p, 'push', push)
+    monkeypatch.setattr(p.subprocess, 'run', lambda *args, **kwargs: adb_result(stdout=b'7999'))
+    assert p.main(['push', '--root', str(root), '--user', '10',
+                   '--push-verify-timeout', '.45']) == 1
+    assert now() == .45
+
+
+@pytest.mark.parametrize('value', ['0', '-1', 'nan', 'inf'])
+def test_invalid_push_verification_timeout(value):
+    with pytest.raises(SystemExit) as error:
+        p.main(['push', '--push-verify-timeout', value])
+    assert error.value.code == 2
 
 
 def test_exec_in_streams_large_binary_file_without_shell(monkeypatch, tmp_path):

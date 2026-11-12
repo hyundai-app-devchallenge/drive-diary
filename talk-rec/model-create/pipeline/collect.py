@@ -33,6 +33,7 @@ REVIEW_COLUMNS = ["video_id", "channel", "title", "duration_minutes", "descripti
 SPLIT_OVERRIDE_COLUMNS = ["channel_id", "split", "reason"]
 SPLITS = ("train", "dev", "test")
 MAX_PER_CHANNEL = 20
+SHORT_MIN_DURATION = 60
 AUDIO_EXTENSIONS = {"webm", "m4a", "opus", "ogg", "mp3", "aac", "wav", "flac", "mp4"}
 # Designer-editable table: (metadata field, regex). Each key is a reason code.
 AUTO_REJECT_PATTERNS = {
@@ -454,7 +455,7 @@ class Youtube:
                     info = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                seen.add(info["id"])
+                seen.add(info.get("id"))
                 yield info
         if done.exists():
             return
@@ -465,11 +466,11 @@ class Youtube:
             for line in self.lines(["--flat-playlist", "--skip-download", "--dump-json",
                                     "--playlist-end", str(count), "--", target]):
                 info = json.loads(line)
-                if info["id"] not in seen:
+                if info.get("id") not in seen:
                     yield info  # Caller durably records it before cache write.
                     output.write(json.dumps(info, ensure_ascii=False) + "\n")
                     output.flush()
-                    seen.add(info["id"])
+                    seen.add(info.get("id"))
         done.touch()
 
     def metadata(self, video_id: str) -> dict:
@@ -507,9 +508,54 @@ def filter_reasons(info: dict, args, decisions=None) -> list[str]:
     if decisions is None:
         path = getattr(args, "approvals", None)
         decisions = read_approvals(path) if path is not None else {}
-    minimum = min(180, args.min_duration) if is_human_approved(info["id"], decisions or {}) else args.min_duration
+    minimum = min(SHORT_MIN_DURATION, args.min_duration) if is_human_approved(info["id"], decisions or {}) else args.min_duration
     return rejection_reasons(info, minimum, args.max_duration,
                              not args.allow_non_korean, not args.allow_music)
+
+
+def retry_short(manifest: Manifest, decisions: dict, video_ids: list[str],
+                minimum: float = SHORT_MIN_DURATION) -> dict:
+    """Offline candidate revival, with complete validation before a single save."""
+    if not video_ids:
+        raise ValueError("retry-short requires explicit video IDs")
+    if not math.isfinite(minimum) or not 0 < minimum <= 10800:
+        raise ValueError("retry-short requires 0 < min-duration <= 10800 (finite seconds)")
+    video_ids = list(dict.fromkeys(video_ids))
+    rejection_codes = set(AUTO_REJECT_PATTERNS) | {
+        "duration_unknown", "duration_too_short", "duration_too_long",
+        "live_or_upcoming", "live_archive", "premiere", "not_korean", "channel_id_missing",
+    }
+    errors = []
+    for video_id in video_ids:
+        row = manifest.rows.get(video_id)
+        reasons = []
+        if human_decision(decisions.get(video_id)) == "reject":
+            reasons.append("human reject in approvals")
+        if row is None:
+            reasons.append("not in manifest")
+        else:
+            if row["status"] != "rejected":
+                reasons.append(f"status must be rejected (got {row['status']})")
+            parts = {part for part in row["note"].split(";") if part}
+            rejects = {part for part in parts if part in rejection_codes or part.startswith("manual:")}
+            if rejects != {"duration_too_short"}:
+                reasons.append("requires duration_too_short only (got " + ", ".join(sorted(rejects)) + ")")
+            try:
+                duration = float(row["duration_s"])
+            except ValueError:
+                duration = float("nan")
+            if not math.isfinite(duration) or not minimum <= duration <= 10800:
+                reasons.append(f"duration must be {minimum:g}–10800 seconds (got {row['duration_s']!r})")
+        if reasons:
+            errors.append(dict(video_id=video_id, reasons=reasons))
+    if errors:
+        return dict(retried=[], errors=errors, failed=len(errors))
+    for video_id in video_ids:
+        row = manifest.rows[video_id]
+        row.update(status="candidate", note=";".join(
+            part for part in row["note"].split(";") if part != "duration_too_short"))
+    manifest.save()
+    return dict(retried=video_ids, failed=0)
 
 
 def retry_short_approved(manifest: Manifest, decisions: dict, video_ids: list[str]) -> dict:
@@ -531,12 +577,18 @@ def retry_short_approved(manifest: Manifest, decisions: dict, video_ids: list[st
 def discover_candidates(manifest: Manifest, youtube: Youtube, sources: list[Source], args,
                         expanded_from: dict[str, str] | None = None) -> dict:
     """Metadata only. The cap counts new IDs, including automatically rejected IDs."""
-    added = failures = 0
+    added = failures = skipped_non_video = 0
     groups = []
     for source in sources:
         ids = []
         for info in youtube.discover(source, args.search_results):
-            video_id = info["id"]
+            video_id = info.get("id")
+            # Search/channel feeds may contain playlists, channels, or shelves.
+            # Explicit video inputs retain their strict validation/error behavior.
+            if source.kind != "video" and not (
+                    isinstance(video_id, str) and re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id)):
+                skipped_non_video += 1
+                continue
             old = manifest.rows.get(video_id)
             if old is None and added >= args.max_candidates:
                 continue
@@ -577,7 +629,8 @@ def discover_candidates(manifest: Manifest, youtube: Youtube, sources: list[Sour
             print(f"metadata failed {video_id}: {error}", file=sys.stderr, flush=True)
             if isinstance(error, BlockedError):
                 raise
-    return dict(added=added, inspected=len(ordered), rejected_by_rule=dict(rejected), failed=failures)
+    return dict(added=added, inspected=len(ordered), rejected_by_rule=dict(rejected), failed=failures,
+                skipped_non_video=skipped_non_video)
 
 
 def expand_channels(manifest: Manifest, youtube: Youtube, decisions: dict, args) -> dict:
@@ -589,7 +642,7 @@ def expand_channels(manifest: Manifest, youtube: Youtube, decisions: dict, args)
                        if row["channel_id"] and row["status"] != "rejected"
                        and decisions.get(video_id, {}).get("decision") == "approve"
                        and row["channel_id"] not in rejected_channels})
-    summary = dict(added=0, failed=0, channels={}, rejected_by_rule={})
+    summary = dict(added=0, failed=0, channels={}, rejected_by_rule={}, skipped_non_video=0)
     rules = Counter()
     for channel_id in channels:
         remaining = args.max_candidates - summary["added"]
@@ -607,6 +660,7 @@ def expand_channels(manifest: Manifest, youtube: Youtube, decisions: dict, args)
         summary["channels"][channel_id] = result["added"]
         summary["added"] += result["added"]
         summary["failed"] += result["failed"]
+        summary["skipped_non_video"] += result["skipped_non_video"]
         rules.update(result["rejected_by_rule"])
     summary["rejected_by_rule"] = dict(rules)
     return summary
@@ -761,7 +815,7 @@ def collect(manifest: Manifest, youtube: Youtube, args, decisions: dict | None =
     downloaded = failures = 0
     last_download = None
     for video_id in ordered:
-        if selected >= args.max_videos or seconds + args.min_duration > args.max_hours * 3600:
+        if selected >= args.max_videos:
             break
         row = manifest.rows[video_id]
         if video_id in completed or row["status"] == "rejected":
@@ -804,7 +858,7 @@ def collect(manifest: Manifest, youtube: Youtube, args, decisions: dict | None =
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument("command", nargs="?", default="discover", metavar="COMMAND",
-                        help="discover (default), download, apply-decisions, review-sheet, review-flags, expand, mark-density, refilter, migrate-splits, retry-short-approved")
+                        help="discover (default), download, apply-decisions, review-sheet, review-flags, expand, mark-density, refilter, migrate-splits, retry-short, retry-short-approved")
     result.add_argument("sources", nargs="*", help="query, URL, or 'search:/channel:/video:' line")
     result.add_argument("--queries", type=Path, help="source file; defaults to data/queries.txt when no positional sources")
     result.add_argument("--lowdensity-video", action="append", default=[], metavar="URL_OR_ID")
@@ -820,7 +874,8 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--max-hours", type=float, default=5)
     result.add_argument("--search-results", type=int, default=5, help="maximum results per query/channel (cached)")
     result.add_argument("--delay", type=float, default=3, help="minimum seconds between download starts")
-    result.add_argument("--min-duration", type=float, default=480, help="seconds, inclusive")
+    result.add_argument("--min-duration", type=float, default=480,
+                        help="seconds, inclusive (default: 480; retry-short: 60; human approve: at most 60)")
     result.add_argument("--max-duration", type=float, default=10800, help="seconds, inclusive")
     result.add_argument("--allow-non-korean", action="store_true")
     result.add_argument("--allow-music", action="store_true")
@@ -833,14 +888,17 @@ def parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     options = parser()
     argv = list(sys.argv[1:] if argv is None else argv)
-    commands = {"discover", "download", "apply-decisions", "review-sheet", "review-flags", "expand", "mark-density", "refilter", "migrate-splits", "retry-short-approved"}
+    commands = {"discover", "download", "apply-decisions", "review-sheet", "review-flags", "expand", "mark-density", "refilter", "migrate-splits", "retry-short", "retry-short-approved"}
     # Legacy bare query/URL invocations now safely default to metadata discovery.
     if argv and not argv[0].startswith("-") and argv[0] not in commands:
         argv.insert(0, "discover")
+    options.set_defaults(min_duration=None)
     args = options.parse_args(argv)
     if args.command not in commands:
         args.sources.insert(0, args.command)
         args.command = "discover"
+    if args.min_duration is None:
+        args.min_duration = SHORT_MIN_DURATION if args.command == "retry-short" else 480
     scratch, audio_dir = ROOT / ".local/collect", ROOT / ".local/audio"
     try:
         manifest = Manifest(ROOT / "data/sources.tsv", scratch, args.split_overrides)
@@ -858,6 +916,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "retry-short-approved":
             print(json.dumps(retry_short_approved(manifest, read_approvals(args.approvals), args.sources)))
             return 0
+        if args.command == "retry-short":
+            if args.lowdensity_video or args.queries or args.channel_query:
+                options.error("retry-short accepts explicit video IDs only")
+            summary = retry_short(manifest, read_approvals(args.approvals), args.sources, args.min_duration)
+            for error in summary.get("errors", []):
+                print(f"{error['video_id']}: {'; '.join(error['reasons'])}", file=sys.stderr)
+            print(json.dumps(summary, ensure_ascii=False))
+            return 2 if summary["failed"] else 0
         errors = split_override_errors(manifest.rows.values(), manifest.overrides)
         if errors:
             raise ValueError("; ".join(errors))

@@ -1,4 +1,4 @@
-# YouTube collection (T02 / T02b)
+# YouTube collection (T02 / T02b / T02c / T02d)
 
 The target is unscripted Korean conversation among family, friends, or couples inside
 a car. Discovery collects metadata only. Downloading requires an explicit approval.
@@ -19,6 +19,16 @@ Run these commands in PowerShell from `talk-rec/model-create`, using the existin
 
 Legacy invocations without a command now default to `discover`. `download` never
 searches. A missing approval file authorizes zero downloads.
+
+For evaluation collection of **children + family inside a car** (DESIGN §1), use
+`--min-duration 60` for both discovery and expansion. Evaluation uses only the
+human-approved usable ranges, so the training-density eight-minute lower bound
+is unnecessary. The discovery/expansion default remains **480 seconds**.
+
+```powershell
+.\.venv\Scripts\python.exe -m pipeline.collect discover --queries data/queries-kids.txt --min-duration 60
+.\.venv\Scripts\python.exe -m pipeline.collect expand --channel-query "드라이브" --min-duration 60
+```
 
 ## Inputs and manifest migration
 
@@ -56,6 +66,14 @@ do not consume that limit. Discovered IDs are recorded durably before full metad
 is fetched, then enriched in round-robin input order. Interrupted metadata work is
 resumed on rerun. This stage never requests audio.
 
+Search/channel results (including expansion and cached results) whose `id` is not
+an 11-character YouTube video ID (`A-Z`, `a-z`, `0-9`, `_`, `-`) are skipped before
+recording candidates or fetching full metadata. This includes playlists, channels,
+and shelves. The `discover` and `expand` JSON summaries report `skipped_non_video`
+(zero when none), summed across processed inputs/channels; skipped entries do not
+consume candidate caps or count as failures. Explicit invalid `video:` inputs
+still stop with exit 2.
+
 ## Automatic rejects
 
 The designer-editable pattern table is **AUTO_REJECT_PATTERNS** in `collect.py`.
@@ -83,10 +101,37 @@ only a heuristic. All matched reasons are appended to note, separated by semicol
 existing filter controls. The absolute three-hour ceiling and live/premiere rejects
 always apply. The old `--reject-live-archives` flag is accepted for compatibility;
 archives are now always excluded. Approval does not bypass automatic rejects.
-T40 exception: a named human `approve` (nonempty `decided_by`, not `claude`)
-uses a 180-second minimum, or the explicit `--min-duration` if it is lower.
+T40 exception, updated by T02d: a named human `approve` (nonempty `decided_by`,
+not `claude`) uses a **60-second** minimum, or the explicit `--min-duration` if it
+is lower. This common filter also applies to discovery/refilter and download.
 All other rejection rules and download limits remain in force; Claude approvals
-retain the original minimum. To revive a previous **short-only** rejection offline:
+retain the original minimum (480 seconds by default).
+
+To restore previous **short-only** rejections to the review candidates offline,
+without requiring approval first:
+
+```powershell
+.\.venv\Scripts\python.exe -m pipeline.collect retry-short VIDEO_ID_01 VIDEO_ID_02
+.\.venv\Scripts\python.exe -m pipeline.collect retry-short VIDEO_ID_01 --min-duration 30
+```
+
+`retry-short` requires explicit IDs, status `rejected`, only the rejection reason
+`duration_too_short`, and a finite duration from `--min-duration` (default **60**)
+through **10800** seconds inclusive. A human `reject` in `approved.tsv` or a
+`manual:` rejection note blocks revival. Provenance and other non-rejection notes
+are preserved; only the exact `duration_too_short` token is removed. It validates
+**all IDs before any change**: if any fail, nothing is saved, every failing ID and
+reason is printed to stderr and in summary JSON (`retried: []`, `errors`, `failed`),
+and the command exits 2. Success prints JSON with `retried` IDs and `failed: 0`.
+It only changes status to `candidate` and removes the short rejection note; it
+does not download, grant approval, apply other decisions, or move audio. Review
+and human approval are still needed for these short videos to download at the
+normal discovery minimum. A lower custom revival threshold must also be supplied
+to download via `--min-duration` when the video is shorter than 60 seconds.
+Use `refilter --min-duration 60` when refiltering revived, unapproved candidates;
+the default 480-second filter would reject them again.
+
+The older, approval-required command remains available with its original rules:
 
 ```powershell
 .\.venv\Scripts\python.exe -X utf8 -B -m pipeline.collect retry-short-approved zn4tDPT4RLQ
@@ -123,6 +168,7 @@ From this directory, start the Korean local review console with
 `reason=human review` and a comment, replacing any previous row for that ID.
 It never moves audio or changes the manifest; apply saved rejections with
 `pipeline/collect.py apply-decisions`. Run only one approval writer at a time.
+The console reads candidate rows at startup; restart it after `retry-short` to see revived videos.
 
 - `approve`: authorizes downloading; pending videos remain candidate until fetched.
 - `reject`: sets status rejected and records `manual:<reason>` in note.
@@ -143,7 +189,7 @@ if an active file exists.
 
 `apply-decisions` is offline. Other mutating commands also apply the decision list
 before their work, except `mark-density` (review notes only) and `migrate-splits`
-(split cells only).
+(split cells only), plus the two explicit retry commands (status/note only).
 `--check` and `review-flags` are read-only. Use `--approvals PATH` for another list.
 `migrate-splits` also bypasses approval decisions and audio movement.
 

@@ -96,6 +96,7 @@ def test_discovery_never_downloads_and_caps_new_ids(manifest, tmp_path):
     result = c.discover_candidates(manifest, backend, [c.Source("search", "가족")],
                                    args(max_candidates=2))
     assert result["added"] == 2
+    assert result["skipped_non_video"] == 0
     assert len(manifest.rows) == 3 and backend.downloads == []
     row = manifest.rows["00000000002"]
     assert row["status"] == "candidate" and row["query"] == "search: 가족"
@@ -114,6 +115,79 @@ def test_automatic_rejection_during_discovery(manifest, tmp_path):
     assert result["rejected_by_rule"] == {"broadcaster_channel": 1, "compilation": 1}
     assert manifest.rows["00000000001"]["status"] == "rejected"
     assert backend.downloads == []
+
+
+@pytest.mark.parametrize("mode", ["search", "channel", "channel-query"])
+@pytest.mark.parametrize("non_video", [
+    {"id": "PL9DWZNtmXG04MIbaAmyZB79JjTBproz5_"},
+    {"id": "UCfamily"}, {"id": "shorts-shelf"}, {"id": "bad.videoid"},
+    {"id": ""}, {"id": None}, {"id": 123}, {},
+])
+def test_discovery_skips_non_video_results_and_cached_results(manifest, tmp_path, monkeypatch,
+                                                             mode, non_video):
+    youtube = c.Youtube(tmp_path / "runner", tmp_path / "audio", Path("fake-deno"))
+    results = [metadata(1), non_video, metadata(2)]
+    monkeypatch.setattr(youtube, "lines", lambda arguments: iter(json.dumps(row) for row in results))
+    inspected = []
+
+    def full_metadata(video_id):
+        inspected.append(video_id)
+        return metadata(int(video_id))
+
+    monkeypatch.setattr(youtube, "metadata", full_metadata)
+    if mode != "search":
+        add(manifest, 100)
+
+    def discover():
+        if mode == "search":
+            return c.discover_candidates(manifest, youtube, [c.Source("search", "차")],
+                                         args(search_results=3, max_candidates=2))
+        return c.expand_channels(manifest, youtube, {"00000000100": decision("approve")},
+                                 args(per_channel=3, max_candidates=2,
+                                      channel_query=["차"] if mode == "channel-query" else []))
+
+    summary = discover()
+    assert summary["added"] == 2 and summary["failed"] == 0
+    assert summary["skipped_non_video"] == 1
+    assert inspected == ["00000000001", "00000000002"]
+    assert set(manifest.rows) == set(inspected) | ({"00000000100"} if mode != "search" else set())
+    assert all(manifest.rows[video_id]["status"] == "candidate" for video_id in inspected)
+    assert not youtube.audio_dir.exists()
+
+    monkeypatch.setattr(youtube, "lines", lambda arguments: pytest.fail("completed discovery must reuse cache"))
+    before = manifest.path.read_bytes()
+    summary = discover()
+    assert summary["added"] == 0 and summary["failed"] == 0
+    assert summary["skipped_non_video"] == 1
+    assert manifest.path.read_bytes() == before
+
+
+def test_expansion_sums_non_video_counts_across_channels_and_queries(manifest, tmp_path):
+    add(manifest, 100)
+    add(manifest, 101, channel_id="UCother")
+    backend = Backend(tmp_path / "audio")
+    backend.discover = lambda source, count: iter([{"id": "PL9DWZNtmXG04MIbaAmyZB79JjTBproz5_"}])
+    decisions = {video_id: decision("approve") for video_id in manifest.rows}
+    summary = c.expand_channels(manifest, backend, decisions, args(channel_query=["차", "드라이브"]))
+    assert summary["skipped_non_video"] == 4
+    assert summary["added"] == 0 and summary["failed"] == 0
+    assert summary["channels"] == {"UCfamily": 0, "UCother": 0}
+
+
+@pytest.mark.parametrize("value", [
+    "PL9DWZNtmXG04MIbaAmyZB79JjTBproz5_", "not-a-video-id",
+    "https://www.youtube.com/watch?v=PL9DWZNtmXG04MIbaAmyZB79JjTBproz5_",
+])
+def test_invalid_explicit_video_still_stops_cli(tmp_path, monkeypatch, capsys, value):
+    monkeypatch.setattr(c, "ROOT", tmp_path)
+    deno = tmp_path / "deno.exe"
+    deno.touch()
+    monkeypatch.setattr(c.Youtube, "lines", lambda *a: pytest.fail("invalid video must fail before yt-dlp"))
+    assert c.main(["discover", "--deno", str(deno), f"video: {value}"]) == 2
+    captured = capsys.readouterr()
+    assert "stopped: Invalid video URL:" in captured.err
+    assert captured.out == ""
+    assert not c.Manifest(tmp_path / "data/sources.tsv", tmp_path / ".local/collect").rows
 
 
 def test_download_refuses_hold_reject_unlisted_and_missing_list(manifest, tmp_path):
@@ -198,6 +272,7 @@ def test_expansion_cap_and_exclusion_of_rejected_channels(manifest, tmp_path):
     backend = Backend(tmp_path / "audio")
     result = c.expand_channels(manifest, backend, decisions, args(per_channel=3))
     assert result["added"] == 3 and result["channels"] == {"UCfamily": 3}
+    assert result["skipped_non_video"] == 0
     assert [(s.value, n) for s, n in backend.calls] == [("https://www.youtube.com/channel/UCfamily/videos", 3)]
     assert all("expanded_from=UCfamily" in manifest.rows[f"{n:011d}"]["note"] for n in range(1, 4))
     assert backend.downloads == []
