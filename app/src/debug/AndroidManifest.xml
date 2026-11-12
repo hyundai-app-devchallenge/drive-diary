@@ -11,6 +11,18 @@
                 <action android:name="com.dongbantest.app.DEBUG_ARRIVAL" />
             </intent-filter>
         </receiver>
+
+        <!-- v3 화면 목록: 런처에 "v3 화면" 아이콘으로 따로 보인다 -->
+        <activity
+            android:name=".debug.V3CatalogActivity"
+            android:exported="true"
+            android:label="v3 화면"
+            android:theme="@style/Theme.Dongbantest">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
     </application>
 
 </manifest>
