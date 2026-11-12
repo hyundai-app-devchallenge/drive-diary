@@ -49,6 +49,7 @@ import com.dongbantest.app.ui.components.RouteMap
 import com.dongbantest.app.ui.v3.components.DbDialog
 import com.dongbantest.app.ui.v3.components.DbTab
 import com.dongbantest.app.ui.v3.components.DbTextButton
+import com.dongbantest.app.ui.v3.components.OutlineButton
 import com.dongbantest.app.ui.v3.components.PrimaryButton
 import com.dongbantest.app.ui.v3.components.Text
 import com.dongbantest.app.ui.v3.screens.ArrivalScreen
@@ -369,13 +370,14 @@ fun V3NavHost(
             RecordMapScreen(
                 state = recordMapState(state.trips, state.ongoingTrip, state.route),
                 onTab = onTab,
-                onOpenRecord = { id -> id.toLongOrNull()?.let(openDiary) },
+                // 기록 지도에서 연 다이어리는 뒤로 가기로 기록 지도에 돌아온다.
+                onOpenRecord = { id -> id.toLongOrNull()?.let { navController.navigate(V3Routes.diary(it)) { launchSingleTop = true } } },
                 onOpenLiveTrip = { state.ongoingTrip?.let { navController.go(V3Routes.trip(it.id)) } },
                 realMap = { m ->
                     RouteMap(
                         routes = state.routes.map { (id, segments) -> RealMapRoute(id, RouteColors.forTrip(id), segments) },
                         modifier = m,
-                        onRouteClick = openDiary,
+                        onRouteClick = { navController.navigate(V3Routes.diary(it)) { launchSingleTop = true } },
                     )
                 },
             )
@@ -392,8 +394,10 @@ fun V3NavHost(
                 Box(Modifier.fillMaxSize().background(Color.White))
                 return@composable
             }
+            var editStep by rememberSaveable { mutableIntStateOf(0) } // 0 닫힘, 1 편집 메뉴, 2 지우기 확인
             val talks = remember(data) { data.talks() }
             val playing = talks.firstOrNull { it.path != null && it.path == state.playingPath }?.talk?.time
+            Box(Modifier.fillMaxSize()) {
             DiaryScreen(
                 state = DiaryUiState(
                     record = data.toRecord(),
@@ -418,7 +422,24 @@ fun V3NavHost(
                         modifier = m,
                     )
                 },
+                // 끝난 여행만 편집할 수 있다. 진행 중인 여행은 편집 버튼 자리에 녹음 칩이 나온다.
+                onEdit = if (data.trip.isOngoing) null else { { editStep = 1 } },
             )
+            when (editStep) {
+                1 -> EditDiaryDialog(
+                    onDelete = { editStep = 2 },
+                    onClose = { editStep = 0 },
+                )
+                2 -> DeleteTripDialog(
+                    title = data.trip.title,
+                    onDelete = {
+                        editStep = 0
+                        vm.deleteTrip { navController.go(V3Routes.RECORDS) }
+                    },
+                    onCancel = { editStep = 0 },
+                )
+            }
+            }
         }
 
         /* P01·P02 정차 안내 */
@@ -455,6 +476,35 @@ private fun EndTripDialog(onEnd: () -> Unit, onCancel: () -> Unit) {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             PrimaryButton("여행 마치기", onEnd, capWide = false)
             DbTextButton("계속 여행하기", onCancel)
+        }
+    }
+}
+
+/** S14 "편집": 지금은 기록 지우기만 있다. 사진 붙이기·메모 고치기는 나중에 여기에 더한다. */
+@Composable
+private fun EditDiaryDialog(onDelete: () -> Unit, onClose: () -> Unit) {
+    val c = DbTheme.colors
+    val t = DbTheme.type
+    DbDialog("기록 편집") {
+        Text("기록 편집", style = t.titleLg, color = c.ink)
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            OutlineButton("이 기록 지우기", onDelete, capWide = false)
+            DbTextButton("닫기", onClose)
+        }
+    }
+}
+
+/** 기록을 지우기 전에 한 번 더 묻는다. 지우면 되돌릴 수 없다. */
+@Composable
+private fun DeleteTripDialog(title: String, onDelete: () -> Unit, onCancel: () -> Unit) {
+    val c = DbTheme.colors
+    val t = DbTheme.type
+    DbDialog("이 기록을 지울까요?", alert = true) {
+        Text("이 기록을 지울까요?", style = t.titleLg, color = c.ink)
+        Text("${title}의 경로, 목소리, 사진이 모두 지워지고 되돌릴 수 없어요.", style = t.body, color = c.ink2)
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            PrimaryButton("지우기", onDelete, capWide = false)
+            DbTextButton("취소", onCancel)
         }
     }
 }

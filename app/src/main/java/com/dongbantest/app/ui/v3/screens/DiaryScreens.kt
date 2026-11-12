@@ -236,13 +236,15 @@ fun DiaryScreen(
     onPlay: (TalkUi) -> Unit = {},
     /** 지도 칸. null 이면 예시 지도(ExampleMap). 팀 앱은 실제 경로 지도(MapLibre)를 넣는다. */
     map: (@Composable (Modifier) -> Unit)? = null,
+    /** "편집" 버튼. null 이면 비활성(확정안 기본). */
+    onEdit: (() -> Unit)? = null,
 ) {
     // 받은 폭으로 Compact·Expanded·Full 을 먼저 정한다(아래에서 DbTheme.layout 을 읽음)
     AdaptiveLayout(Modifier.fillMaxSize()) {
         val layout = DbTheme.layout
         AppShell(
             selectedTab = DbTab.Record, onTab = onTab,
-            topBar = { DiaryTopBar(state, onBack, onNextPage) },
+            topBar = { DiaryTopBar(state, onBack, onNextPage, onEdit) },
             scroll = !layout.wide,
         ) {
             if (layout.wide) {
@@ -264,7 +266,7 @@ fun DiaryScreen(
 }
 
 @Composable
-private fun DiaryTopBar(state: DiaryUiState, onBack: () -> Unit, onNextPage: () -> Unit) {
+private fun DiaryTopBar(state: DiaryUiState, onBack: () -> Unit, onNextPage: () -> Unit, onEdit: (() -> Unit)? = null) {
     val c = DbTheme.colors
     TopBarFrame {
         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
@@ -276,7 +278,7 @@ private fun DiaryTopBar(state: DiaryUiState, onBack: () -> Unit, onNextPage: () 
                 DbIcon(DbIcons.SquareParking, 16.dp, c.ink, contentDescription = "정차 중")
                 RecordingChip(RecordingState.On, state.recordingText, small = true)
             } else {
-                DbButton(state.edit, {}, ButtonKind.Plain, off = true)
+                DbButton(state.edit, onEdit ?: {}, ButtonKind.Plain, off = onEdit == null)
             }
             DbButton(state.next, onNextPage, ButtonKind.Plain)
         }
