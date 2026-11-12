@@ -1,0 +1,218 @@
+[
+  {
+    "card": {
+      "label": "none",
+      "pattern": "scolding",
+      "boundary": false,
+      "negative": true,
+      "family": [
+        {
+          "spk": "엄마",
+          "role": "운전자",
+          "age": "중년"
+        },
+        {
+          "spk": "아이1",
+          "role": "동승자",
+          "age": "초등 저학년"
+        }
+      ],
+      "situation": "귀가길",
+      "topic": "준비물",
+      "interruptions": [],
+      "seconds": 24,
+      "energy": "보통",
+      "n_turns": 6
+    },
+    "lines": [
+      {
+        "t": 0,
+        "dur": 2,
+        "spk": "엄마",
+        "text": "공책 또 두고 왔다고 했지",
+        "overlap": false
+      },
+      {
+        "t": 4,
+        "dur": 2,
+        "spk": "아이1",
+        "text": "찾아봤는데 없었어",
+        "overlap": false
+      },
+      {
+        "t": 8,
+        "dur": 2,
+        "spk": "엄마",
+        "text": "어제 챙기라고 몇 번을 말했니",
+        "overlap": false
+      },
+      {
+        "t": 12,
+        "dur": 2,
+        "spk": "아이1",
+        "text": "챙겼는데 동생이 꺼냈단 말이야",
+        "overlap": false
+      },
+      {
+        "t": 16,
+        "dur": 2,
+        "spk": "엄마",
+        "text": "자꾸 남 탓하지 마",
+        "overlap": false
+      },
+      {
+        "t": 20,
+        "dur": 2,
+        "spk": "아이1",
+        "text": "내가 안 꺼냈어 정말로",
+        "overlap": false
+      }
+    ],
+    "why": "혼내기와 반박이 현재 분위기의 중심이다",
+    "note": "새로 지어낸 짧은 부정 예시. 여러 번 오가도 현재 분위기를 먼저 판단한다."
+  },
+  {
+    "card": {
+      "label": "none",
+      "pattern": "tantrum",
+      "boundary": false,
+      "negative": true,
+      "family": [
+        {
+          "spk": "엄마",
+          "role": "운전자",
+          "age": "중년"
+        },
+        {
+          "spk": "아이1",
+          "role": "동승자",
+          "age": "유아 3~5세"
+        }
+      ],
+      "situation": "귀가길",
+      "topic": "간식",
+      "interruptions": [],
+      "seconds": 24,
+      "energy": "보통",
+      "n_turns": 6
+    },
+    "lines": [
+      {
+        "t": 0,
+        "dur": 2,
+        "spk": "아이1",
+        "text": "지금 먹을 거야 지금",
+        "overlap": false
+      },
+      {
+        "t": 4,
+        "dur": 2,
+        "spk": "엄마",
+        "text": "조금만 기다려 길이 막혀서 못 꺼내",
+        "overlap": false
+      },
+      {
+        "t": 8,
+        "dur": 2,
+        "spk": "아이1",
+        "text": "지금 줘 지금",
+        "overlap": false
+      },
+      {
+        "t": 12,
+        "dur": 2,
+        "spk": "엄마",
+        "text": "그만 울어 나도 지금 힘들어",
+        "overlap": false
+      },
+      {
+        "t": 16,
+        "dur": 2,
+        "spk": "아이1",
+        "text": "싫어 싫어 엄마 미워",
+        "overlap": false
+      },
+      {
+        "t": 20,
+        "dur": 2,
+        "spk": "엄마",
+        "text": "발로 차지 말라고 했잖아",
+        "overlap": false
+      }
+    ],
+    "why": "울고 떼쓰는 아이와 지친 어른이 반복해서 부딪친다",
+    "note": "새로 지어낸 짧은 부정 예시. 여러 번 오가도 현재 분위기를 먼저 판단한다."
+  },
+  {
+    "card": {
+      "label": "none",
+      "pattern": "worrying_news",
+      "boundary": false,
+      "negative": true,
+      "family": [
+        {
+          "spk": "엄마",
+          "role": "운전자",
+          "age": "중년"
+        },
+        {
+          "spk": "아빠",
+          "role": "동승자",
+          "age": "중년"
+        }
+      ],
+      "situation": "귀가길",
+      "topic": "가족 안부",
+      "interruptions": [],
+      "seconds": 24,
+      "energy": "보통",
+      "n_turns": 6
+    },
+    "lines": [
+      {
+        "t": 0,
+        "dur": 2,
+        "spk": "엄마",
+        "text": "검사 결과가 아직 안 나왔대",
+        "overlap": false
+      },
+      {
+        "t": 4,
+        "dur": 2,
+        "spk": "아빠",
+        "text": "오늘도 못 들었어",
+        "overlap": false
+      },
+      {
+        "t": 8,
+        "dur": 2,
+        "spk": "엄마",
+        "text": "응 연락이 없으니까 자꾸 걱정돼",
+        "overlap": false
+      },
+      {
+        "t": 12,
+        "dur": 2,
+        "spk": "아빠",
+        "text": "다시 전화해 봐야 하나",
+        "overlap": false
+      },
+      {
+        "t": 16,
+        "dur": 2,
+        "spk": "엄마",
+        "text": "나도 계속 그것만 생각나",
+        "overlap": false
+      },
+      {
+        "t": 20,
+        "dur": 2,
+        "spk": "아빠",
+        "text": "집에 가면 같이 기다리자",
+        "overlap": false
+      }
+    ],
+    "why": "걱정스러운 소식을 무겁게 주고받는 것이 중심이다",
+    "note": "새로 지어낸 짧은 부정 예시. 여러 번 오가도 현재 분위기를 먼저 판단한다."
+  }
+]

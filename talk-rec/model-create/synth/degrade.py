@@ -1,5 +1,6 @@
 """Pure seeded ASR corruption and block export; see PROBABILITIES for units."""
 import argparse
+from collections import Counter
 import json
 from copy import deepcopy
 import math
@@ -12,6 +13,7 @@ from common.schema import validate_block
 from demo.pleos_profile import distribution
 from synth.generate import validate_cards, validate_scenes
 from synth.io import digest, output_lock, read_jsonl, write_json, write_jsonl
+from synth.cards import quotas
 
 # Each tuple is level 0/1/2. Child syllable/particle/word probabilities are x2.
 PROBABILITIES = {
@@ -223,7 +225,7 @@ def pleos_degrade(lines, level, seed, profile, family=(), stats=None):
     for key in ('input_line_count', 'drop_count', 'short_reply_count', 'short_reply_dropped',
                 'overlap_dropped', 'fallback_count'):
         stats.setdefault(key, 0)
-    young = {m['spk'] for m in family if any(a in m['age'] for a in ('유아', '초등', 'toddler', 'elementary'))}
+    young = {m['spk'] for m in family if any(a in m['age'] for a in ('아기', '유아', '초등', 'toddler', 'elementary'))}
     factor = (0, 1, 1.6)[level]
     drop_rate = profile.get('short_reply_drop_rate')
     drop_rate = 2/3 if drop_rate is None else drop_rate
@@ -340,25 +342,45 @@ def to_block(number, turns, level):
     return row
 
 
-def export(cards, scenes, out_dir, level=1, seed=43, enabled=None, style='pleos', profile=None):
+def level_assignment(cards, level='mixed', seed=43, level_mix=None):
+    if level_mix is None:
+        if str(level) not in ('0', '1', '2', 'mixed'):
+            raise ValueError('invalid level')
+        return {c['card']: (c['card'] - 1) % 3 if level == 'mixed' else int(level) for c in cards}
+    if str(level) != 'mixed' or len(level_mix) != 3:
+        raise ValueError('level-mix requires mixed level and three weights')
+    weights = dict(enumerate(level_mix))
+    result = {}
+    for label in sorted({c['label'] for c in cards}):
+        selected = sorted((c for c in cards if c['label'] == label), key=lambda c: c['card'])
+        levels = [key for key, count in quotas(len(selected), weights).items() for _ in range(count)]
+        random.Random(f'{seed}:levels:{label}').shuffle(levels)
+        result.update({c['card']: value for c, value in zip(selected, levels)})
+    return result
+
+
+def export(cards, scenes, out_dir, level=1, seed=43, enabled=None, style='pleos', profile=None,
+           level_mix=None, duplicate_threshold=.85):
     validate_cards(cards)
     by_id = {c['card']: c for c in cards}
     if not scenes or len({s['card'] for s in scenes}) != len(scenes) or any(s['card'] not in by_id for s in scenes):
         raise ValueError('invalid scene card identities')
     selected = [by_id[s['card']] for s in scenes]
-    validate_scenes(scenes, selected)
+    validate_scenes(scenes, selected, threshold=duplicate_threshold)
+    levels = level_assignment(cards, level, seed, level_mix)
     profile = (profile if profile is not None else load_profile()) if style == 'pleos' else None
     stats = {}
     blocks, clean, labels = [], [], []
     for card, scene in zip(selected, scenes):
-        actual_level = (card['card'] - 1) % 3 if level == 'mixed' else int(level)
+        actual_level = levels[card['card']]
         turns = degrade(scene['lines'], actual_level, seed + card['card'], enabled,
                         style=style, profile=profile, family=card['family'], stats=stats)
         block = to_block(card['card'], turns, actual_level)
         blocks.append(block)
         clean.append(dict(id=block['id'], card=card, lines=scene['lines'], why=scene['why']))
         labels.append(dict(id=block['id'], verdict=card['label'], pattern=card['pattern'],
-                           boundary=card['boundary'], level=actual_level))
+                           boundary=card['boundary'], level=actual_level,
+                           negative=card.get('negative', False), pair_id=card.get('pair_id')))
     directory = Path(out_dir)
     with output_lock(directory / 'blocks.jsonl'):
         write_json(directory / 'meta.json', dict(demo_only=True, complete=False))
@@ -366,12 +388,17 @@ def export(cards, scenes, out_dir, level=1, seed=43, enabled=None, style='pleos'
         write_jsonl(directory / 'labels.jsonl', labels)
         write_jsonl(directory / 'blocks.jsonl', blocks)
         write_json(directory / 'meta.json', dict(demo_only=True, complete=True, count=len(blocks),
-                   level=level, seed=seed, disabled=[k for k, v in (enabled or {}).items() if not v],
+                   level=level, level_mix=level_mix, duplicate_threshold=duplicate_threshold,
+                   seed=seed, disabled=[k for k, v in (enabled or {}).items() if not v],
                    timing_policy=('profile_character_segments; short_gap_runs; speech_capped_at_12s; navigation_unchanged'
                                   if style == 'pleos' else
                                   'character_weighted_words; indivisible_word_speech_capped_at_12s'),
                    style=style, profile=profile if style == 'pleos' else None,
                    stats=output_stats(blocks, stats),
+                   label_counts=dict(Counter(c['label'] for c in selected)),
+                   negative_count=sum(c.get('negative', False) for c in selected),
+                   pair_count=len({c['pair_id'] for c in selected if c.get('pair_id')}),
+                   level_counts=dict(Counter(b['level'] for b in blocks)),
                    probabilities=PROBABILITIES if style == 'whisper' else None,
                    cards_hash=digest(cards), scenes_hash=digest(scenes)))
     return blocks
@@ -383,6 +410,8 @@ def main(argv=None):
     p.add_argument('--scenes', default='.local/synth/demo/scenes.jsonl')
     p.add_argument('--out-dir', default='.local/synth/demo')
     p.add_argument('--level', choices=['0', '1', '2', 'mixed'], default='mixed')
+    p.add_argument('--level-mix', help='level 0,1,2 weights, e.g. 0.2,0.5,0.3; requires --level mixed')
+    p.add_argument('--duplicate-threshold', type=float, default=.85)
     p.add_argument('--seed', type=int, default=43)
     p.add_argument('--style', choices=['whisper', 'pleos'], default='pleos')
     p.add_argument('--profile', default='.local/demo/pleos/profile.json')
@@ -396,7 +425,9 @@ def main(argv=None):
                 p.error('가짜 장면은 demo 경로로 내보낼 수 없습니다.')
         rows = export(read_jsonl(args.cards), read_jsonl(args.scenes), args.out_dir,
                       args.level, args.seed, {k: False for k in args.disable}, args.style,
-                      load_profile(args.profile) if args.style == 'pleos' else None)
+                      load_profile(args.profile) if args.style == 'pleos' else None,
+                      [float(v) for v in args.level_mix.split(',')] if args.level_mix else None,
+                      args.duplicate_threshold)
     except (OSError, ValueError, TypeError, KeyError):
         p.exit(2, '전사 변환 실패: 카드·장면·출력 경로를 확인하세요.\n')
     print(f'합성 묶음 {len(rows)}개 저장 (demo_only)')

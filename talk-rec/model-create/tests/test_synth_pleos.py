@@ -108,7 +108,7 @@ def test_profile_fallback_cli_and_numeric_report(tmp_path, capsys):
 
 def test_examples_cover_labels_seed_pattern_and_copy_rejection():
     examples = load_examples()
-    assert len(examples) == 28
+    assert len(examples) == 31
     assert all(BY_ID[e['card']['pattern']]['label'] == e['card']['label'] for e in examples)
     cards = sample_cards(200)
     for i in range(0, 200, 4):

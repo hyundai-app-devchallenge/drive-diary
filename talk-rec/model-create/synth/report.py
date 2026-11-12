@@ -28,10 +28,12 @@ def metrics(reviews, labels):
             raise ValueError('invalid review or missing intended label')
         joined.append(dict(row, intended=labels[row['id']]))
     grouped = {}
-    for field in ('verdict', 'pattern', 'level'):
+    for field in ('verdict', 'pattern', 'level', 'negative', 'paired'):
         groups = defaultdict(list)
         for row in joined:
-            groups[str(row['intended'][field])].append(row)
+            value = (bool(row['intended'].get('pair_id')) if field == 'paired' else
+                     row['intended'].get(field, False))
+            groups[str(value)].append(row)
         grouped[field] = {k: realism(v) for k, v in sorted(groups.items())}
     matrix = {expected: {actual: 0 for actual in LABELS} for expected in LABELS}
     for row in joined:
@@ -84,7 +86,8 @@ def build_report(reviews, labels, synthetic, actual, profile=None, degradation=N
     def append(group, value, row):
         lines.append(f"| {group} | {cell(value)} | {row['n']} | {row['yes']} | {row['no']} | {row['maybe']} | {percent(row['yes'], row['n'])} |")
     append('전체', '전체', stats['overall'])
-    for field, name in (('verdict', '의도 라벨'), ('pattern', '패턴'), ('level', '열화 강도')):
+    for field, name in (('verdict', '의도 라벨'), ('pattern', '패턴'), ('level', '열화 강도'),
+                        ('negative', '부정'), ('paired', '대립쌍')):
         for value, row in stats['groups'][field].items():
             append(name, value, row)
     lines += ['', '## 사람 판정과 의도 라벨', '', f"일치율 {percent(stats['correct'], n)} ({stats['correct']}/{n}).", '',
