@@ -144,6 +144,7 @@ class NaviMonitor(context: Context) {
 
     private fun updateRoute(info: DestinationInfo?) {
         if (info == null) {
+            naviRoute = null
             _route.value = null
             return
         }
@@ -151,7 +152,36 @@ class NaviMonitor(context: Context) {
         val startTotal = routeStartTotal?.takeIf { it.first == info.name }?.second
         // 전체 거리: 길 안내 시작 때 받은 값 > 이전에 정한 값 > 지금 남은 거리 (앱을 중간에 켠 경우)
         val total = maxOf(startTotal ?: previous?.totalMeters ?: info.remainDistance, info.remainDistance)
-        _route.value = NaviRoute(info.name, total, info.remainDistance, info.remainTime)
+        naviRoute = NaviRoute(info.name, total, info.remainDistance, info.remainTime)
+        _route.value = withSimulatedProgress(naviRoute)
+    }
+
+    /** 내비가 실제로 보낸 마지막 경로. 시연용 진행률을 지울 때 이 값으로 돌아간다. */
+    @Volatile private var naviRoute: NaviRoute? = null
+
+    /** 시연용 진행률(0~100). null 이면 내비 값을 그대로 쓴다. */
+    @Volatile private var simulatedPercent: Int? = null
+
+    /**
+     * 에뮬레이터는 내비 위치가 움직이지 않아 길 리본이 0%에 멈춰 있다. 디버그 빌드 시연용으로
+     * 진행률을 [percent] 로 정한다. null 이면 시연을 끄고 내비 값으로 돌아간다.
+     * 15초마다 내비 값을 다시 받아도 이 진행률이 유지된다.
+     */
+    fun simulateProgress(percent: Int?) {
+        simulatedPercent = percent?.coerceIn(0, 100)
+        Log.i(TAG, "진행률 흉내: ${simulatedPercent ?: "끔"}")
+        _route.value = withSimulatedProgress(naviRoute)
+    }
+
+    /** 시연용 진행률이 있으면 남은 거리·시간을 그만큼 줄인다. */
+    private fun withSimulatedProgress(route: NaviRoute?): NaviRoute? {
+        val percent = simulatedPercent ?: return route
+        if (route == null) return null
+        val left = 100 - percent
+        return route.copy(
+            remainMeters = route.totalMeters * left / 100,
+            remainSeconds = route.remainSeconds * left / 100,
+        )
     }
 
     /**

@@ -14,7 +14,9 @@ import com.dongbantest.app.domain.model.VehicleSignalType.GEAR_NOT_PARKED
 import com.dongbantest.app.domain.model.VehicleSignalType.PARKED
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 
 /**
@@ -32,14 +34,28 @@ class VehicleSignalTracker(
     /** 기어가 P 로 바뀌어 저장한 뒤 부른다 (도착 판단용). 인자는 여행 id. */
     var onParked: ((Long) -> Unit)? = null
 
+    /** 디버그 빌드 시연용으로 넣는 신호. 실제 차량 신호와 똑같이 저장된다. */
+    private val simulated = MutableSharedFlow<VehicleSignalType>(extraBufferCapacity = 8)
+
+    /**
+     * 디버그 빌드 시연용: Pleos 에뮬레이터는 Virtual Console 에서 기어를 바꿔도 앱까지 전달되지 않는다.
+     * 그래서 기어 신호를 직접 넣는다. 여행을 기록 중일 때만 저장된다.
+     */
+    fun simulate(type: VehicleSignalType) {
+        Log.i(TAG, "차량 신호 흉내: $type")
+        simulated.tryEmit(type)
+    }
+
     fun start(tripId: Long) {
         if (trackingTripId == tripId && job?.isActive == true) return
         stop()
         trackingTripId = tripId
         val last = mutableMapOf<String, VehicleSignalType>()
         job = scope.launch {
-            reader.signals()
-                .catch { e -> Log.w(TAG, "차량 신호 수집 실패", e) }
+            merge(
+                reader.signals().catch { e -> Log.w(TAG, "차량 신호 수집 실패", e) },
+                simulated,
+            )
                 .collect { type ->
                     val group = groupOf(type)
                     if (last[group] == type) return@collect

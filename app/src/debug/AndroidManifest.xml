@@ -12,6 +12,24 @@
             </intent-filter>
         </receiver>
 
+        <!-- 에뮬레이터에서 길 리본 진행률(차 아이콘 위치)을 흉내 내는 테스트용 수신기 -->
+        <receiver
+            android:name=".navi.DebugProgressReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.dongbantest.app.DEBUG_PROGRESS" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 에뮬레이터에서 기어 D/P(주행 중/정차 중)를 흉내 내는 테스트용 수신기 -->
+        <receiver
+            android:name=".vehicle.DebugGearReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.dongbantest.app.DEBUG_GEAR" />
+            </intent-filter>
+        </receiver>
+
         <!-- GPX 경로 파일을 끝난 여행으로 넣는 테스트용 수신기 (adb 로 쓸 때) -->
         <receiver
             android:name=".debug.DebugGpxImportReceiver"
