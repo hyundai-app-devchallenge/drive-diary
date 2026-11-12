@@ -116,6 +116,113 @@ adb logcat -s PleosVehicle DrivingSafety VoiceRecorder VoicePlayer LocationTrack
 - **타임라인 규칙:** 반경 30m 안에 3분 이상 머무르면 정차로 봅니다. 출발 지점에서 기다린 시간은 정차로 치지 않습니다.
 - **실차 확인:** 차량의 GPS 신호가 앱에 들어오는지, GPS 거리와 차량 주행거리계 거리가 비슷한지 비교합니다.
 
+## 에뮬레이터 시연 (디버그 명령)
+
+Pleos 에뮬레이터에서는 여행 화면의 주행 상태와 길 리본이 실제처럼 바뀌지 않습니다. 그래서 디버그 빌드에 adb 명령으로 값을 넣는 기능을 두었습니다. 명령을 보내지 않으면 실제 차량·내비 값을 그대로 쓰고, 출시용(release) 앱에는 들어가지 않습니다.
+
+### 에뮬레이터에서 안 되는 이유
+
+기어와 내비는 서로 따로 움직입니다. 기어를 D로 바꾼다고 내비가 움직이지는 않습니다.
+
+| 화면에 보이는 것 | 실제 차 | 에뮬레이터 | 시연 방법 |
+|---|---|---|---|
+| 주행 중 / 정차 중 | 기어를 바꾸면 차량 시스템(CarUx)이 알려 줍니다 | Virtual Console에서 기어를 바꿔도 계기판과 앱까지 전달되지 않습니다 | `DEBUG_GEAR` |
+| 길 리본(차 아이콘 위치) | 차가 달리면 내비의 남은 거리가 줄고, 앱이 그 값으로 진행률을 계산합니다 | 차가 움직이지 않아 남은 거리가 그대로입니다. GPX 경로를 재생해도 내비는 따라가지 않습니다 | `DEBUG_PROGRESS` |
+| 도착(여행 자동 종료) | 목적지에 닿으면 내비가 도착 신호를 보냅니다 | 도착 신호가 오지 않습니다 | `DEBUG_ARRIVAL`, 또는 `DEBUG_PROGRESS` 100 |
+
+명령은 앱 화면(오른쪽)만 바꿉니다. 에뮬레이터 차량 화면(왼쪽)의 P R N D 표시는 바뀌지 않습니다.
+
+### 0. 준비 (터미널을 새로 열 때마다)
+
+명령을 짧게 쓰려고 adb 위치를 이름으로 저장합니다.
+
+```bash
+ADB=~/Library/Android/sdk/platform-tools/adb
+```
+
+에뮬레이터가 연결됐는지 확인합니다. `emulator-5554 device`가 나오면 됩니다.
+
+```bash
+$ADB devices
+```
+
+### 1. 기어 (주행 중 / 정차 중)
+
+D, 주행 중으로
+
+```bash
+$ADB shell am broadcast --user 10 -a com.dongbantest.app.DEBUG_GEAR -n com.dongbantest.app/.vehicle.DebugGearReceiver --es gear D
+```
+
+P, 정차 중으로
+
+```bash
+$ADB shell am broadcast --user 10 -a com.dongbantest.app.DEBUG_GEAR -n com.dongbantest.app/.vehicle.DebugGearReceiver --es gear P
+```
+
+끄기 (차량 값으로 돌아갑니다)
+
+```bash
+$ADB shell am broadcast --user 10 -a com.dongbantest.app.DEBUG_GEAR -n com.dongbantest.app/.vehicle.DebugGearReceiver --es gear off
+```
+
+- 기어 기록(정차, 다시 출발)은 여행 탭이 열려 있을 때 저장됩니다.
+- P로 두고 2분이 넘으면 정차로 기록됩니다.
+
+### 2. 길 리본 (차 아이콘 위치)
+
+원하는 위치로 옮기기 (끝의 숫자 0~100을 바꿉니다)
+
+```bash
+$ADB shell am broadcast --user 10 -a com.dongbantest.app.DEBUG_PROGRESS -n com.dongbantest.app/.navi.DebugProgressReceiver --ei percent 50
+```
+
+쭉 달리기 (0% → 100%, 5%씩 1초마다. 멈추려면 Ctrl + C)
+
+```bash
+for p in $(seq 0 5 100); do $ADB shell am broadcast --user 10 -a com.dongbantest.app.DEBUG_PROGRESS -n com.dongbantest.app/.navi.DebugProgressReceiver --ei percent $p > /dev/null; sleep 1; done
+```
+
+- `seq 시작 간격 끝`을 바꿉니다. 예: `seq 0 5 50`은 절반까지, `seq 50 5 100`은 나머지입니다.
+- `sleep 1`을 `sleep 3`으로 바꾸면 더 천천히 갑니다.
+- **100을 보내면 도착 신호도 함께 보내** 여행이 끝납니다. 끝내지 않으려면 `seq 0 5 95`처럼 100 앞에서 멈춥니다.
+
+끄기 (내비 값으로 돌아갑니다)
+
+```bash
+$ADB shell am broadcast --user 10 -a com.dongbantest.app.DEBUG_PROGRESS -n com.dongbantest.app/.navi.DebugProgressReceiver
+```
+
+### 3. 도착 (여행 끝내기)
+
+```bash
+$ADB shell am broadcast --user 10 -a com.dongbantest.app.DEBUG_ARRIVAL -n com.dongbantest.app/.navi.DebugArrivalReceiver --es name "경기도판교테크노밸리"
+```
+
+- 여행이 끝나고 도착 화면이 나옵니다. "아직 여행 중이에요"를 누르면 여행이 다시 열립니다.
+
+### 4. 명령이 들어갔는지 확인
+
+```bash
+$ADB logcat -s NaviMonitor DrivingSafety VehicleSignal
+```
+
+- `진행률 흉내: 50` → 길 리본 명령이 들어갔습니다.
+- `주행 상태 흉내: true` → 기어 D가 들어갔습니다.
+- `차량 신호: GEAR_NOT_PARKED` → 기어 기록이 저장됐습니다.
+
+### 시연 순서 예시
+
+내비에 목적지를 찍고 여행을 시작한 뒤, 여행 탭을 연 상태에서 진행합니다.
+
+1. 기어 D → "주행 중"
+2. 쭉 달리기 `seq 0 5 50` → 절반까지 이동
+3. 기어 P → 정차 장면
+4. 기어 D → 다시 출발
+5. 쭉 달리기 `seq 50 5 100` → 끝까지 이동하고 도착 화면
+
+처음부터 다시 하려면 두 명령을 모두 끄거나 앱을 다시 켭니다.
+
 ## 알려진 문제
 - **거리 계산 오류 가능성:** 여행 종료 때는 그 시점에 쓰는 데이터 소스의 주행거리를 그대로 저장합니다. 그래서 시작은 실제 차량 값이고 종료는 Mock 값(12,345km 근처)인 경우, 말이 안 되는 거리가 계산될 수 있습니다.
 - **느린 환경에서의 타임아웃:** 연결 대기 시간이 6초(`CONNECT_TIMEOUT_MS`)라서, 에뮬레이터가 느리면 실제로는 연결이 되는데도 Mock으로 넘어갈 수 있습니다. 이럴 때는 홈 화면의 재연결 버튼을 눌러 보세요.
@@ -123,6 +230,7 @@ adb logcat -s PleosVehicle DrivingSafety VoiceRecorder VoicePlayer LocationTrack
 - **GPS 신호만 사용:** `GPS_PROVIDER`만 쓰기 때문에 터널, 지하 주차장처럼 GPS가 안 잡히는 곳에서는 그 구간이 기록되지 않습니다.
 - **에뮬레이터 기본 위치:** 에뮬레이터는 처음에 미국(구글 본사) 좌표로 시작합니다. 서울로 위치를 바꾸면 위치가 튄 것으로 처리되어 거리에 들어가지 않습니다(정상).
 - **명령 호환성:** 위의 `adb ... car_service` 명령들은 표준 AAOS 기준입니다. Pleos 에뮬레이터에서 막혀 있을 수 있으니, 안 되면 Extended Controls의 Car data 화면을 쓰세요.
+- **Virtual Console 기어 미반영:** Pleos 에뮬레이터의 Virtual Console에서 기어를 바꿔도 계기판과 앱에 전달되지 않습니다. `car_service` 명령도 "non-user build 필요" 오류로 막혀 있습니다. 시연할 때는 위의 `DEBUG_GEAR` 명령을 씁니다.
 
 ## 주요 코드 위치
 - `app/src/main/java/com/dongbantest/app/vehicle/PleosVehicleDataSource.kt` — Pleos Vehicle SDK 연결
