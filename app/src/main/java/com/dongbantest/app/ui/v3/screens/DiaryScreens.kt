@@ -234,6 +234,8 @@ fun DiaryScreen(
     onBack: () -> Unit = {},
     onNextPage: () -> Unit = {},
     onPlay: (TalkUi) -> Unit = {},
+    /** 지도 칸. null 이면 예시 지도(ExampleMap). 팀 앱은 실제 경로 지도(MapLibre)를 넣는다. */
+    map: (@Composable (Modifier) -> Unit)? = null,
 ) {
     // 받은 폭으로 Compact·Expanded·Full 을 먼저 정한다(아래에서 DbTheme.layout 을 읽음)
     AdaptiveLayout(Modifier.fillMaxSize()) {
@@ -246,7 +248,7 @@ fun DiaryScreen(
             if (layout.wide) {
                 Row(Modifier.fillMaxSize().padding(top = Spacing.xs), horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
                     val left = if (layout == DbLayout.Full) Modifier.width(560.dp) else Modifier.weight(1f)
-                    Column(left.fillMaxHeight().verticalScroll(rememberScrollState()).padding(end = Spacing.s2xs)) { DiaryInfo(state) }
+                    Column(left.fillMaxHeight().verticalScroll(rememberScrollState()).padding(end = Spacing.s2xs)) { DiaryInfo(state, map) }
                     Column(
                         Modifier.weight(1f).fillMaxHeight().clip(DbShapes.card).border(1.dp, DbTheme.colors.rule, DbShapes.card)
                             .background(DbTheme.colors.paper).verticalScroll(rememberScrollState())
@@ -254,7 +256,7 @@ fun DiaryScreen(
                     ) { DiaryTalks(state, onPlay) }
                 }
             } else {
-                DiaryInfo(state)
+                DiaryInfo(state, map)
                 Column(Modifier.padding(top = Spacing.xl)) { DiaryTalks(state, onPlay) }
             }
         }
@@ -282,18 +284,23 @@ private fun DiaryTopBar(state: DiaryUiState, onBack: () -> Unit, onNextPage: () 
 }
 
 @Composable
-private fun ColumnScope.DiaryInfo(state: DiaryUiState) {
+private fun ColumnScope.DiaryInfo(state: DiaryUiState, map: (@Composable (Modifier) -> Unit)? = null) {
     val c = DbTheme.colors
     val t = DbTheme.type
     val r = state.record
     Text(r.dateLabel, style = t.bodySm.copy(fontWeight = FontWeight.Medium, lineHeight = t.bodySm.fontSize * 1.4f), color = c.muted, modifier = Modifier.padding(top = Spacing.xs))
     Text(r.title, style = t.display, color = c.ink, modifier = Modifier.padding(top = Spacing.s2xs, bottom = Spacing.md).semantics { heading() })
     FlowPeople(r.people, Modifier.semantics { contentDescription = "${state.peopleLabel}: ${r.people.joinToString()}" })
-    ExampleMap(
-        routes = listOf(SampleMap.route(r)),
-        labels = SampleMap.labelsFor(r),
-        modifier = Modifier.padding(top = Spacing.md).fillMaxWidth().height(120.dp),
-    )
+    val mapModifier = Modifier.padding(top = Spacing.md).fillMaxWidth().height(if (map != null) 200.dp else 120.dp).clip(DbShapes.card)
+    if (map != null) {
+        map(mapModifier)
+    } else {
+        ExampleMap(
+            routes = listOf(SampleMap.route(r)),
+            labels = SampleMap.labelsFor(r),
+            modifier = mapModifier,
+        )
+    }
     Column(Modifier.padding(top = Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.s2xs)) {
         Text(state.durationLabel, style = t.caption, color = c.muted)
         Text(r.duration, style = t.display.copy(lineHeight = t.display.fontSize * 1.2f), color = c.ink, modifier = Modifier.padding(bottom = Spacing.xs))
@@ -393,6 +400,8 @@ fun RecordMapScreen(
     onTab: (DbTab) -> Unit = {},
     onOpenRecord: (String) -> Unit = {},
     onOpenLiveTrip: () -> Unit = {},
+    /** 지도 칸. null 이면 예시 지도(ExampleMap). 팀 앱은 실제 경로 지도(MapLibre)를 넣는다. */
+    realMap: (@Composable (Modifier) -> Unit)? = null,
 ) {
     // 받은 폭으로 Compact·Expanded·Full 을 먼저 정한다(아래에서 DbTheme.layout 을 읽음)
     AdaptiveLayout(Modifier.fillMaxSize()) {
@@ -401,16 +410,20 @@ fun RecordMapScreen(
         val layout = DbTheme.layout
         val liveRecord = if (state.live) state.records.firstOrNull { it.id == state.liveId } else null
         val past = if (liveRecord != null) state.records.filter { it.id != liveRecord.id } else state.records
-        val map = @Composable { m: Modifier ->
-            ExampleMap(
-                routes = past.map { SampleMap.route(it) },
-                labels = SampleMap.labels(live = liveRecord != null),
-                live = liveRecord?.let { SampleMap.LIVE.copy(progress = state.liveProgress / 100f) },
-                liveRoute = liveRecord?.let { SampleMap.route(it) },
-                onOpen = onOpenRecord,
-                onLive = onOpenLiveTrip,
-                modifier = m,
-            )
+        val map: @Composable (Modifier) -> Unit = { m ->
+            if (realMap != null) {
+                realMap(m.clip(DbShapes.card))
+            } else {
+                ExampleMap(
+                    routes = past.map { SampleMap.route(it) },
+                    labels = SampleMap.labels(live = liveRecord != null),
+                    live = liveRecord?.let { SampleMap.LIVE.copy(progress = state.liveProgress / 100f) },
+                    liveRoute = liveRecord?.let { SampleMap.route(it) },
+                    onOpen = onOpenRecord,
+                    onLive = onOpenLiveTrip,
+                    modifier = m,
+                )
+            }
         }
         val head = @Composable {
             Column(Modifier.padding(top = if (layout.wide) 0.dp else Spacing.xs, bottom = Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.s3xs)) {
