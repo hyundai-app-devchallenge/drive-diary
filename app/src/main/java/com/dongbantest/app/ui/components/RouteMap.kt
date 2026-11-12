@@ -1,6 +1,10 @@
 package com.dongbantest.app.ui.components
 
-import android.graphics.RectF
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -9,35 +13,50 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import com.dongbantest.app.R
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.core.view.doOnLayout
 import com.dongbantest.app.domain.model.LocationPoint
 import com.dongbantest.app.domain.model.TimelineEvent
 import com.dongbantest.app.domain.model.TimelineType
-import org.maplibre.android.MapLibre
-import androidx.core.view.doOnLayout
-import org.maplibre.android.camera.CameraUpdateFactory
-import org.maplibre.android.geometry.LatLng
-import org.maplibre.android.geometry.LatLngBounds
-import org.maplibre.android.maps.MapLibreMap
-import org.maplibre.android.maps.MapLibreMapOptions
-import org.maplibre.android.maps.MapView
-import org.maplibre.android.maps.Style
-import org.maplibre.android.style.expressions.Expression
-import org.maplibre.android.style.layers.CircleLayer
-import org.maplibre.android.style.layers.LineLayer
-import org.maplibre.android.style.layers.Property
-import org.maplibre.android.style.layers.PropertyFactory
-import org.maplibre.android.style.sources.GeoJsonSource
-import org.maplibre.geojson.Feature
-import org.maplibre.geojson.FeatureCollection
-import org.maplibre.geojson.LineString
-import org.maplibre.geojson.MultiLineString
-import org.maplibre.geojson.Point
+import com.mapbox.geojson.Feature
+import com.mapbox.geojson.FeatureCollection
+import com.mapbox.geojson.LineString
+import com.mapbox.geojson.MultiLineString
+import com.mapbox.geojson.Point
+import com.mapbox.maps.CameraOptions
+import com.mapbox.maps.EdgeInsets
+import com.mapbox.maps.MapInitOptions
+import com.mapbox.maps.MapView
+import com.mapbox.maps.MapboxMap
+import com.mapbox.maps.RenderedQueryGeometry
+import com.mapbox.maps.RenderedQueryOptions
+import com.mapbox.maps.ScreenBox
+import com.mapbox.maps.ScreenCoordinate
+import com.mapbox.maps.Style
+import com.mapbox.maps.extension.localization.localizeLabels
+import com.mapbox.maps.extension.style.expressions.generated.Expression.Companion.get
+import com.mapbox.maps.extension.style.layers.addLayer
+import com.mapbox.maps.extension.style.layers.generated.circleLayer
+import com.mapbox.maps.extension.style.layers.generated.lineLayer
+import com.mapbox.maps.extension.style.layers.properties.generated.LineCap
+import com.mapbox.maps.extension.style.layers.properties.generated.LineJoin
+import com.mapbox.maps.extension.style.sources.addSource
+import com.mapbox.maps.extension.style.sources.generated.GeoJsonSource
+import com.mapbox.maps.extension.style.sources.generated.geoJsonSource
+import com.mapbox.maps.extension.style.sources.getSourceAs
+import com.mapbox.maps.plugin.gestures.OnMapClickListener
+import com.mapbox.maps.plugin.gestures.addOnMapClickListener
+import com.mapbox.maps.plugin.gestures.gestures
+import com.mapbox.maps.plugin.gestures.removeOnMapClickListener
+import com.mapbox.maps.plugin.scalebar.scalebar
+import java.util.Locale
 
 /** 지도에 그릴 기록 하나의 경로. */
 data class MapRoute(
@@ -51,7 +70,9 @@ data class MapRoute(
 )
 
 /**
- * MapLibre 지도에 기록 경로를 그린다. 지도 타일은 OpenFreeMap(무료, 키 없음, OpenStreetMap 데이터).
+ * Mapbox 지도에 기록 경로를 그린다. 공개 토큰은 local.properties 의 MAPBOX_ACCESS_TOKEN 에서 온다
+ * (build.gradle.kts 가 mapbox_access_token 문자열 리소스로 넣고, Mapbox SDK 가 자동으로 읽는다).
+ * 지도 스타일은 [STYLE_URL] 하나만 바꾸면 된다 (Mapbox Studio 로 만든 스타일 주소도 넣을 수 있다).
  *
  * @param onRouteClick 경로를 누르면 그 기록의 id 로 부른다. null 이면 누를 수 없다.
  */
@@ -62,67 +83,79 @@ fun RouteMap(
     onRouteClick: ((Long) -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    // 토큰이 없으면(local.properties 에 MAPBOX_ACCESS_TOKEN 이 없음) 지도를 만들지 않고 안내 문구만 보인다.
+    val hasToken = remember { context.getString(R.string.mapbox_access_token).isNotBlank() }
+    if (!hasToken) {
+        Box(modifier.background(Color(0xFFF2F2F2)), contentAlignment = Alignment.Center) {
+            Text(
+                "지도를 보려면 local.properties 에 MAPBOX_ACCESS_TOKEN 을 넣어 주세요",
+                Modifier.padding(16.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF6B6B6B),
+                textAlign = TextAlign.Center,
+            )
+        }
+        return
+    }
+    MapboxRouteMap(routes, modifier, onRouteClick)
+}
+
+@Composable
+private fun MapboxRouteMap(
+    routes: List<MapRoute>,
+    modifier: Modifier,
+    onRouteClick: ((Long) -> Unit)?,
+) {
+    val context = LocalContext.current
     val mapView = remember {
-        MapLibre.getInstance(context.applicationContext)
         // 스크롤되는 화면 안에서도 잘 그려지도록 TextureView 방식을 쓴다.
-        val options = MapLibreMapOptions.createFromAttributes(context).textureMode(true)
-        MapView(context, options).apply { onCreate(null) }
-    }
-
-    // 화면 생명주기에 맞춰 지도를 켜고 끈다.
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(lifecycle, mapView) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_START -> mapView.onStart()
-                Lifecycle.Event.ON_RESUME -> mapView.onResume()
-                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
-                Lifecycle.Event.ON_STOP -> mapView.onStop()
-                else -> Unit
-            }
-        }
-        lifecycle.addObserver(observer)
-        onDispose {
-            lifecycle.removeObserver(observer)
-            mapView.onDestroy()
+        MapView(context, MapInitOptions(context, textureView = true)).apply {
+            gestures.rotateEnabled = false
+            gestures.pitchEnabled = false
+            scalebar.enabled = false // 작은 지도에서 거리 눈금이 경로를 가려서 숨긴다
         }
     }
+    // 화면에서 지도가 사라지면 지도 자원을 정리한다. 시작·멈춤은 Mapbox 가 화면 생명주기를 따라 스스로 한다.
+    DisposableEffect(mapView) {
+        onDispose { mapView.onDestroy() }
+    }
 
-    var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
     LaunchedEffect(mapView) {
-        mapView.getMapAsync { m ->
-            m.uiSettings.isRotateGesturesEnabled = false
-            m.uiSettings.isTiltGesturesEnabled = false
-            m.setStyle(Style.Builder().fromUri(STYLE_URL)) { s ->
-                map = m
-                style = s
-            }
+        mapView.mapboxMap.loadStyle(STYLE_URL) { s ->
+            runCatching { s.localizeLabels(Locale.KOREAN) } // 지명을 한국어로
+            style = s
         }
     }
 
-    LaunchedEffect(map, style, routes) {
-        val m = map ?: return@LaunchedEffect
+    LaunchedEffect(style, routes) {
         val s = style ?: return@LaunchedEffect
         drawRoutes(s, routes)
-        moveCamera(m, mapView, routes)
+        moveCamera(mapView, routes)
     }
 
     val clickHandler by rememberUpdatedState(onRouteClick)
-    DisposableEffect(map) {
-        val m = map ?: return@DisposableEffect onDispose { }
-        val listener = MapLibreMap.OnMapClickListener { latLng ->
-            val handler = clickHandler ?: return@OnMapClickListener false
-            val p = m.projection.toScreenLocation(latLng)
-            val touch = RectF(p.x - TOUCH_PX, p.y - TOUCH_PX, p.x + TOUCH_PX, p.y + TOUCH_PX)
-            val tripId = m.queryRenderedFeatures(touch, ROUTE_LAYER)
-                .firstOrNull()?.getNumberProperty(PROP_TRIP)?.toLong()
-                ?: return@OnMapClickListener false
-            handler(tripId)
+    DisposableEffect(mapView) {
+        val map = mapView.mapboxMap
+        val listener = OnMapClickListener { point ->
+            if (clickHandler == null) return@OnMapClickListener false
+            val p = map.pixelForCoordinate(point)
+            val box = ScreenBox(
+                ScreenCoordinate(p.x - TOUCH_PX, p.y - TOUCH_PX),
+                ScreenCoordinate(p.x + TOUCH_PX, p.y + TOUCH_PX),
+            )
+            map.queryRenderedFeatures(
+                RenderedQueryGeometry(box),
+                RenderedQueryOptions(listOf(ROUTE_LAYER), null),
+            ) { result ->
+                val tripId = result.value?.firstOrNull()?.queriedFeature?.feature
+                    ?.getNumberProperty(PROP_TRIP)?.toLong() ?: return@queryRenderedFeatures
+                mapView.post { clickHandler?.invoke(tripId) }
+            }
             true
         }
-        m.addOnMapClickListener(listener)
-        onDispose { m.removeOnMapClickListener(listener) }
+        map.addOnMapClickListener(listener)
+        onDispose { map.removeOnMapClickListener(listener) }
     }
 
     AndroidView(factory = { mapView }, modifier = modifier)
@@ -145,40 +178,44 @@ private fun drawRoutes(style: Style, routes: List<MapRoute>) {
         route.events.filter { it.type != TimelineType.RESUME }
             .sortedBy { if (it.type == TimelineType.STOP) 0 else 1 }
             .map { event ->
-            Feature.fromGeometry(Point.fromLngLat(event.longitude, event.latitude)).apply {
-                addStringProperty(PROP_COLOR, eventColor(event.type))
+                Feature.fromGeometry(Point.fromLngLat(event.longitude, event.latitude)).apply {
+                    addStringProperty(PROP_COLOR, eventColor(event.type))
+                }
             }
-        }
     }
 
     upsertSource(style, ROUTE_SOURCE, FeatureCollection.fromFeatures(lines))
     upsertSource(style, EVENT_SOURCE, FeatureCollection.fromFeatures(dots))
 
-    if (style.getLayer(ROUTE_LAYER) == null) {
+    if (!style.styleLayerExists(ROUTE_LAYER)) {
         style.addLayer(
-            LineLayer(ROUTE_LAYER, ROUTE_SOURCE).withProperties(
-                PropertyFactory.lineColor(Expression.get(PROP_COLOR)),
-                PropertyFactory.lineWidth(6f),
-                PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
-                PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
-            )
+            lineLayer(ROUTE_LAYER, ROUTE_SOURCE) {
+                lineColor(get(PROP_COLOR))
+                lineWidth(6.0)
+                lineCap(LineCap.ROUND)
+                lineJoin(LineJoin.ROUND)
+            }
         )
     }
-    if (style.getLayer(EVENT_LAYER) == null) {
+    if (!style.styleLayerExists(EVENT_LAYER)) {
         style.addLayer(
-            CircleLayer(EVENT_LAYER, EVENT_SOURCE).withProperties(
-                PropertyFactory.circleColor(Expression.get(PROP_COLOR)),
-                PropertyFactory.circleRadius(7f),
-                PropertyFactory.circleStrokeColor("#FFFFFF"),
-                PropertyFactory.circleStrokeWidth(2f),
-            )
+            circleLayer(EVENT_LAYER, EVENT_SOURCE) {
+                circleColor(get(PROP_COLOR))
+                circleRadius(7.0)
+                circleStrokeColor("#FFFFFF")
+                circleStrokeWidth(2.0)
+            }
         )
     }
 }
 
 private fun upsertSource(style: Style, id: String, data: FeatureCollection) {
     val existing = style.getSourceAs<GeoJsonSource>(id)
-    if (existing != null) existing.setGeoJson(data) else style.addSource(GeoJsonSource(id, data))
+    if (existing != null) {
+        existing.featureCollection(data)
+    } else {
+        style.addSource(geoJsonSource(id) { featureCollection(data) })
+    }
 }
 
 /**
@@ -187,16 +224,22 @@ private fun upsertSource(style: Style, id: String, data: FeatureCollection) {
  * 경로 둘레 여백은 지도 크기에 비례한다: 다이어리의 작은 지도(높이 200dp)에서 고정 여백을 크게 주면
  * 경로가 손톱만 하게 나오기 때문이다.
  */
-private fun moveCamera(map: MapLibreMap, view: MapView, routes: List<MapRoute>) {
-    val points = routes.flatMap { it.segments.flatten() }.map { LatLng(it.latitude, it.longitude) }
+private fun moveCamera(view: MapView, routes: List<MapRoute>) {
+    val points = routes.flatMap { it.segments.flatten() }.map { Point.fromLngLat(it.longitude, it.latitude) }
     view.doOnLayout {
+        val map: MapboxMap = view.mapboxMap
         when {
-            points.isEmpty() -> map.moveCamera(CameraUpdateFactory.newLatLngZoom(SEOUL, 10.0))
-            points.distinct().size == 1 -> map.moveCamera(CameraUpdateFactory.newLatLngZoom(points.first(), 15.0))
+            points.isEmpty() -> map.setCamera(CameraOptions.Builder().center(SEOUL).zoom(10.0).build())
+            points.distinct().size == 1 -> map.setCamera(CameraOptions.Builder().center(points.first()).zoom(15.0).build())
             else -> {
-                val bounds = LatLngBounds.Builder().includes(points).build()
-                val padding = (minOf(view.width, view.height) * CAMERA_PADDING_RATIO).toInt().coerceAtLeast(CAMERA_PADDING_MIN_PX)
-                map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, padding))
+                val pad = (minOf(view.width, view.height) * CAMERA_PADDING_RATIO).coerceAtLeast(CAMERA_PADDING_MIN_PX).toDouble()
+                map.cameraForCoordinates(
+                    points,
+                    CameraOptions.Builder().build(),
+                    EdgeInsets(pad, pad, pad, pad),
+                    null,
+                    null,
+                ) { camera -> map.setCamera(camera) }
             }
         }
     }
@@ -208,15 +251,16 @@ private fun eventColor(type: TimelineType): String = when (type) {
     TimelineType.END -> "#C62828"
 }
 
-private const val STYLE_URL = "https://tiles.openfreemap.org/styles/liberty"
+/** 밝은 지도: v3 흰 바탕 디자인과 어울리고 경로 색이 잘 보인다. Mapbox Studio 스타일 주소로 바꿔도 된다. */
+private val STYLE_URL = Style.LIGHT
 private const val ROUTE_SOURCE = "dongban-routes"
 private const val ROUTE_LAYER = "dongban-routes-line"
 private const val EVENT_SOURCE = "dongban-events"
 private const val EVENT_LAYER = "dongban-events-circle"
 private const val PROP_TRIP = "tripId"
 private const val PROP_COLOR = "color"
-private const val TOUCH_PX = 24f
+private const val TOUCH_PX = 24.0
 /** 경로 둘레 여백 = 지도 짧은 변의 12% (최소 16px) */
 private const val CAMERA_PADDING_RATIO = 0.12f
-private const val CAMERA_PADDING_MIN_PX = 16
-private val SEOUL = LatLng(37.5665, 126.9780)
+private const val CAMERA_PADDING_MIN_PX = 16f
+private val SEOUL = Point.fromLngLat(126.9780, 37.5665)

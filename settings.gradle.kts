@@ -23,6 +23,10 @@ dependencyResolutionManagement {
         maven {
             url = uri("https://nexus-playground.pleos.ai/repository/maven-releases/")
         }
+        // Mapbox Maven repository (지도 SDK)
+        maven {
+            url = uri("https://api.mapbox.com/downloads/v2/releases/maven")
+        }
     }
 }
 
