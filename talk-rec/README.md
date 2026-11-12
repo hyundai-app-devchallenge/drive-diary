@@ -21,6 +21,7 @@ talk-rec/
 
 설계는 [DESIGN.md](model-create/DESIGN.md), 라벨 기준은 [rubric.md](model-create/rubric.md), 작업 순서는 [TASKS.md](model-create/TASKS.md)에 있다. 환경 구성은 [model-create README](model-create/README.md)를 따른다.
 
+- **두 모델**: 앱에는 **대화 모델**(Pleos STT 글로 남길 것/없음 판정, 주)과 **소리 모델**(웃음·고함·울음 감지, 보조)이 들어간다. 대화 모델을 먼저 넣고, 소리 모델은 실제 차 안 음성으로 다시 확인할 때까지 자리만 두고 보류한다. Pleos STT는 앱 밖에서 돌아 앱 메모리·CPU 예산에 들지 않는다.
 - **학습 데이터**: 직접 만든 합성 대화를 Pleos STT 글 모양으로 다듬어 쓴다. 대상은 아이(아기~초등)와 가족이 함께 탄 대화다.
 - **평가 데이터**: 사람이 승인한 YouTube 차 안 영상만 쓴다. 영상 검토 화면(`tools/review`)에서 승인하고 사용 구간을 적으면, 그 구간 음성을 Pleos 에뮬레이터에서 전사해 묶음으로 나눈다.
 - **판정**: 묶음은 채널 단위로 dev/test로 나눈다. test는 사람이 혼자 판정하고, dev는 Claude 제안을 사람이 확인한다(`tools/listen`). 판정 화면 안내는 [listen README](model-create/tools/listen/README.md)에 있다.
