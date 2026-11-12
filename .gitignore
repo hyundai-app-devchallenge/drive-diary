@@ -32,3 +32,14 @@ Desktop.ini
 
 # 개인 문서
 /personal-docs/
+
+# Android·Gradle 빌드 결과물과 로컬 설정
+.gradle/
+.kotlin/
+build/
+/local.properties
+*.apk
+*.aab
+captures/
+.externalNativeBuild/
+.cxx/
