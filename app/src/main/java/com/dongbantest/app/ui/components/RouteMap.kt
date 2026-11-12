@@ -19,6 +19,7 @@ import com.dongbantest.app.domain.model.LocationPoint
 import com.dongbantest.app.domain.model.TimelineEvent
 import com.dongbantest.app.domain.model.TimelineType
 import org.maplibre.android.MapLibre
+import androidx.core.view.doOnLayout
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
@@ -180,16 +181,22 @@ private fun upsertSource(style: Style, id: String, data: FeatureCollection) {
     if (existing != null) existing.setGeoJson(data) else style.addSource(GeoJsonSource(id, data))
 }
 
-/** 모든 경로가 보이게 카메라를 맞춘다. 경로가 없으면 서울을 보여준다. */
+/**
+ * 모든 경로가 보이게 카메라를 맞춘다. 경로가 없으면 서울을 보여준다.
+ * 지도 크기가 정해진 뒤에 맞춘다(크기가 0일 때 맞추면 아주 멀리서 보인다).
+ * 경로 둘레 여백은 지도 크기에 비례한다: 다이어리의 작은 지도(높이 200dp)에서 고정 여백을 크게 주면
+ * 경로가 손톱만 하게 나오기 때문이다.
+ */
 private fun moveCamera(map: MapLibreMap, view: MapView, routes: List<MapRoute>) {
     val points = routes.flatMap { it.segments.flatten() }.map { LatLng(it.latitude, it.longitude) }
-    view.post {
+    view.doOnLayout {
         when {
             points.isEmpty() -> map.moveCamera(CameraUpdateFactory.newLatLngZoom(SEOUL, 10.0))
             points.distinct().size == 1 -> map.moveCamera(CameraUpdateFactory.newLatLngZoom(points.first(), 15.0))
             else -> {
                 val bounds = LatLngBounds.Builder().includes(points).build()
-                map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, CAMERA_PADDING_PX))
+                val padding = (minOf(view.width, view.height) * CAMERA_PADDING_RATIO).toInt().coerceAtLeast(CAMERA_PADDING_MIN_PX)
+                map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, padding))
             }
         }
     }
@@ -209,5 +216,7 @@ private const val EVENT_LAYER = "dongban-events-circle"
 private const val PROP_TRIP = "tripId"
 private const val PROP_COLOR = "color"
 private const val TOUCH_PX = 24f
-private const val CAMERA_PADDING_PX = 80
+/** 경로 둘레 여백 = 지도 짧은 변의 12% (최소 16px) */
+private const val CAMERA_PADDING_RATIO = 0.12f
+private const val CAMERA_PADDING_MIN_PX = 16
 private val SEOUL = LatLng(37.5665, 126.9780)
