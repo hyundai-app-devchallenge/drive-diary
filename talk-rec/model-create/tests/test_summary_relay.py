@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 from tools import summary_relay as r
+from tools import cloudflare_ai as cf
 
 
 @pytest.fixture(autouse=True)
@@ -20,6 +21,7 @@ def no_network(monkeypatch):
         pytest.fail('relay tests must not open a network socket')
     monkeypatch.setattr(socket, 'socket', forbidden)
     monkeypatch.setattr(r.AgyBackend, 'complete', forbidden)
+    monkeypatch.setattr(cf, 'build_opener', forbidden)
 
 
 class FakeBackend:
@@ -484,3 +486,96 @@ def test_story_split_retries_invalid_value_and_preserves_hidden_metadata(relay, 
     status, data, _ = http(relay, path='/story-split', data={'segments': ['지어낸 대화']})
     assert status == 200 and len(backend.calls) == 2
     assert data['stories'][0] == dict(group, tags=['운전·길', '주차권'])
+
+
+CF_MODEL = '@cf/google/gemma-4-26b-a4b-it'
+
+
+@pytest.mark.parametrize('path', ['/summarize', '/story-split'])
+def test_cloudflare_routing_prompts_schema_retry_and_private_logs(relay, path, caplog):
+    caplog.set_level(logging.INFO, logger=r.LOGGER.name)
+    group = dict(segments=[1, 2], title='종이배 이야기', category=relay.categories[0], keywords=[],
+                 kind='story', keep=True, reason='')
+    valid = json.dumps(dict(stories=[group])) if path == '/story-split' else answer(relay)
+    # Even a JSON object extracted from reasoning text must pass the same validator.
+    backend = FakeBackend([SimpleNamespace(content='<think>{"wrong":1}</think> {"stories":[]}'),
+                           SimpleNamespace(content='<think>PRIVATE_REASONING</think>\n```json\n' + valid + '\n```')])
+    created = []
+    def factory(**options):
+        created.append(options)
+        return backend
+    def no_agy(**options):
+        pytest.fail('CF model must not create an agy backend')
+    relay.fake = False
+    relay.backend_factory = no_agy
+    relay.cloudflare_factory = factory
+    payload = dict(model=CF_MODEL)
+    payload.update(segments=['PRIVATE_ONE', 'PRIVATE_TWO'] if path == '/story-split' else None,
+                   transcript='PRIVATE_TRANSCRIPT')
+    status, data, _ = http(relay, path=path, data=payload)
+    assert status == 200 and data['model'] == CF_MODEL
+    assert len(backend.calls) == 2 and len(created) == 1
+    assert created[0]['model'] == CF_MODEL
+    if path == '/story-split':
+        assert backend.calls[0] == (r.STORY_PROMPT_PATH.read_text(encoding='utf-8'),
+                                    '[1]\nPRIVATE_ONE\n\n[2]\nPRIVATE_TWO')
+        schema = created[0]['json_schema']['schema']['properties']['stories']['items']['properties']
+        assert schema['reason']['enum'] == list(r.SPLIT_REASONS)
+        assert schema['segments']['items']['maximum'] == 2
+        assert schema['category']['enum'] == list(relay.categories) + ['']
+    else:
+        assert backend.calls[0] == (relay.system, 'PRIVATE_TRANSCRIPT')
+        schema = created[0]['json_schema']['schema']['properties']
+        assert schema['category']['enum'] == list(relay.categories)
+    # Workers AI (xgrammar) rejects pattern + length together; validators enforce those.
+    assert schema['title'] == {'type': 'string'}
+    assert schema['keywords']['maxItems'] == r.KEYWORDS_MAX
+    assert 'pattern' not in json.dumps(created[0]['json_schema'])
+    assert 'PRIVATE' not in caplog.text
+
+
+@pytest.mark.parametrize('path', ['/summarize', '/story-split'])
+@pytest.mark.parametrize('status,code,retryable,expected', [
+    (401, 'authentication_error', False, 401), (429, 'usage_limit', True, 429),
+    (500, 'backend_error', True, 502), (503, 'backend_error', True, 503),
+    (503, 'cloudflare_not_configured', False, 503)])
+def test_cloudflare_error_mapping(relay, path, status, code, retryable, expected):
+    relay.fake = False
+    backend = FakeBackend([r.CloudflareError(status, code, retryable=retryable)])
+    relay.cloudflare_factory = lambda **options: backend
+    assert http(relay, path=path, data=dict(model=CF_MODEL, transcript='invented', segments=['invented']))[:2] == (
+        expected, dict(error=code, retryable=retryable))
+    assert len(backend.calls) == 1
+
+
+@pytest.mark.parametrize('path', ['/summarize', '/story-split'])
+def test_cloudflare_missing_env_response_is_clear_and_safe(relay, monkeypatch, path, caplog, capsys):
+    monkeypatch.delenv('CLOUDFLARE_ACCOUNT_ID', raising=False)
+    monkeypatch.setenv('CLOUDFLARE_API_TOKEN', 'INVENTED_TOKEN_SENTINEL')
+    relay.fake = False
+    status, data, _ = http(relay, path=path,
+                           data=dict(model=CF_MODEL, transcript='invented', segments=['invented']))
+    assert status == 503 and data == dict(error='cloudflare_not_configured', retryable=False)
+    assert 'INVENTED_TOKEN_SENTINEL' not in json.dumps(data) + caplog.text + ''.join(capsys.readouterr())
+
+
+@pytest.mark.parametrize('model', ['@cf/google/gemma-4-26b-a4b-it', '@cf/test/model-high'])
+def test_cloudflare_fake_never_uses_backend_and_keeps_exact_model(relay, model):
+    assert relay.summarize(dict(transcript='invented', model=model))[1]['model'] == model
+    assert relay.story_split(dict(segments=['invented'], model=model))[1]['model'] == model
+
+
+@pytest.mark.parametrize('model', ['@cf/', '@cf/google/', '@cf//model', '@cf/../model', '@cf/google/../model',
+    '@cf/google/model?token=x', '@cf/google/model#x', '@cf/google/model name', '@cf/google/model\\bad',
+    '@cf/Google/model', '@cf/google/model\n', '@cf/google/' + 'a' * 128])
+def test_cloudflare_model_rejects_unsafe_paths(relay, model):
+    assert relay.summarize(dict(transcript='invented', model=model)) == (400, {'error': 'invalid_request'})
+    assert relay.story_split(dict(segments=['invented'], model=model)) == (400, {'error': 'invalid_request'})
+
+
+def test_cloudflare_default_model_and_health():
+    relay = r.SummaryRelay(fake=True, default_model=CF_MODEL)
+    assert http(relay, method='GET', path='/health')[1]['model'] == CF_MODEL
+    assert http(relay)[1]['model'] == CF_MODEL
+    assert http(relay, data=dict(transcript='invented', model=r.DEFAULT_MODEL))[1]['model'] == r.DEFAULT_MODEL
+    assert r.parser().parse_args(['--model', CF_MODEL]).model == CF_MODEL

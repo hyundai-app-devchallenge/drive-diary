@@ -7,7 +7,6 @@ import http.client
 import io
 import json
 from pathlib import Path
-import re
 import sys
 import time
 from urllib.parse import urlsplit
@@ -15,7 +14,8 @@ from urllib.parse import urlsplit
 from .core import build_runs, decide, histogram, parse_policy, quantile
 from .measure import ROOT, load_dev
 from tools.summary_relay import (DEFAULT_MODEL, MAX_SEGMENTS, MAX_SPLIT_REQUEST_BYTES,
-                                 STORY_PROMPT_PATH, prompt_categories, validate_split_output)
+                                 STORY_PROMPT_PATH, effective_model as relay_model, prompt_categories,
+                                 valid_model, validate_split_output)
 
 MAX_ATTEMPTS = 3
 MAX_RESPONSE_BYTES = 1024 * 1024
@@ -116,14 +116,12 @@ def checked_response(result, count, categories):
 
 
 def execute(*, relay, policy, model=DEFAULT_MODEL, root=ROOT, send=request_once):
-    from pipeline.label import agy_model
     from tools.listen.storage import atomic_write, encode_lines
     parse_policy(policy)
     address = relay_address(relay)
-    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}', model):
+    if not valid_model(model):
         raise ValueError('invalid model')
-    base, effort = agy_model(model, 'medium')
-    effective_model = f'{base}-{effort}'
+    effective_model = relay_model(model)
     directory = Path(root) / '.local/eval/stitch'
     records = [json.loads(line) for line in (directory / 'runs.jsonl').read_text(encoding='utf-8').splitlines()
                if line.strip()]
@@ -178,7 +176,11 @@ def execute(*, relay, policy, model=DEFAULT_MODEL, root=ROOT, send=request_once)
             per_run.append(story_count)
         else:
             failed += 1
-    atomic_write(directory / f'split-{policy}-{effective_model}.jsonl', encode_lines(rows))
+    # Keep the exact model in rows/requests, but encode CF paths for a flat filename
+    # accepted by eval.stitch.value. Existing agy filenames are unchanged.
+    file_model = ('cf-' + effective_model[4:].replace('/', '--')
+                  if effective_model.startswith('@cf/') else effective_model)
+    atomic_write(directory / f'split-{policy}-{file_model}.jsonl', encode_lines(rows))
     return dict(runs_sent=sent, ok=ok, failed=failed, skipped_runs=len(runs) - sent,
                 windows_ok=window_ok, windows_failed=window_failed, windowed_runs=windowed_runs,
                 stories_per_run=histogram(per_run), none=none, keep=keep, hide=hide,
