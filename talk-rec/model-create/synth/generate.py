@@ -16,6 +16,7 @@ from pipeline.label import (AGY_COMMAND_LIMIT, AgyBackend, BackendError, Command
                             windows_command_length)
 from synth.io import ROOT, digest, output_lock, read_jsonl, write_json, write_jsonl
 from synth.patterns import BY_ID, DEFINITIONS, LABELS
+from common.normalize import normalize
 
 BANNED = ('삼성', '애플', '유튜브', '카카오', '현대자동차', '테슬라', '아이폰', '갤럭시',
           '포켓몬', '마인크래프트', '손흥민', '아이유', '이순신', '트럼프')
@@ -79,7 +80,10 @@ def select_examples(cards, seed=43, count=3):
         return next((e for e in same if length_band(e['card']) == band), same[0] if same else None)
     for label in labels:
         band = next(band for value, band in needs if value == label)
-        selected.append(pick(label, band))
+        example = pick(label, band)
+        if label == 'none' and any(c.get('negative') for c in cards):
+            example = next((e for e in pool if e['card'].get('negative')), example)
+        selected.append(example)
     for label, band in needs:
         if len(selected) >= max(count, len(labels)):
             break
@@ -132,10 +136,14 @@ def validate_cards(cards):
             raise ValueError('invalid family')
         if sum(m['role'] == '운전자' for m in members) != 1:
             raise ValueError('family needs one driver')
+        if 'negative' in c and (type(c['negative']) is not bool or c['negative'] and c['label'] != 'none'):
+            raise ValueError('invalid negative marker')
+        if 'pair_id' in c and (not isinstance(c['pair_id'], str) or not c['pair_id']):
+            raise ValueError('invalid pair identity')
 
 
 def grams(scene):
-    text = re.sub(r'\s+', '', ''.join(line['text'] for line in scene['lines']))
+    text = normalize(' '.join(line['text'] for line in scene['lines'])).replace(' ', '')
     return {text[i:i+4] for i in range(max(1, len(text)-3))}
 
 
@@ -144,10 +152,50 @@ def similarity(a, b):
     return len(x & y) / len(x | y) if x | y else 1.0
 
 
+class SceneIndex:
+    """Exact normalized 4-gram Jaccard with cached sets/inverted candidates."""
+    def __init__(self, scenes=()):
+        if isinstance(scenes, SceneIndex):
+            self.values, self.postings = scenes.values.copy(), scenes.postings.copy()
+        else:
+            self.values, self.postings = [], {}
+            for scene in scenes:
+                self.add(scene)
+
+    def add(self, scene):
+        value = grams(scene)
+        index = len(self.values)
+        self.values.append(value)
+        for gram in value:
+            # Immutable postings permit a cheap, thread-safe wave snapshot.
+            self.postings[gram] = self.postings.get(gram, frozenset()) | {index}
+
+    def duplicate(self, scene, threshold):
+        value = grams(scene)
+        # A matching set must share >=ceil(threshold*len(value)) grams.
+        # Therefore it cannot miss every gram of this rare prefix. This exact
+        # filter avoids counting ubiquitous filler grams against every scene.
+        prefix_size = len(value) - math.ceil(threshold * len(value)) + 1
+        prefix = sorted(value, key=lambda g: (len(self.postings.get(g, ())), g))[:prefix_size]
+        candidates = set()
+        for gram in prefix:
+            candidates.update(self.postings.get(gram, ()))
+        for i in candidates:
+            other = self.values[i]
+            if min(len(value), len(other)) / max(len(value), len(other)) < threshold:
+                continue
+            intersection = len(value & other)
+            if intersection / (len(value) + len(other) - intersection) >= threshold:
+                return True
+        return False
+
+
 def validate_scenes(items, cards, existing=(), threshold=.85):
+    if not math.isfinite(threshold) or not 0 < threshold <= 1:
+        raise ValueError('invalid duplicate threshold')
     if not isinstance(items, list) or len(items) != len(cards):
         raise ValueError('scene count mismatch')
-    checked = list(existing) + load_examples()
+    checked = SceneIndex(existing) if isinstance(existing, SceneIndex) else SceneIndex(list(existing) + load_examples())
     for item, card in zip(items, cards):
         if not isinstance(item, dict) or set(item) != {'card', 'lines', 'why'} or type(item['card']) is not int or item['card'] != card['card']:
             raise ValueError('scene fields/card mismatch')
@@ -180,9 +228,9 @@ def validate_scenes(items, cards, existing=(), threshold=.85):
             raise ValueError('duration outside 50%')
         if any(word.casefold() in json.dumps(item, ensure_ascii=False).casefold() for word in BANNED):
             raise ValueError('banned name/brand')
-        if any(similarity(item, old) >= threshold for old in checked):
+        if checked.duplicate(item, threshold):
             raise ValueError('duplicate scene (character 4-gram)')
-        checked.append(item)
+        checked.add(item)
     return items
 
 
@@ -230,13 +278,16 @@ def stretch_duration(scene, card):
     return result
 
 
-def checked_subset(items, cards, existing=(), initial=(), partial=False, stretch_short=True):
+def checked_subset(items, cards, existing=(), initial=(), partial=False, stretch_short=True, threshold=.85):
     """Keep valid cards even when other cards in the response fail validation.
 
     Record the first failed check per card, plus envelope failures. Previously
     accepted cards survive retries; they are not compared against themselves.
     """
     accepted = {s['card']: s for s in initial}
+    checked = SceneIndex(existing) if isinstance(existing, SceneIndex) else SceneIndex(list(existing) + load_examples())
+    for scene in initial:
+        checked.add(scene)
     reasons = []
     if not isinstance(items, list):
         return list(accepted.values()), ['response_not_list']
@@ -257,11 +308,12 @@ def checked_subset(items, cards, existing=(), initial=(), partial=False, stretch
         if stretch_short:
             candidates = [stretch_duration(candidates[0], card)]
         try:
-            validate_scenes(candidates, [card], list(existing) + list(accepted.values()))
+            validate_scenes(candidates, [card], checked, threshold=threshold)
         except (ValueError, TypeError, KeyError, IndexError) as error:
             reasons.append(VALIDATION_REASONS.get(str(error), 'invalid_scene_structure'))
         else:
             accepted[number] = candidates[0]
+            checked.add(candidates[0])
     return [accepted[c['card']] for c in cards if c['card'] in accepted], reasons
 
 
@@ -294,7 +346,8 @@ class SynthFakeBackend(FakeBackend):
         return super().complete(system_prompt, user_message)
 
 
-def request_batch(cards, factory, existing, wait_minutes=0, attempts=3, failures=None, seed=43, initial=(), stretch_short=True):
+def request_batch(cards, factory, existing, wait_minutes=0, attempts=3, failures=None, seed=43, initial=(), stretch_short=True,
+                  threshold=.85):
     failures = failures if failures is not None else FailureCounts()
     accepted = list(initial)
     for attempt in range(attempts):
@@ -327,7 +380,7 @@ def request_batch(cards, factory, existing, wait_minutes=0, attempts=3, failures
         except (ValueError, TypeError, KeyError):
             record_validation(failures, ['invalid_json'])
             continue
-        accepted, reasons = checked_subset(items, cards, existing, accepted, stretch_short=stretch_short)
+        accepted, reasons = checked_subset(items, cards, existing, accepted, stretch_short=stretch_short, threshold=threshold)
         if reasons:
             record_validation(failures, reasons)
         if len(accepted) == len(cards):
@@ -338,7 +391,8 @@ def request_batch(cards, factory, existing, wait_minutes=0, attempts=3, failures
     raise BatchFailure('batch failed after request budget exhausted') from None
 
 
-def generate(cards, out, factory, signature, concurrency=1, wait_minutes=0, seed=43, stretch_short=True):
+def generate(cards, out, factory, signature, concurrency=1, wait_minutes=0, seed=43, stretch_short=True,
+             duplicate_threshold=.85):
     validate_cards(cards)
     if concurrency < 1 or not math.isfinite(wait_minutes) or wait_minutes < 0:
         raise ValueError('invalid concurrency/wait')
@@ -346,6 +400,10 @@ def generate(cards, out, factory, signature, concurrency=1, wait_minutes=0, seed
     meta = out.with_suffix('.meta.json')
     signature = dict(signature, cards_hash=digest(cards), prompt_hash=digest(render_prompt([], seed=seed)[0]), version=1)
     signature['stretch_short'] = stretch_short
+    if not math.isfinite(duplicate_threshold) or not 0 < duplicate_threshold <= 1:
+        raise ValueError('invalid duplicate threshold')
+    if duplicate_threshold != .85:
+        signature['duplicate_threshold'] = duplicate_threshold
     with output_lock(out):
         if out.exists() and not meta.exists():
             raise ValueError('existing scenes have no resume metadata')
@@ -364,7 +422,8 @@ def generate(cards, out, factory, signature, concurrency=1, wait_minutes=0, seed
         card_by_id = {c['card']: c for c in cards}
         if len({s['card'] for s in old}) != len(old) or any(s['card'] not in card_by_id for s in old):
             raise ValueError('invalid saved card identities')
-        validate_scenes(old, [card_by_id[s['card']] for s in old]) if old else None
+        validate_scenes(old, [card_by_id[s['card']] for s in old], threshold=duplicate_threshold) if old else None
+        scene_index = SceneIndex(load_examples() + old)
         done = {s['card'] for s in old}
         context = None
         if signature.get('backend') == 'agy':
@@ -397,24 +456,30 @@ def generate(cards, out, factory, signature, concurrency=1, wait_minutes=0, seed
             with ThreadPoolExecutor(max_workers=concurrency) as pool:
                 for start in range(0, len(pending), concurrency):
                     wave = pending[start:start+concurrency]
-                    futures = [pool.submit(request_batch, b, factory, tuple(old), wait_minutes,
-                                           failures=failures, seed=seed, stretch_short=stretch_short) for b in wave]
+                    snapshot = SceneIndex(scene_index)
+                    futures = [pool.submit(request_batch, b, factory, snapshot, wait_minutes,
+                                           failures=failures, seed=seed, stretch_short=stretch_short,
+                                           threshold=duplicate_threshold) for b in wave]
                     for batch, future in zip(wave, futures):
                         try:
                             result, used = future.result()
-                            result, reasons = checked_subset(result, batch, old, partial=True, stretch_short=stretch_short)
+                            result, reasons = checked_subset(result, batch, scene_index, partial=True,
+                                                              stretch_short=stretch_short, threshold=duplicate_threshold)
                             if reasons:
                                 record_validation(failures, reasons)
                                 if used >= 3 and not result:
                                     raise BatchFailure('cross-batch validation budget exhausted') from None
                                 if used < 3:
-                                    result, _ = request_batch(batch, factory, old, wait_minutes,
-                                                              3-used, failures, seed, initial=result, stretch_short=stretch_short)
+                                    result, _ = request_batch(batch, factory, scene_index, wait_minutes,
+                                                              3-used, failures, seed, initial=result,
+                                                              stretch_short=stretch_short, threshold=duplicate_threshold)
                         except BatchFailure:
                             failed.update(c['card'] for c in batch)
                             save_meta()
                             continue
                         old.extend(result)
+                        for scene in result:
+                            scene_index.add(scene)
                         old.sort(key=lambda s: s['card'])
                         write_jsonl(out, old)
                         failed.update(c['card'] for c in batch)
@@ -424,6 +489,9 @@ def generate(cards, out, factory, signature, concurrency=1, wait_minutes=0, seed
         finally:
             save_meta()
         print('실패한 카드 번호: ' + json.dumps(sorted(failed)), flush=True)
+        print('| 실패 사유 (이번 실행) | 횟수 |\n|---|---:|', flush=True)
+        for reason, count in failures.reason_snapshot().items():
+            print(f'| {reason} | {count} |', flush=True)
         return old
 
 
@@ -440,6 +508,7 @@ def main(argv=None):
     p.add_argument('--concurrency', type=int, default=1)
     p.add_argument('--seed', type=int, default=43, help='example selection seed')
     p.add_argument('--no-stretch-short', action='store_true', help='disable expansion of compressed scene times')
+    p.add_argument('--duplicate-threshold', type=float, default=.85, help='normalized character 4-gram Jaccard cutoff')
     args = p.parse_args(argv)
     if args.backend == 'fake' and 'demo' in [s.casefold() for s in Path(args.out).resolve().parts]:
         p.error('가짜 결과는 demo 경로에 저장할 수 없습니다. .local/synth/fake/를 사용하세요.')
@@ -454,7 +523,7 @@ def main(argv=None):
                          agy_path_hash=digest(args.agy_path))
         cards = read_jsonl(args.cards)
         scenes = generate(cards, args.out, factory, signature, args.concurrency, args.wait_on_limit, args.seed,
-                          stretch_short=not args.no_stretch_short)
+                          stretch_short=not args.no_stretch_short, duplicate_threshold=args.duplicate_threshold)
         return 0 if len(scenes) == len(cards) else 4
     except UsageLimit:
         print('사용량 제한. 같은 명령으로 재개하거나 --wait-on-limit 분을 지정하세요.', file=sys.stderr)

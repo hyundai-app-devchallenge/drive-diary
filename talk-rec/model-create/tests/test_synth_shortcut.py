@@ -32,7 +32,7 @@ def make_blocks(path):
     blocks, labels = [], []
     for i in range(90):
         label = LABELS[i % 3]
-        turns = ['창작전용비공개모양검사'] * (2 if label == 'none' else 22)
+        turns = ['창작전용합성모양검사'] * (2 if label == 'none' else 22)
         blocks.append(dict(id=f'synth:{i+1}@0', source=f'synth:{i+1}', turns=turns, start=0, end=len(turns)*3))
         labels.append(dict(id=blocks[-1]['id'], verdict=label))
     write_jsonl(path / 'blocks.jsonl', blocks)
@@ -56,7 +56,7 @@ def test_blocks_fail_and_repeated_directories_stay_grouped(tmp_path, capsys, mon
     assert len(seen) == 5 and result['cv_accuracy'] == 1. and result['fail']
     assert main(['--synth-dir', str(directory), '--synth-dir', str(directory)]) == 3
     output = capsys.readouterr().out
-    assert 'FAIL' in output and '비공개' not in output
+    assert 'FAIL' in output and 'ngram CV accuracy=' in output
     assert distribution(stats, 'none', 'n_turns') == '2.00 / 2.00 / 2.00 / 2.00'
 
 

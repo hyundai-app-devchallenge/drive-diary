@@ -128,6 +128,13 @@ def test_limits_in_success_failure_and_stderr(monkeypatch, message, location):
     assert error.value.usage == USAGE
 
 
+def test_json_reply_with_card_429_is_not_a_limit(monkeypatch):
+    envelope = json.loads(UTF8)
+    envelope['response'] = json.dumps([{'card': 429, 'note': 'rate limit reached'}])
+    result(monkeypatch, json.dumps(envelope).encode())
+    assert l.AgyBackend(path='agy.exe').complete('system', 'user') == envelope['response']
+
+
 def test_non_json_limit_and_nonzero_exit(monkeypatch):
     result(monkeypatch, b'quota exhausted PRIVATE', code=1)
     with pytest.raises(l.UsageLimit):
@@ -156,7 +163,7 @@ def test_path_resolution_installed_then_path(tmp_path, monkeypatch):
     monkeypatch.setenv('LOCALAPPDATA', str(tmp_path))
     monkeypatch.setattr(l.shutil, 'which', lambda name: 'PATH-agy' if name == 'agy' else None)
     assert l.default_agy_path() == 'PATH-agy'
-    installed = tmp_path / 'Packages/OpenAI.Codex_2p2nqsd0c76g0/LocalCache/Local/agy/bin/agy.exe'
+    installed = tmp_path / 'agy/bin/agy.exe'
     installed.parent.mkdir(parents=True)
     installed.touch()
     assert l.default_agy_path() == str(installed)

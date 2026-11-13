@@ -15,6 +15,7 @@ class Example:
     scene: int
     text: str
     label: int
+    pair_id: str | None = None
 
 
 def input_text(lines):
@@ -58,23 +59,53 @@ def load_synth(directories):
             if match is None:
                 raise ValueError("invalid synthetic scene identity")
             examples.append(Example(f"s{index}/{block['id']}", int(match[1]),
-                                    input_text(block["turns"]), LABELS.index(by_id[block["id"]]["verdict"])))
+                                    input_text(block["turns"]), LABELS.index(by_id[block["id"]]["verdict"]),
+                                    by_id[block['id']].get('pair_id')))
     if not examples:
         raise ValueError("no complete synthetic inputs")
     return examples, skipped
 
 
 def split_scenes(examples, seed=43):
-    # Card numbers are global across directories: repeated levels/exports cannot leak.
+    # Union scene and pair links across every export/level. A pair may contain
+    # different labels; one scene still must have exactly one label.
     labels = {}
+    parent, pairs = {}, {}
+    def root(scene):
+        parent.setdefault(scene, scene)
+        if parent[scene] != scene:
+            parent[scene] = root(parent[scene])
+        return parent[scene]
     for row in examples:
         if row.scene in labels and labels[row.scene] != row.label:
             raise ValueError("conflicting labels for one synthetic scene")
         labels[row.scene] = row.label
-    scenes = sorted(labels)
-    train, val = train_test_split(scenes, test_size=.2, random_state=seed,
-                                 stratify=[labels[s] for s in scenes])
-    train, val = set(train), set(val)
+        root(row.scene)
+        if row.pair_id:
+            other = pairs.setdefault(row.pair_id, row.scene)
+            parent[root(row.scene)] = root(other)
+    groups = {}
+    for scene in sorted(labels):
+        groups.setdefault(root(scene), []).append(scene)
+    keys = sorted(groups)
+    strata = [tuple(sorted(labels[s] for s in groups[k])) for k in keys]
+    # Stratify by group label composition, so keep/none pairs form a stratum.
+    # Sparse small fixtures fall back to a deterministic grouped draw.
+    from collections import Counter
+    from sklearn.model_selection import GroupShuffleSplit
+    counts = Counter(strata)
+    if min(counts.values()) >= 2 and round(len(keys) * .2) >= len(counts):
+        codes = {value: i for i, value in enumerate(sorted(counts))}
+        train_keys, val_keys = train_test_split(keys, test_size=.2, random_state=seed,
+                                               stratify=[codes[s] for s in strata])
+    else:
+        for a_idx, b_idx in GroupShuffleSplit(n_splits=100, test_size=.2, random_state=seed).split(keys, groups=keys):
+            train_keys, val_keys = [keys[i] for i in a_idx], [keys[i] for i in b_idx]
+            if all({labels[s] for k in part for s in groups[k]} == {0, 1, 2}
+                   for part in (train_keys, val_keys)):
+                break
+    train = {s for k in train_keys for s in groups[k]}
+    val = {s for k in val_keys for s in groups[k]}
     a = [r for r in examples if r.scene in train]
     b = [r for r in examples if r.scene in val]
     if set(r.label for r in a) != {0, 1, 2} or set(r.label for r in b) != {0, 1, 2}:

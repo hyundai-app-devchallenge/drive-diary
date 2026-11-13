@@ -322,7 +322,7 @@ AGY_LIMIT_PATTERN = re.compile(
 def default_agy_path():
     local = os.environ.get('LOCALAPPDATA')
     if local:
-        installed = Path(local) / 'Packages/OpenAI.Codex_2p2nqsd0c76g0/LocalCache/Local/agy/bin/agy.exe'
+        installed = Path(local) / 'agy/bin/agy.exe'
         if installed.is_file():
             return str(installed)
     return shutil.which('agy.exe') or shutil.which('agy')
@@ -371,6 +371,21 @@ def decode_agy(data):
     raise BackendError('agy output is neither strict UTF-8 nor system ANSI')
 
 
+def limit_checked_text(envelope, returncode, stderr):
+    """Text that may carry an agy limit notice."""
+    if isinstance(envelope, dict) and not returncode and envelope.get('status') == 'SUCCESS':
+        response = envelope.get('response')
+        if isinstance(response, str):
+            response = re.sub(r'^\s*```(?:json)?\s*|\s*```\s*$', '', response)
+        try:
+            json.loads(response)
+        except (TypeError, ValueError):
+            pass
+        else:
+            return stderr
+    return json.dumps(envelope, ensure_ascii=False) + '\n' + stderr
+
+
 class AgyBackend:
     format_prompt = staticmethod(agy_prompt)
 
@@ -394,7 +409,8 @@ class AgyBackend:
         self.usage = {}
         argv = self.command(self.format_prompt(system_prompt, user_message))
         # agy does not read a plain stdin prompt. Never allow interactive reads.
-        with tempfile.TemporaryDirectory(prefix='silver-agy-') as cwd:
+        # agy can still hold its working folder for a moment after exiting on Windows.
+        with tempfile.TemporaryDirectory(prefix='silver-agy-', ignore_cleanup_errors=True) as cwd:
             try:
                 result = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True,
                                         cwd=cwd, timeout=self.timeout, shell=False,
@@ -412,7 +428,8 @@ class AgyBackend:
             raise BackendError('agy did not return a JSON object') from None
         if isinstance(envelope, dict) and isinstance(envelope.get('usage'), dict):
             self.usage = {k: v for k, v in envelope['usage'].items() if 'token' in k and type(v) is int}
-        if AGY_LIMIT_PATTERN.search(json.dumps(envelope, ensure_ascii=False) + '\n' + stderr):
+        # A successful JSON reply is the model's own output; a card number like 429 in it is not a limit.
+        if AGY_LIMIT_PATTERN.search(limit_checked_text(envelope, result.returncode, stderr)):
             raise UsageLimit('agy subscription/usage or rate limit', self.usage)
         if not isinstance(envelope, dict):
             raise BackendError('agy did not return a JSON object')

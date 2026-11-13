@@ -58,7 +58,11 @@ def test_sample_balanced_seeded(dataset):
     counts = Counter(by_id[i]['verdict'] for i in chosen)
     # moment has only eight available cards, so the two larger strata fill up.
     assert counts == {'story': 11, 'moment': 8, 'none': 11}
-    assert {by_id[i]['pattern'] for i in chosen} == {r['pattern'] for r in labels}
+    # Each label covers as many distinct patterns as its share of the sample allows.
+    for verdict, count in counts.items():
+        available = {r['pattern'] for r in labels if r['verdict'] == verdict}
+        picked = {by_id[i]['pattern'] for i in chosen if by_id[i]['verdict'] == verdict}
+        assert len(picked) == min(count, len(available))
 
 
 @pytest.mark.parametrize('name', ['', '../escape', 'a/b', r'a\b', '..', 'a:b', 'CON', 'com1', '한글 이름', 'a\n'])

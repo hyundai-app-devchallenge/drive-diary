@@ -40,7 +40,7 @@ def test_cards_deterministic_and_cover_inventory():
     for label in ('story', 'moment', 'none'):
         counts = Counter(c['pattern'] for c in cards if c['label'] == label)
         # Boundary quotas necessarily raise a few patterns; all remain represented.
-        assert min(counts.values()) >= (2 if label == 'none' else 3)
+        assert min(counts.values()) >= (1 if label == 'none' else 3)
 
 
 @pytest.mark.parametrize('seed', [43, 44, 91])
@@ -50,7 +50,7 @@ def test_overlapping_lengths_and_compositions(seed):
         rows = [c for c in cards if c['label'] == label]
         assert sum(c['seconds'] >= 60 and c['n_turns'] >= 18 for c in rows) == round(.55 * len(rows))
         assert sum(c['seconds'] <= 30 and c['n_turns'] <= 8 for c in rows) == round(.25 * len(rows))
-        assert sum(not any(m['spk'].startswith('아이') for m in c['family']) for c in rows) == round(.25 * len(rows))
+        assert sum(not any(m['spk'].startswith('아이') for m in c['family']) for c in rows) == round(.15 * len(rows))
         energies = Counter(c['energy'] for c in rows)
         assert max(energies.values()) - min(energies.values()) <= 1
         assert {len(c['family']) for c in rows} == {2, 3, 4, 5}

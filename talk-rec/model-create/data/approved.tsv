@@ -8,7 +8,7 @@ STlUZf798-w	reject	human review	vizatae
 hjjSwsbF-fw	reject	no speech	claude	
 8Yo8kuO7fqY	reject	human review	vizatae	
 UBb2T5huI6k	approve	human review	vizatae	8분5초부터 9분 03초까지만 사용할것.
-zifM3PJTBKQ	approve	human review	vizatae	35초부터 8분 5초까지만 차 상황이고, 어느정도 규모있는 채널의 영상이라 완전 자연스러운 차안 가족 대화는 아님. 컷편집도 되어있음. 저 부분 이외는 사용하지말것.
+zifM3PJTBKQ	reject	human review	vizatae	어른들 대화이고 연출 느낌이 강해 평가에서 제외
 IOlxH67P1JM	approve	human review	user	기준 영상: 무편집 차 안 가족 대화
 FJkJnUbJm88	approve	human review	vizatae	컷편집 없는 풀영상이라 가치가 있는듯.
 CNBsQuTxkTg	approve	human review	vizatae	
@@ -165,7 +165,7 @@ RiARbgDoekg	reject	human review	vizatae	커플?
 SMuyr6a8D0k	reject	human review	vizatae	
 -OUt4JcJ2Mg	reject	human review	vizatae	
 35nWrWFsa2M	approve	human review	vizatae	
-5Z4TkRueNgI	approve	human review	vizatae	차량안에서 한 대화는 아님. 집 식탁에서 하는 대화인듯
+5Z4TkRueNgI	reject	human review	vizatae	집 식탁 대화가 대부분이라 평가에서 제외
 AI7XVHiM3CY	reject	human review	vizatae	
 BoVQAZSBDZA	reject	human review	vizatae	
 CzItgxWOjhM	approve	human review	vizatae	친구끼리 대화임
