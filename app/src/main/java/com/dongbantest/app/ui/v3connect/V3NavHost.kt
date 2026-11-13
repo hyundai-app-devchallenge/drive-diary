@@ -275,9 +275,25 @@ fun V3NavHost(
                 }
             }
 
-            val driving = state.toDriving(now, capture).copy(showTitlesWhileDriving = summarySettings.showTitlesWhileDriving)
+            // "이 순간 담기": 누른 뒤 2초간 막고 완료 문구를 보인다.
+            var momentDone by remember { mutableStateOf(false) }
+            LaunchedEffect(momentDone) {
+                if (momentDone) {
+                    delay(2_000)
+                    momentDone = false
+                }
+            }
+            val driving = state.toDriving(now, capture)
+                .copy(showTitlesWhileDriving = summarySettings.showTitlesWhileDriving, momentDone = momentDone)
             val events = DrivingEvents(
                 onTab = onTab,
+                onMoment = {
+                    if (!momentDone) {
+                        momentDone = true
+                        vm.startRecording()
+                        vm.showMessage("지금 나눈 대화를 담았어요")
+                    }
+                },
                 onVoiceExample = vm::onVoiceCommand,
                 onToastSay = vm::onVoiceCommand,
                 // 진행 알약을 누르면 여행을 직접 끝낼 수 있다(정차 중일 때만). 도착 자동 종료가 안 될 때를 위한 길.

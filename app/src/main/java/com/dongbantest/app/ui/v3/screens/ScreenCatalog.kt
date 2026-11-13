@@ -16,6 +16,7 @@ val ScreenCatalog: List<ScreenEntry> = listOf(
     ScreenEntry("Q01", "조용함 확인 · 자고 있나요?") { QuietCheckScreen() },
     ScreenEntry("Q02", "대화를 여는 질문") { SilenceQuestionScreen() },
     ScreenEntry("S05", "여행 중 · 보기 전용") { DrivingScreen(DrivingStates.S05) },
+    ScreenEntry("S05-moment", "여행 중 · 이 순간 담기 버튼") { DrivingScreen(DrivingStates.S05_MOMENT) },
     ScreenEntry("S05-q-silence", "여행 중 · 여행지 질문") { DrivingScreen(DrivingStates.S05_SILENCE) },
     ScreenEntry("S06", "음성 명령 피드백") { DrivingScreen(DrivingStates.S06) },
     ScreenEntry("S07", "녹음 잠시 멈춤") { DrivingScreen(DrivingStates.S07) },

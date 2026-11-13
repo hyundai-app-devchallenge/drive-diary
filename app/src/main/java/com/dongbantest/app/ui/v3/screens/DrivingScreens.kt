@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
 import com.dongbantest.app.ui.v3.theme.DbShapes
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.dongbantest.app.ui.v3.components.Text
@@ -103,6 +104,9 @@ data class DrivingUiState(
     val toast: VoiceToastUi? = null,
     // talk-rec 연동: 설정 "주행 중 제목 보이기"(기본 켬). 꺼져 있고 주행 중이면 제목·태그를 숨긴다. 저장·설정 화면은 나중에.
     val showTitlesWhileDriving: Boolean = true,
+    // "이 순간 담기" 버튼: 기록 동의 여행에서 주행 중에만 보인다. 누른 직후 잠깐은 눌림 막음 + 완료 문구.
+    val momentButton: Boolean = false,
+    val momentDone: Boolean = false,
 )
 
 /** 주행 중(= 정차가 아님)에 제목·태그를 숨겨야 하는지 */
@@ -121,6 +125,8 @@ data class DrivingEvents(
     val onTripPill: (() -> Unit)? = null,
     /** 확인 알림의 "아니야" 버튼 */
     val onToastSay: (String) -> Unit = {},
+    /** "이 순간 담기" 탭 */
+    val onMoment: () -> Unit = {},
 )
 
 /** 주행 화면 틀. overlay 로 시트·대화상자를 얹는다. */
@@ -197,6 +203,16 @@ private fun DrivingLeft(state: DrivingUiState, events: DrivingEvents) {
     )
     TripProgress(state, events)
     DongbaniBubble(state.bubble, onBubbleTap = events.onBubble)
+    if (state.momentButton) {
+        com.dongbantest.app.ui.v3.components.DbButton(
+            text = if (state.momentDone) "담았어요" else "이 순간 담기",
+            onClick = events.onMoment,
+            kind = com.dongbantest.app.ui.v3.components.ButtonKind.Outline,
+            modifier = Modifier.padding(bottom = Spacing.xs).heightIn(min = 76.dp),
+            block = true,
+            enabled = !state.momentDone,
+        )
+    }
     when (val card = state.card) {
         is DrivingCard.Question -> QuestionCard(
             tag = card.tag, question = card.question, hint = card.hint, sayLabel = card.sayLabel, say = card.say,
@@ -234,6 +250,7 @@ object DrivingStates {
         asked = Sample.ASKED_QUIET, nowText = "조용히 듣는 중",
     )
     val S05 = DrivingUiState()
+    val S05_MOMENT = DrivingUiState(momentButton = true)
     /** Q02 에서 온 S05: 질문 카드와 나눈 대화 첫 줄이 여행지 질문 */
     val S05_SILENCE = DrivingUiState(
         card = DrivingCard.Question(Sample.Q_SILENCE, Sample.SAY_ON, pauseCaption = Sample.PAUSE_CAPTION),

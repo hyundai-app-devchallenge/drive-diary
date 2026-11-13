@@ -193,6 +193,8 @@ fun TripUiState.toDriving(now: Long, capture: CaptureState = CaptureState()): Dr
         asked = asked,
         nowText = if (quiet) "조용히 듣는 중" else null,
         toast = voiceFeedback?.toToast(),
+        // 기록 동의(상시 캡처) 여행이고 녹음 중이며 끝나지 않았을 때만 "이 순간 담기"
+        momentButton = !ended && recordingMode == RecordingMode.ON,
     )
 }
 
