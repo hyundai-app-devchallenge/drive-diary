@@ -440,6 +440,7 @@ def test_story_split_fake_route(relay):
     assert status == 200 and 'Connection: close' in head
     assert data['stories'][0]['segments'] == [1, 2]
     assert data['stories'][0]['tags'] == [relay.categories[0]]
+    assert data['stories'][0]['keep'] is True and data['stories'][0]['reason'] == ''
     assert data['model'] == r.DEFAULT_MODEL and data['elapsed_ms'] >= 0
     assert http(relay)[0] == 200
 
@@ -456,7 +457,8 @@ def test_story_split_invalid_request_never_calls_backend(relay, data):
 
 def test_story_split_backend_retry_validation_and_private_logs(relay, caplog):
     caplog.set_level(logging.INFO, logger=r.LOGGER.name)
-    group = dict(segments=[1, 2], title='PRIVATE_TITLE', category=relay.categories[0], keywords=[], kind='story')
+    group = dict(segments=[1, 2], title='PRIVATE_TITLE', category=relay.categories[0], keywords=[], kind='story',
+                 keep=True, reason='')
     backend, created = with_backend(relay, ['{"stories":[]}', json.dumps(dict(stories=[group]))])
     payload = dict(segments=['PRIVATE_TRANSCRIPT_1', 'PRIVATE_TRANSCRIPT_2'], model='gemini-3.8-flash-high')
     status, data, _ = http(relay, path='/story-split', data=payload)
@@ -471,3 +473,14 @@ def test_story_split_backend_retry_validation_and_private_logs(relay, caplog):
     with_backend(relay, [r.BackendError('PRIVATE_ERROR')])
     assert http(relay, path='/story-split', data=payload)[:2] == (502, {'error': 'backend_error'})
     assert 'PRIVATE' not in caplog.text
+
+
+@pytest.mark.parametrize('reason', ['not_in_car', 'not_family', 'negative', 'procedure', 'no_content'])
+def test_story_split_retries_invalid_value_and_preserves_hidden_metadata(relay, reason):
+    group = dict(segments=[1], title='지어낸 용무', category='운전·길', keywords=['주차권'], kind='story',
+                 keep=False, reason=reason)
+    bad = dict(group, keep='false')
+    backend, _ = with_backend(relay, [json.dumps(dict(stories=[bad])), json.dumps(dict(stories=[group]))])
+    status, data, _ = http(relay, path='/story-split', data={'segments': ['지어낸 대화']})
+    assert status == 200 and len(backend.calls) == 2
+    assert data['stories'][0] == dict(group, tags=['운전·길', '주차권'])

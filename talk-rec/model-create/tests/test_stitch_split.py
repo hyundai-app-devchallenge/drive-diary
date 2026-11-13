@@ -9,7 +9,8 @@ from tools import summary_relay as r
 
 
 def story(segments, **changes):
-    result = dict(segments=segments, title='종이배 이야기', category='놀이', keywords=['종이배'], kind='story')
+    result = dict(segments=segments, title='종이배 이야기', category='놀이', keywords=['종이배'], kind='story',
+                  keep=True, reason='')
     result.update(changes)
     return result
 
@@ -20,9 +21,33 @@ def validate(groups, count=3):
 
 
 def test_valid_partition_and_none_empty_metadata():
-    groups = [story([1, 2]), story([3], title='', category='', keywords=[], kind='none')]
+    groups = [story([1, 2]), story([3], title='', category='', keywords=[], kind='none',
+                                keep=False, reason='no_content')]
     assert validate(groups) == dict(stories=groups)
-    assert validate([story([1, 2, 3], kind='none')])['stories'][0]['kind'] == 'none'
+    assert validate([story([1, 2, 3], kind='none', keep=False, reason='no_content')])['stories'][0]['kind'] == 'none'
+
+
+@pytest.mark.parametrize('reason', ['not_in_car', 'not_family', 'negative', 'procedure', 'no_content'])
+def test_hidden_real_talk_retains_metadata(reason):
+    group = story([1, 2, 3], keep=False, reason=reason)
+    assert validate([group])['stories'] == [group]
+
+
+@pytest.mark.parametrize('changes', [dict(keep=1), dict(keep=0), dict(keep='false'), dict(keep=None),
+    dict(reason='procedure'), dict(keep=False), dict(keep=False, reason='bad'), dict(reason=None),
+    dict(reason=[]), dict(reason={}), dict(kind='none'),
+    dict(kind='none', keep=False, reason='procedure')])
+def test_invalid_keep_reason_contract(changes):
+    with pytest.raises(ValueError, match='invalid output'):
+        validate([story([1, 2, 3], **changes)])
+
+
+@pytest.mark.parametrize('field', ['keep', 'reason'])
+def test_new_split_requires_value_fields(field):
+    group = story([1, 2, 3])
+    del group[field]
+    with pytest.raises(ValueError, match='invalid output'):
+        validate([group])
 
 
 @pytest.mark.parametrize('segments', [[], [1, 3], [1, 1, 2, 3], [2, 1, 3], [0, 1, 2, 3],
@@ -124,11 +149,13 @@ def test_end_to_end_fake_windows_snapshot_privacy(tmp_path, monkeypatch, capsys)
     assert [len(p['segments']) for p in calls] == [12, 12, 1]
     assert summary['runs_sent'] == summary['ok'] == summary['windowed_runs'] == 1
     assert summary['windows_ok'] == 3 and summary['stories_per_run'] == {3: 1}
+    assert (summary['keep'], summary['hide'], summary['reasons']) == (3, 0, {})
     output = list(directory.glob('split-*.jsonl'))[0].read_text(encoding='utf-8')
     assert blocks[0]['text'] not in output and not ''.join(capsys.readouterr())
     rows = [json.loads(line) for line in output.splitlines()]
     assert [row['segment_offset'] for row in rows] == [0, 12, 24]
     assert rows[-1]['stories'][0]['ids'] == ['invented#24']
+    assert rows[-1]['stories'][0]['keep'] is True and rows[-1]['stories'][0]['reason'] == ''
     blocks[0]['chars'] = 0
     with pytest.raises(ValueError, match='snapshot mismatch'):
         s.restore_runs(blocks, records, 'cont0.5_min40')
@@ -153,3 +180,19 @@ def test_no_saved_runs_and_failed_outputs_are_sanitized(tmp_path, monkeypatch):
     prepare()
     assert s.execute(root=tmp_path, relay='http://127.0.0.1', policy='cont0.5_min40', send=fail)['failed'] == 1
     assert 'PRIVATE' not in next(directory.glob('split-*')).read_text(encoding='utf-8')
+
+
+def test_split_persists_hidden_decision_and_counts(tmp_path, monkeypatch):
+    blocks = fake_blocks(2)
+    directory = tmp_path / '.local/eval/stitch'
+    directory.mkdir(parents=True)
+    (directory / 'runs.jsonl').write_text(json.dumps(c.snapshot([blocks])[0]), encoding='utf-8')
+    monkeypatch.setattr(s, 'load_dev', lambda root: (blocks, {}))
+    def send(address, payload):
+        groups = [story([1]), story([2], keep=False, reason='procedure')]
+        return dict(stories=[dict(group, tags=['놀이', '종이배']) for group in groups],
+                    model=r.DEFAULT_MODEL, elapsed_ms=1)
+    summary = s.execute(root=tmp_path, relay='http://127.0.0.1', policy='cont0.5_min40', send=send)
+    assert (summary['keep'], summary['hide'], summary['reasons']) == (1, 1, {'procedure': 1})
+    output = json.loads(next(directory.glob('split-*')).read_text(encoding='utf-8'))
+    assert output['stories'][1]['keep'] is False and output['stories'][1]['reason'] == 'procedure'

@@ -154,6 +154,7 @@ def snapshot(runs):
     for index, run in enumerate(runs):
         policies = {policy_name(t, n): decide(run, t, n) for t in CONT_THRESHOLDS for n in MIN_CHARS}
         rows.append(dict(run=index, blocks=[dict(
-            id=b['id'], probability=b['probability'], model_kind=b['model_kind'], human=b['human'],
+            id=b['id'], cast=b.get('cast', 'unknown'), probability=b['probability'],
+            model_kind=b['model_kind'], human=b['human'],
             decisions={name: saved[i] for name, saved in policies.items()}) for i, b in enumerate(run)]))
     return rows

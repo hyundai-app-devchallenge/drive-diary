@@ -26,7 +26,7 @@ def load_dev(root=ROOT):
             continue
         human = labels['vizatae'].get(block['id'])
         text = input_text(block['lines'])
-        selected.append(dict(id=block['id'], source=block['source'], start=block['start'],
+        selected.append(dict(id=block['id'], cast=block['cast'], source=block['source'], start=block['start'],
                              end=block['end'], closing=block['closing'],
                              range_index=block.get('range_index'), text=text, chars=content_chars(text),
                              human=None if human is None else dict(keep=human['keep'], kind=human['kind'],

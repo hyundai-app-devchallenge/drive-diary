@@ -1,5 +1,6 @@
 """T60 Part B: one local relay request per saved run (at most 12 segments)."""
 import argparse
+from collections import Counter
 import contextlib
 import errno
 import http.client
@@ -99,7 +100,7 @@ def checked_response(result, count, categories):
     try:
         groups = result['stories']
         # The relay adds tags; the underlying LLM contract does not include them.
-        fields = ('segments', 'title', 'category', 'keywords', 'kind')
+        fields = ('segments', 'title', 'category', 'keywords', 'kind', 'keep', 'reason')
         raw = json.dumps(dict(stories=[{k: s[k] for k in fields} for s in groups]), ensure_ascii=False)
         clean = validate_split_output(raw, categories, count)['stories']
         for story, original in zip(clean, groups):
@@ -133,6 +134,8 @@ def execute(*, relay, policy, model=DEFAULT_MODEL, root=ROOT, send=request_once)
     threshold, minimum = parse_policy(policy)
     rows, per_run, latencies = [], [], []
     sent = ok = failed = none = window_ok = window_failed = windowed_runs = 0
+    keep = hide = 0
+    reasons = Counter()
     for index, run in enumerate(runs):
         saved = [b for b, save in zip(run, decide(run, threshold, minimum)) if save]
         if not saved:
@@ -158,6 +161,9 @@ def execute(*, relay, policy, model=DEFAULT_MODEL, root=ROOT, send=request_once)
                            latency_ms=latency, backend_elapsed_ms=result['elapsed_ms'])
                 story_count += len(stories)
                 none += sum(s['kind'] == 'none' for s in stories)
+                keep += sum(s['keep'] for s in stories)
+                hide += sum(not s['keep'] for s in stories)
+                reasons.update(s['reason'] for s in stories if not s['keep'])
                 window_ok += 1
                 latencies.append(latency)
             except Exception:
@@ -175,7 +181,8 @@ def execute(*, relay, policy, model=DEFAULT_MODEL, root=ROOT, send=request_once)
     atomic_write(directory / f'split-{policy}-{effective_model}.jsonl', encode_lines(rows))
     return dict(runs_sent=sent, ok=ok, failed=failed, skipped_runs=len(runs) - sent,
                 windows_ok=window_ok, windows_failed=window_failed, windowed_runs=windowed_runs,
-                stories_per_run=histogram(per_run), none=none, median_latency_ms=quantile(latencies, .5))
+                stories_per_run=histogram(per_run), none=none, keep=keep, hide=hide,
+                reasons=dict(sorted(reasons.items())), median_latency_ms=quantile(latencies, .5))
 
 
 def main(argv=None):

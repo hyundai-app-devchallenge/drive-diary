@@ -23,6 +23,7 @@ PROMPT_PATH = Path(__file__).resolve().parents[1] / 'prompts/summary.md'
 STORY_PROMPT_PATH = PROMPT_PATH.with_name('story_split.md')
 MAX_SEGMENTS = 12
 MAX_SPLIT_REQUEST_BYTES = 256 * 1024
+SPLIT_REASONS = ('', 'not_in_car', 'not_family', 'negative', 'procedure', 'no_content')
 LOGGER = logging.getLogger(__name__)
 
 
@@ -91,6 +92,15 @@ def validate_output(answer, allowed_categories):
     return validate_fields(output_json(answer), allowed_categories)
 
 
+def validate_story_value(keep, reason, kind):
+    """Story-split value contract, independent of title/category validation."""
+    if (type(keep) is not bool or not isinstance(reason, str) or reason not in SPLIT_REASONS
+            or (keep and reason != '') or (not keep and reason == '')
+            or (kind == 'none' and (keep or reason != 'no_content'))):
+        raise ValueError('invalid story keep/reason')
+    return dict(keep=keep, reason=reason)
+
+
 def validate_split_output(answer, allowed_categories, segment_count):
     """Strict ordered partition; bool/float indices are never segment numbers."""
     try:
@@ -102,13 +112,14 @@ def validate_split_output(answer, allowed_categories, segment_count):
         stories, covered = [], []
         for group in data['stories']:
             if (not isinstance(group, dict) or set(group) !=
-                    {'segments', 'title', 'category', 'keywords', 'kind'}
+                    {'segments', 'title', 'category', 'keywords', 'kind', 'keep', 'reason'}
                     or not isinstance(group['segments'], list) or not group['segments']
                     or any(type(index) is not int for index in group['segments'])):
                 raise ValueError('invalid output')
             fields = validate_fields(group, allowed_categories, allow_empty=group['kind'] == 'none')
+            value = validate_story_value(group['keep'], group['reason'], group['kind'])
             covered.extend(group['segments'])
-            stories.append(dict(segments=group['segments'], **fields))
+            stories.append(dict(segments=group['segments'], **fields, **value))
         if covered != list(range(1, segment_count + 1)):
             raise ValueError('invalid output')
         return dict(stories=stories)
@@ -163,7 +174,8 @@ class SummaryRelay:
         except (UnicodeError, OSError, ValueError):
             return 400, {'error': 'invalid_request'}
         fake = dict(stories=[dict(segments=list(range(1, len(segments) + 1)),
-                                 title='테스트 이야기', category=categories[0], keywords=[], kind='story')])
+                                 title='테스트 이야기', category=categories[0], keywords=[], kind='story',
+                                 keep=True, reason='')])
         status, result, effective_model = self.complete(
             model, system, transcript, lambda answer: validate_split_output(answer, categories, len(segments)), fake)
         if status != 200:

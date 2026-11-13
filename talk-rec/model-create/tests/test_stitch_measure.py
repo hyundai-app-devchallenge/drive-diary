@@ -97,7 +97,9 @@ def test_snapshot_and_report_explicitly_exclude_private_fields():
     result = json.dumps(c.snapshot([[row]])) + json.dumps(c.aggregate([[row]]))
     assert 'PRIVATE_INVENTED' not in result
     saved = c.snapshot([[row]])[0]['blocks'][0]
-    assert set(saved) == {'id', 'probability', 'model_kind', 'human', 'decisions'}
+    assert set(saved) == {'id', 'cast', 'probability', 'model_kind', 'human', 'decisions'}
+    assert saved['cast'] == 'unknown'
+    assert c.snapshot([[dict(row, cast='couple')]])[0]['blocks'][0]['cast'] == 'couple'
     assert len(saved['decisions']) == 30
 
 
@@ -114,6 +116,7 @@ def test_gate_dev_only_unknown_skipped_unlabeled_retained(tmp_path, monkeypatch,
     rows, counts = m.load_dev(tmp_path)
     assert calls == [(tmp_path, real.run_directory(tmp_path, 'v1'), dict(annotators=['vizatae'], split='dev'))]
     assert len(rows) == 2 and rows[1]['human'] is None
+    assert [b['cast'] for b in rows] == ['friends', 'child_family']
     assert rows[0]['human']['policy'] is True and rows[0]['chars'] == 2
     assert counts == dict(unknown_cast_skipped=1)
     assert 'PRIVATE' not in ''.join(capsys.readouterr())
