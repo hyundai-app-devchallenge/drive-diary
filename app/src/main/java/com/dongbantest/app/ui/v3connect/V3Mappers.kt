@@ -146,16 +146,16 @@ fun TripUiState.toDriving(now: Long, capture: CaptureState = CaptureState()): Dr
     }
     // talk-rec 연동: 동반이 질문(QUESTION)과 저장된 대화 조각(VOICE + talk)을 시각 최신순으로 섞는다.
     // 대화 조각은 제목·태그만 보이고 전사 글은 절대 쓰지 않는다. 질문은 태그가 없다.
-    val asked = data.memories
-        .filter { (it.type == MemoryType.QUESTION && !it.text.isNullOrBlank()) || it.isTalkClip() }
-        .sortedByDescending { it.createdAt }
-        .mapIndexed { i, m ->
-            if (m.type == MemoryType.QUESTION) {
-                AskedItem(hhmm(m.createdAt), m.text.orEmpty(), now = i == 0 && !quiet)
-            } else {
-                AskedItem(hhmm(m.createdAt), m.talk?.title?.takeIf { it.isNotBlank() } ?: TALK_SAVED_LABEL, tags = m.talk.llmTagsForDriving())
-            }
-        }
+    val storyItems = data.talks().filter { !it.talk.hidden }.map { row ->
+        row.startMs to AskedItem(row.talk.time, row.drivingTitle, tags = row.llmTags,
+            id = row.talk.id, audio = row.talk.audio, clipCount = row.talk.clipCount,
+            kind = row.talk.kind, fromQuestion = row.talk.fromQuestion)
+    }
+    val questionItems = data.memories.filter { it.type == MemoryType.QUESTION && !it.text.isNullOrBlank() }
+        .map { it.createdAt to AskedItem(hhmm(it.createdAt), it.text.orEmpty()) }
+    val asked = (storyItems + questionItems).sortedByDescending { it.first }.mapIndexed { i, pair ->
+        pair.second.copy(now = i == 0 && !quiet && pair.second.id.isEmpty())
+    }
     val say = when (recordingMode) {
         RecordingMode.PAUSED -> SAY_PAUSED
         RecordingMode.OFF, RecordingMode.READY -> SAY_OFF
@@ -196,12 +196,15 @@ fun TripUiState.toDriving(now: Long, capture: CaptureState = CaptureState()): Dr
         // 모드와 실제 캡처가 모두 녹음 중일 때만 저장 동작을 제공한다.
         momentButton = !ended && recordingMode == RecordingMode.ON && capture.status == CaptureStatus.On,
         recordingToggleText = if (ended) null else when (recordingMode) {
-            RecordingMode.ON -> "녹음 멈추기"
-            RecordingMode.PAUSED -> "다시 녹음하기"
+            // 모드는 ON이어도 캡처가 스스로 멈출 수 있다(음성 인식 오류 등). 그때는 다시 켜는 버튼을 준다.
+            RecordingMode.ON -> if (capture.status == CaptureStatus.Paused) RESUME_TEXT else "녹음 멈추기"
+            RecordingMode.PAUSED -> RESUME_TEXT
             RecordingMode.READY, RecordingMode.OFF -> null
         },
     )
 }
+
+const val RESUME_TEXT = "다시 녹음하기"
 
 private fun VoiceFeedback.toToast(): VoiceToastUi = when (kind) {
     VoiceFeedback.Kind.SUCCESS -> VoiceToastUi(ToastKind.Success, "‘$heard’, 알겠어요.", result)
@@ -222,33 +225,42 @@ private const val TALK_SAVED_LABEL = "대화 저장됨"
 /* ───────── S14 다이어리 한 장 ───────── */
 
 /** 이야기 한 줄과 그 음성 파일 경로 (재생할 때 쓴다) */
-data class TalkWithPath(val talk: TalkUi, val path: String?)
+data class TalkWithPath(val talk: TalkUi, val paths: List<String>, val startMs: Long,
+    val llmTags: List<String> = emptyList(), val drivingTitle: String = talk.title) {
+    val path: String? get() = paths.firstOrNull()
+}
 
 fun TripWithMemories.talks(): List<TalkWithPath> {
     val questions = memories.filter { it.type == MemoryType.QUESTION }.map { it.createdAt }
     return memories.filter { it.type == MemoryType.VOICE }
-        .sortedBy { it.createdAt }
-        .map { m ->
+        .groupBy { it.talk?.storyId ?: it.talk?.runId?.let { run -> "run:$run" } ?: "clip:${it.id}" }
+        .map { (key, clips) ->
+            val ordered = clips.sortedWith(compareBy<Memory> { it.talk?.blockStartMs ?: (it.createdAt - (it.durationMs ?: 0)) }.thenBy { it.id })
+            val m = ordered.first()
             // 녹음 시작 10분 안에 동반이 질문이 있었으면 "동반이 질문"에서 나온 이야기로 본다.
-            val clipStart = m.createdAt - (m.durationMs ?: 0L)
-            val fromQuestion = questions.any { it in (clipStart - 10 * 60_000L)..m.createdAt }
+            val clipStart = m.talk?.blockStartMs ?: (m.createdAt - (m.durationMs ?: 0L))
+            val fromQuestion = questions.any { it in (clipStart - 10 * 60_000L)..clipStart }
             val llmTags = m.talk.llmTagsForDriving()
+            val pendingRun = m.talk?.runId != null && clips.any { it.talk?.summaryStatus == SummaryStatus.PENDING }
             TalkWithPath(
                 TalkUi(
                     time = hhmm(clipStart),
                     // talk-rec 연동: 전사 글(transcript)은 화면에 내보이지 않는다. 제목은 요약 제목만 쓴다.
-                    title = m.talk?.title?.takeIf { it.isNotBlank() } ?: "목소리 ${hhmm(clipStart)}",
-                    audio = formatDuration(m.durationMs ?: 0L),
+                    title = if (pendingRun) "이야기 정리 중" else m.talk?.title?.takeIf { it.isNotBlank() } ?: "목소리 ${hhmm(clipStart)}",
+                    audio = formatDuration(clips.sumOf { it.durationMs ?: 0L }),
                     fromQuestion = fromQuestion,
                     // talk-rec 연동(I5b): LLM 태그 + 기기 태그(목적지·요일·시간대). 요약 실패·건너뜀·대기는 LLM 태그 없이 기기 태그만.
                     tags = m.talk?.let {
                         displayTags(llmTags, trip.destination, m.createdAt)
                     }.orEmpty(),
                     category = llmTags.firstOrNull(),
+                    id = key, clipCount = clips.size, kind = m.talk?.storyKind ?: m.talk?.kind,
+                    hidden = m.talk?.storyKeep == false,
                 ),
-                m.filePath,
+                ordered.mapNotNull { it.filePath }, clipStart, llmTags,
+                if (pendingRun) "이야기 정리 중" else m.talk?.title?.takeIf { it.isNotBlank() } ?: TALK_SAVED_LABEL,
             )
-        }
+        }.sortedBy { it.startMs }
 }
 
 fun TripWithMemories.toRecord(): TripRecordUi {
@@ -309,11 +321,12 @@ fun TripUiState.toMaking(step: Int): MakingDiaryUiState {
     // PENDING 이 남아 있으면 진행 중(남은 개수 표시), 모두 끝나면(FAILED·SKIPPED 포함) 완료.
     val clips = data?.memories.orEmpty().filter { it.isTalkClip() }
     if (clips.isNotEmpty()) {
-        val pending = clips.count { it.talk?.summaryStatus == SummaryStatus.PENDING }
+        val pending = clips.groupBy { it.talk?.runId ?: "clip:${it.id}" }.values
+            .count { run -> run.any { it.talk?.summaryStatus == SummaryStatus.PENDING } }
         steps.add(
             1,
-            if (pending > 0) MakingStep("대화를 글로 옮기는 중 · ${pending}개 남음", StepState.Active)
-            else MakingStep("대화를 글로 옮기는 중", StepState.Done),
+            if (pending > 0) MakingStep("이야기 정리 중 · ${pending}개 남음", StepState.Active)
+            else MakingStep("이야기 정리", StepState.Done),
         )
     }
     return MakingDiaryUiState(
@@ -325,7 +338,7 @@ fun TripUiState.toMaking(step: Int): MakingDiaryUiState {
 
 fun TripUiState.toReady(): DiaryReadyUiState {
     val d = data ?: return DiaryReadyUiState()
-    val talks = d.memories.count { it.type == MemoryType.VOICE }
+    val talks = d.talks().count { !it.talk.hidden }
     val photos = d.memories.count { it.type == MemoryType.PHOTO }
     val from = d.trip.startPlace ?: "출발"
     val to = d.trip.endPlace ?: d.trip.destination.ifBlank { "도착" }

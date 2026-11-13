@@ -25,13 +25,16 @@ sealed interface TalkDebugEvent {
     data class BlockClosed(
         val blockId: String, val reason: CloseReason, val source: CaptureSource,
         val lines: List<String>, val durationMs: Long,
+        val runId: String? = null,
     ) : TalkDebugEvent
     data class Decision(
         val blockId: String, val outcome: DebugOutcome, val keepProbability: Double?,
         val kind: String?, val policyReasons: List<String>, val judgeMs: Long?,
         /** Judge failure preserves the production fallback; this can still be +1. */
         val savedCountDelta: Int = 0,
+        val runId: String? = null,
     ) : TalkDebugEvent
+    data class RunClosed(val runId: String) : TalkDebugEvent
     data object SourceEnded : TalkDebugEvent
     data class SttError(val code: String) : TalkDebugEvent
     /** Decoder/source failures are asynchronous; show the fixed code, never a URI or cause. */
@@ -71,6 +74,7 @@ object TalkRecDebug {
     }
 
     internal fun emit(event: TalkDebugEvent) { sessions.value?.events?.tryEmit(event) }
+    internal fun runClosed(runId: String) { emit(TalkDebugEvent.RunClosed(runId)) }
 
     @Synchronized internal fun level(rms: Double, atMs: Long, monotonicMs: Long = System.nanoTime() / 1_000_000) {
         val session = sessions.value ?: return
@@ -81,28 +85,38 @@ object TalkRecDebug {
         }
     }
 
-    internal fun blockClosed(blockId: String, block: ConversationBlock): DebugBlockTrace? {
+    internal fun blockClosed(blockId: String, block: ConversationBlock, deferred: Boolean = false): DebugBlockTrace? {
         val session = sessions.value ?: return null
-        session.events.tryEmit(TalkDebugEvent.BlockClosed(blockId, block.reason, block.source,
-            block.lines.map { it.text }, block.endMs - block.startMs))
         val token = session.token
-        return DebugBlockTrace(blockId) { event ->
+        return DebugBlockTrace(blockId, onStart = { runId ->
+            sessions.value?.takeIf { it.token === token }?.events?.tryEmit(TalkDebugEvent.BlockClosed(
+                blockId, block.reason, block.source, block.lines.map { it.text }, block.endMs - block.startMs, runId))
+        }) { event ->
             sessions.value?.takeIf { it.token === token }?.events?.tryEmit(event)
-        }
+        }.also { if (!deferred) it.start(null) }
     }
 }
 
-/** Contains no transcript. All completion paths, including undelivered candidates, share this latch. */
+/** Deferred close payload is retired on start; all completion paths share the decision latch. */
 internal class DebugBlockTrace(
-    val blockId: String, private val emit: (TalkDebugEvent.Decision) -> Unit,
+    val blockId: String, private var onStart: ((String?) -> Unit)? = null,
+    private val emit: (TalkDebugEvent.Decision) -> Unit,
 ) {
+    var runId: String? = null
+    fun start(runId: String?) {
+        this.runId = runId
+        onStart?.invoke(runId)
+        onStart = null
+    }
     private val completed = AtomicBoolean()
     fun finish(
         outcome: DebugOutcome = DebugOutcome.SINK_REJECTED, keepProbability: Double? = null,
         kind: String? = null, policyReasons: List<String> = emptyList(), judgeMs: Long? = null,
         savedCountDelta: Int = 0,
     ) {
-        if (completed.compareAndSet(false, true)) emit(TalkDebugEvent.Decision(blockId, outcome,
-            keepProbability, kind, policyReasons, judgeMs, savedCountDelta))
+        if (completed.compareAndSet(false, true)) {
+            start(runId)
+            emit(TalkDebugEvent.Decision(blockId, outcome, keepProbability, kind, policyReasons, judgeMs, savedCountDelta, runId))
+        }
     }
 }

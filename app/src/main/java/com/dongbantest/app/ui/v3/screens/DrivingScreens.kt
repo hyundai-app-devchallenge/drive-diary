@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
@@ -131,6 +132,7 @@ data class DrivingEvents(
     /** "이 순간 담기" 탭 */
     val onMoment: () -> Unit = {},
     val onRecordingToggle: () -> Unit = {},
+    val onPlayStory: (String) -> Unit = {},
 )
 
 /** 주행 화면 틀. overlay 로 시트·대화상자를 얹는다. */
@@ -166,7 +168,11 @@ fun DrivingLayout(
 private fun AdaptiveDrivingBody(state: DrivingUiState, events: DrivingEvents) {
     val layout = DbTheme.layout
     if (!layout.wide) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) { DrivingLeft(state, events) }
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            DrivingLeft(state, events)
+            if (state.stopped) AskedPanel(state.askedTitle, "${state.asked.size}개", state.asked,
+                modifier = Modifier.fillMaxWidth().height(400.dp), onPlayStory = events.onPlayStory)
+        }
         return
     }
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
@@ -179,6 +185,7 @@ private fun AdaptiveDrivingBody(state: DrivingUiState, events: DrivingEvents) {
             driving = !state.stopped,
             hideTitles = state.hideTitles(),
             hiddenLabel = state.askedCountLabel,
+            onPlayStory = events.onPlayStory,
             footnote = if (state.toast == null) state.footnote else null,
             bottom = state.toast?.let { t ->
                 {

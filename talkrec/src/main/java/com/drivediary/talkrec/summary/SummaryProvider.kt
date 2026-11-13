@@ -5,4 +5,6 @@ interface SummaryProvider {
     /** Effective model after a successful call (including the relay's effort suffix). */
     val modelName: String
     suspend fun summarize(transcript: String): SummaryResult
+    suspend fun storySplit(segments: List<String>): StorySplitResult =
+        throw SummaryException(SummaryErrorCode.INVALID_SETTINGS)
 }

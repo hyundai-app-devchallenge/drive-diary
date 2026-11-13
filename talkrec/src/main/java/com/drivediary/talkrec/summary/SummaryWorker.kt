@@ -12,6 +12,8 @@ import androidx.work.WorkManager
 import androidx.work.workDataOf
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 interface SummaryWorkerDependencies {
     val summaryTarget: SummaryTarget
@@ -27,7 +29,9 @@ class SummaryWorker(
     appContext: Context,
     workerParameters: WorkerParameters,
 ) : CoroutineWorker(appContext, workerParameters) {
-    override suspend fun doWork(): Result {
+    override suspend fun doWork(): Result = drainMutex.withLock { drain() }
+
+    private suspend fun drain(): Result {
         return try {
             val dependencies = (applicationContext as? SummaryWorkerOwner)?.summaryWorkerDependencies
                 ?: return Result.failure()
@@ -37,6 +41,10 @@ class SummaryWorker(
                 .run(runAttemptCount, throughMemoryId)) {
                 SummaryRunResult.COMPLETE -> Result.success()
                 SummaryRunResult.RETRY -> Result.retry()
+                SummaryRunResult.DEFERRED -> {
+                    SummaryWorkScheduler.enqueue(applicationContext, throughMemoryId, 180)
+                    Result.success()
+                }
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -46,6 +54,7 @@ class SummaryWorker(
         }
     }
 
+    companion object { private val drainMutex = Mutex() }
 }
 
 /** A facade without WorkManager supertypes so hosts need only the talkrec module dependency. */
@@ -53,9 +62,10 @@ object SummaryWorkScheduler {
     const val UNIQUE_WORK_NAME = "talkrec.saved-clip-summaries"
     internal const val THROUGH_MEMORY_ID = "through_memory_id"
 
-    fun enqueue(context: Context, throughMemoryId: Long) {
+    fun enqueue(context: Context, throughMemoryId: Long, delaySeconds: Long = 0) {
         val request = OneTimeWorkRequestBuilder<SummaryWorker>()
             .setInputData(workDataOf(THROUGH_MEMORY_ID to throughMemoryId))
+            .setInitialDelay(delaySeconds, TimeUnit.SECONDS)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .build()
@@ -63,6 +73,7 @@ object SummaryWorkScheduler {
         // A successor drains anything saved during that window; completed rows are never resent.
         // The fixed ID ceiling keeps new clips out of an older worker's retry budget.
         WorkManager.getInstance(context.applicationContext)
-            .enqueueUniqueWork(UNIQUE_WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+            .enqueueUniqueWork(if (delaySeconds > 0) "$UNIQUE_WORK_NAME.recovery" else UNIQUE_WORK_NAME,
+                ExistingWorkPolicy.APPEND_OR_REPLACE, request)
     }
 }

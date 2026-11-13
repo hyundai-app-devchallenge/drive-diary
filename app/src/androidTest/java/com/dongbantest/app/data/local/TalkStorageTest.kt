@@ -39,6 +39,34 @@ class TalkStorageTest {
             assertEquals(4, dao.pendingTalkMemories().size)
             assertEquals("fake", dao.observeMemoriesWithTalk(tripId).first().first { it.memory.id == id }.talk!!.summaryModel)
 
+            val runIds = (0..1).map { n -> dao.insertTalkMemory(
+                MemoryEntity(tripId = tripId, type = "VOICE", createdAt = 8000L + n, text = null,
+                    filePath = "/test/run$n", transcript = "synthetic", durationMs = 1000),
+                TalkMetaEntity(0, "AUTO", 7000L + n, 8000L + n, null, "moment",
+                    summaryStatus = "PENDING", runId = "run", closeReason = "LENGTH", runClosed = false)) }
+            dao.closeTalkRun(tripId, "run")
+            assertTrue(dao.pendingTalkMemory(runIds[0])!!.talk!!.runClosed == true)
+            val storyRows = runIds.map { StoryRow(it, "run:0", 0, "synthetic story", "[\"놀이\",\"종이배\"]",
+                "story", false, "procedure", "DONE", "fake") }
+            dao.saveStoryRows(storyRows + storyRows.first().copy(id = Long.MAX_VALUE))
+            assertEquals("PENDING", dao.pendingTalkMemory(runIds.first())!!.talk!!.summaryStatus)
+            dao.saveStoryRows(storyRows)
+            val grouped = dao.observeMemoriesWithTalk(tripId).first().filter { it.memory.id in runIds }
+            assertTrue(grouped.all { it.talk!!.storyId == "run:0" && it.talk.storyKeep == false && it.talk.title == "synthetic story" })
+            assertTrue(grouped.all { it.talk!!.kind == "moment" && it.talk.storyKind == "story" })
+            runIds.forEach { dao.deleteMemory(it) }
+            val mixedIds = (0..1).map { n -> dao.insertTalkMemory(
+                MemoryEntity(tripId = tripId, type = "VOICE", createdAt = 9000L + n, text = null,
+                    filePath = "/test/mixed$n", transcript = "synthetic", durationMs = 1000),
+                TalkMetaEntity(0, "AUTO", 8000L + n, 9000L + n, null, null,
+                    summaryStatus = if (n == 0) "SKIPPED" else "PENDING", runId = "mixed",
+                    storyId = if (n == 0) "mixed:0" else null, storyIndex = if (n == 0) 0 else null)) }
+            dao.closeTalkRun(tripId, "mixed")
+            assertTrue(dao.observeMemoriesWithTalk(tripId).first().filter { it.memory.id in mixedIds }.all {
+                it.talk!!.summaryStatus == "SKIPPED" && it.talk.storyId == "mixed:0" && it.talk.title == null && it.talk.storyKeep == null
+            })
+            mixedIds.forEach { dao.deleteMemory(it) }
+
             // A real failure in the SECOND insert must roll back the first insert as well.
             db.openHelper.writableDatabase.execSQL("""CREATE TRIGGER reject_meta BEFORE INSERT ON talk_meta
                 BEGIN SELECT RAISE(ABORT, 'synthetic metadata failure'); END""")

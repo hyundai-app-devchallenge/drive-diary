@@ -204,6 +204,11 @@ class TripViewModel(
         if (!player.toggle(path)) showMessage("음성을 재생할 수 없어요.")
     }
 
+    fun toggleStory(paths: List<String>) {
+        if (recorder.isRecording || uiState.value.safety.isRestricted) return
+        if (!player.toggle(paths)) showMessage("음성을 재생할 수 없어요.")
+    }
+
     fun addPhoto(uri: Uri) = viewModelScope.launch {
         try {
             val file = files.copyPhotoToAppStorage(uri)

@@ -42,6 +42,9 @@ class SummarySettingsStore(
         SummaryPrompt(context.applicationContext.assets.open("prompts/summary.md").bufferedReader(Charsets.UTF_8).use { it.readText() })
     }
     private val mutex = Mutex()
+    private val storyPrompt by lazy {
+        SummaryPrompt(context.applicationContext.assets.open("prompts/story_split.md").bufferedReader(Charsets.UTF_8).use { it.readText() })
+    }
     private val state = MutableStateFlow(readSettings())
     val settings: StateFlow<SummarySettings> = state.asStateFlow()
     // Hold a strong reference: SharedPreferences keeps its listeners weakly.
@@ -109,6 +112,11 @@ class SummarySettingsStore(
     suspend fun trySummarize(transcript: String): ConnectionTestResult =
         runSummaryTryOut(transcript, { SummaryValidator(prompt.tags) }, ::createProvider)
 
+    suspend fun tryStorySplit(segments: List<String>): StorySplitResult {
+        val selected = createProvider()
+        return validatedStorySplit(StorySplitValidator(storyPrompt.categories), segments.size) { selected.storySplit(segments) }
+    }
+
     /** Internal DI entry points for SummaryWorker; not a plaintext-key API. */
     internal fun validator(): SummaryValidator = SummaryValidator(prompt.tags)
 
@@ -117,7 +125,7 @@ class SummarySettingsStore(
             val current = readSettings()
             when (current.provider) {
                 SummaryProviderType.GEMINI -> GeminiSummaryProvider(prompt,
-                    readApiKey() ?: throw SummaryException(SummaryErrorCode.KEY_UNAVAILABLE), current.modelName)
+                    readApiKey() ?: throw SummaryException(SummaryErrorCode.KEY_UNAVAILABLE), current.modelName, storyPrompt = storyPrompt)
                 SummaryProviderType.AGY -> {
                     if (!debugBuild) throw SummaryException(SummaryErrorCode.INVALID_SETTINGS)
                     AgyBridgeSummaryProvider(SummaryValidator(prompt.tags), current.relayBaseUrl, current.modelName)

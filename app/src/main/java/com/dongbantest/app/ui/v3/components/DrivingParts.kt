@@ -1,6 +1,8 @@
 package com.dongbantest.app.ui.v3.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -266,6 +268,7 @@ fun AskedPanel(
     // 주행 중 제목 보이기 설정이 꺼져 있으면 제목·태그 대신 중립 문구만 보인다.
     hideTitles: Boolean = false,
     hiddenLabel: String = "나눈 대화",
+    onPlayStory: (String) -> Unit = {},
 ) {
     val c = DbTheme.colors
     val t = DbTheme.type
@@ -277,6 +280,7 @@ fun AskedPanel(
             Text(title, style = t.title, color = c.ink, modifier = Modifier.weight(1f).semantics { heading() })
             Text(countText, style = t.bodySm, color = c.muted)
         }
+        Column(Modifier.weight(1f).then(if (!driving) Modifier.verticalScroll(rememberScrollState()) else Modifier)) {
         items.forEach { a ->
             Row(
                 Modifier.fillMaxWidth().topRule(c.rule).padding(vertical = Spacing.sm),
@@ -290,6 +294,14 @@ fun AskedPanel(
                 val titleLines = if (driving) 1 else Int.MAX_VALUE
                 val titleColor = if (hideTitles) c.muted else c.ink
                 val tagRow = @Composable {
+                    if (!hideTitles && a.audio != null) {
+                        Text("음성 ${a.audio} · 클립 ${a.clipCount}개" + when (a.kind) {
+                            "story" -> " · 이야기"
+                            "moment" -> " · 순간"
+                            else -> ""
+                        }, style = t.caption, color = c.muted)
+                    }
+                    if (!hideTitles && a.fromQuestion) Tag("동반이 질문", small = true)
                     val shown = if (driving) a.tags.take(2) else a.tags
                     if (!hideTitles && shown.isNotEmpty()) {
                         Row(Modifier.padding(top = Spacing.s2xs), horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
@@ -313,9 +325,10 @@ fun AskedPanel(
                         tagRow()
                     }
                 }
+                if (!driving && a.id.isNotEmpty()) PlayButton(false, "${a.title} 재생", { onPlayStory(a.id) })
             }
         }
-        Spacer(Modifier.weight(1f))
+        }
         when {
             bottom != null -> bottom()
             footnote != null -> Row(Modifier.padding(top = Spacing.lg), horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {

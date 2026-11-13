@@ -28,6 +28,11 @@ data class AskedItem(
     val now: Boolean = false,
     // talk-rec 연동: 대화 태그(주행 중에는 2개까지만 보임)
     val tags: List<String> = emptyList(),
+    val id: String = "",
+    val audio: String? = null,
+    val clipCount: Int = 1,
+    val kind: String? = null,
+    val fromQuestion: Boolean = false,
 )
 
 /** 음성 확인 알림 종류: 성공 / 못 들음 / 확인 필요 */

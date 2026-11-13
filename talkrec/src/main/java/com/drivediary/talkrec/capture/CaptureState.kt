@@ -12,4 +12,5 @@ data class CaptureState(
     val errorCount: Long = 0,
     val unavailableFrameCount: Long = 0,
     val discontinuityCount: Long = 0,
+    val tripId: Long? = null,
 )

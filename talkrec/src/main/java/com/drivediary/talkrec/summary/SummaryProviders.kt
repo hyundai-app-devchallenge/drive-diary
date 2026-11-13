@@ -42,11 +42,34 @@ class GeminiSummaryProvider(
     private val apiKey: String,
     model: String = SummaryDefaults.GEMINI_MODEL,
     private val http: SummaryHttpClient = UrlConnectionSummaryHttpClient(),
+    private val storyPrompt: SummaryPrompt = prompt,
 ) : SummaryProvider {
     private val requestedModel = checkedModelName(model)
     @Volatile override var modelName: String = requestedModel
         private set
     private val validator = SummaryValidator(prompt.categories)
+
+    override suspend fun storySplit(segments: List<String>): StorySplitResult {
+        checkedSegments(segments)
+        if (apiKey.isBlank() || apiKey.any { it <= ' ' || it >= '\u007f' }) throw SummaryException(SummaryErrorCode.KEY_UNAVAILABLE)
+        val numbered = segments.mapIndexed { i, text -> "[${i + 1}]\n$text" }.joinToString("\n\n")
+        val body = JSONObject(requestJson(numbered))
+        body.getJSONObject("systemInstruction").put("parts", JSONArray().put(JSONObject().put("text", storyPrompt.systemInstruction)))
+        body.getJSONObject("generationConfig").put("responseJsonSchema", storySchema(storyPrompt.categories))
+        val response = http.post(SummaryHttpRequest(
+            "https://generativelanguage.googleapis.com/v1beta/models/$requestedModel:generateContent",
+            mapOf("x-goog-api-key" to apiKey), body.toString()))
+        checkSummaryHttp(response)
+        try {
+            val envelope = summaryJsonObject(response.body)
+            val parts = envelope.getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts")
+            val text = (0 until parts.length()).map { parts.getJSONObject(it) }.filter { !it.optBoolean("thought", false) }
+                .joinToString("") { it.opt("text") as? String ?: "" }
+            val result = StorySplitValidator(storyPrompt.categories).parse(text, segments.size)
+            modelName = (envelope.opt("modelVersion") as? String)?.let(::checkedModelName) ?: requestedModel
+            return result
+        } catch (_: Exception) { throw InvalidSummaryOutput() }
+    }
 
     override suspend fun summarize(transcript: String): SummaryResult {
         if (apiKey.isBlank() || apiKey.any { it <= ' ' || it >= '\u007f' }) {
@@ -111,10 +134,30 @@ class AgyBridgeSummaryProvider(
     @Volatile override var modelName: String = requestedModel
         private set
 
+    override suspend fun storySplit(segments: List<String>): StorySplitResult {
+        checkedSegments(segments)
+        val body = JSONObject().put("segments", JSONArray(segments)).put("model", requestedModel).toString()
+        if (body.toByteArray(Charsets.UTF_8).size > 262_144) throw SummaryException(SummaryErrorCode.REQUEST_TOO_LARGE)
+        val response = http.post(SummaryHttpRequest("$base/story-split", emptyMap(), body, readTimeoutMs = AGY_READ_TIMEOUT_MS))
+        if (response.status == 502 && try { summaryJsonObject(response.body).opt("error") == "invalid_output" } catch (_: Exception) { false })
+            throw SummaryException(SummaryErrorCode.INVALID_OUTPUT)
+        checkSummaryHttp(response)
+        try {
+            val envelope = summaryJsonObject(response.body)
+            val stories = envelope.getJSONArray("stories")
+            // Relay adds compatibility tags and envelope metadata after its strict validation.
+            for (i in 0 until stories.length()) stories.getJSONObject(i).remove("tags")
+            val result = StorySplitValidator(validator.allowedCategories)
+                .parse(JSONObject().put("stories", stories).toString(), segments.size)
+            modelName = checkedModelName(envelope.get("model") as? String ?: throw InvalidSummaryOutput())
+            return result
+        } catch (_: Exception) { throw InvalidSummaryOutput() }
+    }
+
     override suspend fun summarize(transcript: String): SummaryResult {
         val body = JSONObject().put("transcript", transcript).put("model", requestedModel).toString()
         if (body.toByteArray(Charsets.UTF_8).size > 32_768) throw SummaryException(SummaryErrorCode.REQUEST_TOO_LARGE)
-        val response = http.post(SummaryHttpRequest("$base/summarize", emptyMap(), body, readTimeoutMs = 120_000))
+        val response = http.post(SummaryHttpRequest("$base/summarize", emptyMap(), body, readTimeoutMs = AGY_READ_TIMEOUT_MS))
         if (response.status == 502) {
             val invalid = try { summaryJsonObject(response.body).opt("error") == "invalid_output" } catch (_: Exception) { false }
             // The relay already made the initial model call and its one validation retry.
@@ -133,6 +176,14 @@ class FakeSummaryProvider(
     private val validator: SummaryValidator,
     override val modelName: String = SummaryDefaults.FAKE_MODEL,
 ) : SummaryProvider {
+    override suspend fun storySplit(segments: List<String>): StorySplitResult {
+        checkedSegments(segments)
+        return StorySplitResult(listOf(SplitStory((1..segments.size).toList(), "테스트 이야기",
+            validator.allowedCategories.first(), emptyList(), "story", true, "")))
+    }
     override suspend fun summarize(transcript: String): SummaryResult =
         validator.validate(SummaryResult("테스트 대화", validator.allowedCategories.first(), emptyList(), "story"))
 }
+
+// agy relay (lab/test only) can take several minutes per call.
+private const val AGY_READ_TIMEOUT_MS = 360_000

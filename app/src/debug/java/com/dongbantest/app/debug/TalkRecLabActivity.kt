@@ -57,6 +57,7 @@ import com.drivediary.talkrec.debug.TalkRecLab
 import com.drivediary.talkrec.summary.ConnectionTestResult
 import com.drivediary.talkrec.summary.SummaryProviderType
 import com.drivediary.talkrec.summary.SummarySettings
+import com.drivediary.talkrec.summary.StorySplitResult
 import java.util.Locale
 import kotlin.math.log10
 import kotlinx.coroutines.CancellationException
@@ -189,6 +190,7 @@ class TalkRecLabActivity : ComponentActivity() {
                     onStart = ::requestStart,
                     onStop = { stopLab("실험을 정지했어요") },
                     onSummary = ::summarize,
+                    onSplit = ::splitStories,
                 )
             }
         }
@@ -262,6 +264,19 @@ class TalkRecLabActivity : ComponentActivity() {
         job.start()
     }
 
+    private fun splitStories(run: LabRun) {
+        if (run.job != null || container.drivingSafetyMonitor.state.value.isRestricted) return
+        run.error = null
+        val job = lifecycleScope.launch(start = CoroutineStart.LAZY) {
+            try { run.result = container.summarySettingsStore.tryStorySplit(run.segments) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { run.error = "이야기 시험에 실패했어요" }
+            finally { run.job = null }
+        }
+        run.job = job
+        job.start()
+    }
+
     override fun onDestroy() {
         try {
             TalkRecLab.stop()
@@ -282,6 +297,7 @@ private enum class LabMode { MIC, FILE }
 private data class LabStartRequest(val mode: LabMode, val uri: Uri?, val playAloud: Boolean)
 
 private class LabBlock(val id: String) {
+    var deleted by mutableStateOf(false)
     var closed by mutableStateOf<TalkDebugEvent.BlockClosed?>(null)
     var decision by mutableStateOf<TalkDebugEvent.Decision?>(null)
     var expanded by mutableStateOf(false)
@@ -296,6 +312,13 @@ private class LabBlock(val id: String) {
         decision = null
         summarizing = false
     }
+}
+
+private class LabRun(val id: String, var segments: List<String>) {
+    var result by mutableStateOf<StorySplitResult?>(null)
+    var error by mutableStateOf<String?>(null)
+    var job by mutableStateOf<Job?>(null)
+    fun clear() { job?.cancel(); job = null; result = null; segments = emptyList() }
 }
 
 private class LabScreenState {
@@ -315,8 +338,10 @@ private class LabScreenState {
     var finalSerial by mutableStateOf(0L)
     val finals = mutableStateListOf<TalkDebugEvent.Final>()
     val blocks = mutableStateListOf<LabBlock>()
+    val runs = mutableStateListOf<LabRun>()
 
     fun clear() {
+        runs.forEach { it.clear() }; runs.clear()
         blocks.forEach { it.clear() }
         blocks.clear()
         finals.clear()
@@ -342,7 +367,27 @@ private class LabScreenState {
                 finalSerial++
             }
             is TalkDebugEvent.BlockClosed -> block(event.blockId).closed = event
-            is TalkDebugEvent.Decision -> block(event.blockId).decision = event
+            is TalkDebugEvent.Decision -> {
+                block(event.blockId).decision = event
+                if (event.savedCountDelta < 0) {
+                    blocks.lastOrNull { !it.deleted && (it.decision?.savedCountDelta ?: 0) > 0 }?.let { deleted ->
+                        deleted.deleted = true
+                        // A closed run may lose its last clip through the refusal command.
+                        runs.firstOrNull { it.id == deleted.closed?.runId }?.let { old ->
+                            old.clear(); runs.remove(old)
+                            val remaining = blocks.filter { !it.deleted && it.closed?.runId == old.id && (it.decision?.savedCountDelta ?: 0) > 0 }
+                            if (remaining.isNotEmpty()) runs += LabRun(old.id, remaining.map { it.closed!!.lines.joinToString("\n") })
+                        }
+                    }
+                }
+            }
+            is TalkDebugEvent.RunClosed -> {
+                val members = blocks.filter { !it.deleted && it.closed?.runId == event.runId && (it.decision?.savedCountDelta ?: 0) > 0 }
+                if (members.isNotEmpty() && runs.none { it.id == event.runId }) {
+                    if (runs.size >= 100) runs.removeAt(0).clear()
+                    runs += LabRun(event.runId, members.map { it.closed!!.lines.joinToString("\n") })
+                }
+            }
             TalkDebugEvent.SourceEnded -> { rms = 0.0; partial = ""; banner = "파일 끝" }
             TalkDebugEvent.Stopped -> { rms = 0.0; partial = "" }
             is TalkDebugEvent.SttError -> banner = when (event.code) {
@@ -369,7 +414,7 @@ private fun LabScreen(
     ui: LabScreenState, capture: CaptureState, settings: SummarySettings,
     available: Boolean, stopping: Boolean, restricted: Boolean, onPick: () -> Unit, onStart: () -> Unit,
     onRefresh: () -> Unit, onSelectFile: (LabAudioFile) -> Unit,
-    onStop: () -> Unit, onSummary: (LabBlock) -> Unit,
+    onStop: () -> Unit, onSummary: (LabBlock) -> Unit, onSplit: (LabRun) -> Unit,
 ) {
     val controlsEnabled = available && !ui.ownsSession && !ui.permissionPending
     Column(
@@ -450,12 +495,12 @@ private fun LabScreen(
             if (maxWidth >= 900.dp) {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     LivePanel(ui, capture, Modifier.weight(1f).fillMaxHeight())
-                    BlocksPanel(ui, restricted, onSummary, Modifier.weight(1f).fillMaxHeight())
+                    BlocksPanel(ui, restricted, onSummary, onSplit, Modifier.weight(1f).fillMaxHeight())
                 }
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     LivePanel(ui, capture, Modifier.weight(1f))
-                    BlocksPanel(ui, restricted, onSummary, Modifier.weight(1f))
+                    BlocksPanel(ui, restricted, onSummary, onSplit, Modifier.weight(1f))
                 }
             }
         }
@@ -488,10 +533,26 @@ private fun LivePanel(ui: LabScreenState, capture: CaptureState, modifier: Modif
 }
 
 @Composable
-private fun BlocksPanel(ui: LabScreenState, restricted: Boolean, onSummary: (LabBlock) -> Unit, modifier: Modifier) {
+private fun BlocksPanel(ui: LabScreenState, restricted: Boolean, onSummary: (LabBlock) -> Unit, onSplit: (LabRun) -> Unit, modifier: Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("묶음과 판정 (최근 100개)", style = MaterialTheme.typography.titleLarge)
         LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.weight(1f)) {
+            items(ui.runs, key = { "run:${it.id}" }) { run ->
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Run ${run.id.take(8)} · 닫힘 · 클립 ${run.segments.size}개")
+                        OutlinedButton({ onSplit(run) }, enabled = !restricted && run.job == null) {
+                            Text(if (run.job != null) "이야기 나누는 중…" else "이야기 나눠 보기")
+                        }
+                        run.error?.let { Text(it) }
+                        run.result?.stories?.forEach { story ->
+                            Text("묶음 ${story.segments.joinToString()} · ${story.title}")
+                            Text("${story.category} · ${story.keywords.joinToString()} · ${story.kind}")
+                            Text("keep=${story.keep} · reason=${story.reason}")
+                        }
+                    }
+                }
+            }
             if (ui.blocks.isEmpty()) item { Text("묶음이 닫히면 판정 결과가 보여요", style = MaterialTheme.typography.bodyLarge) }
             items(ui.blocks, key = { it.id }) { block -> BlockCard(block, restricted, onSummary) }
         }
@@ -505,6 +566,7 @@ private fun BlockCard(block: LabBlock, restricted: Boolean, onSummary: (LabBlock
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("묶음 ${block.id.take(8)}", style = MaterialTheme.typography.titleMedium)
+            Text("Run ${closed?.runId?.take(8) ?: "—"}${if (block.deleted) " · 삭제됨" else ""}")
             if (closed == null) Text("묶음 상세 이벤트를 받지 못했어요")
             else {
                 val reason = when (closed.reason) { CloseReason.SILENCE -> "무음"; CloseReason.LENGTH -> "길이"; CloseReason.MANUAL -> "수동" }

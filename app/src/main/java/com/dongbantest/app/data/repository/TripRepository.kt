@@ -4,6 +4,9 @@ import com.dongbantest.app.data.local.LocationPointEntity
 import com.dongbantest.app.data.local.MemoryEntity
 import com.dongbantest.app.data.local.MemoryWithTalk
 import com.dongbantest.app.data.local.TalkMetaEntity
+import com.dongbantest.app.data.local.StoryRow
+import com.drivediary.talkrec.summary.PendingSummary
+import com.drivediary.talkrec.summary.StorySplitResult
 import com.dongbantest.app.data.talk.ClipPersistence
 import com.dongbantest.app.data.talk.ClipRow
 import com.dongbantest.app.data.talk.clipTranscript
@@ -99,6 +102,7 @@ class TripRepository(
                 write = { writeAudio(file) },
                 insert = { duration ->
                     check(canSave() && isTripOngoing(block.tripId)) { "Capture no longer authorized" }
+                    val ai = sendToAi()
                     dao.insertTalkMemory(
                         MemoryEntity(tripId = block.tripId, type = MemoryType.VOICE.name,
                             createdAt = System.currentTimeMillis(), text = null, filePath = file.absolutePath,
@@ -106,7 +110,10 @@ class TripRepository(
                         TalkMetaEntity(memoryId = 0, source = block.source.name,
                             blockStartMs = block.startMs, blockEndMs = block.endMs,
                             keepScore = block.keepScore, kind = block.kind?.name?.lowercase(Locale.ROOT),
-                            summaryStatus = if (sendToAi()) SummaryStatus.PENDING.name else SummaryStatus.SKIPPED.name),
+                            runId = block.runId, closeReason = block.closeReason.name, runClosed = false,
+                            summaryStatus = if (ai) SummaryStatus.PENDING.name else SummaryStatus.SKIPPED.name,
+                            storyId = if (ai) null else "${block.runId}:0",
+                            storyIndex = if (ai) null else 0),
                     )
                 },
             )
@@ -118,9 +125,29 @@ class TripRepository(
         kind: String? = null, model: String? = null,
     ) = dao.updateTalkSummary(memoryId, title, tags?.let { JSONArray(it).toString() }, kind, status.name, model)
 
-    suspend fun listPendingTalkSummaries(): List<Memory> = dao.pendingTalkMemories().map { it.toDomain() }
+    suspend fun listPendingTalkSummaries(): List<Memory> {
+        val rows = dao.pendingTalkMemories()
+        rows.mapNotNull { it.talk?.runId }.distinct().forEach { dao.skipPartiallyConsentedRun(it) }
+        return dao.pendingTalkMemories().map { it.toDomain() }
+    }
 
     suspend fun getPendingTalkSummary(memoryId: Long): Memory? = dao.pendingTalkMemory(memoryId)?.toDomain()
+
+    suspend fun closeTalkRun(tripId: Long, runId: String): Long? = clips.locked {
+        dao.closeTalkRun(tripId, runId)
+        dao.pendingRunCeiling(runId)
+    }
+
+    suspend fun finishTalkRun(item: PendingSummary, status: SummaryStatus, result: StorySplitResult? = null, model: String? = null) {
+        val runId = item.runId ?: return
+        val rows = if (result == null) item.ids.map { id ->
+            StoryRow(id, "$runId:0", 0, null, null, null, null, null, status.name, null)
+        } else result.stories.flatMapIndexed { index, story -> story.segments.map { segment ->
+            StoryRow(item.ids[segment - 1], "$runId:$index", index, story.title,
+                JSONArray(story.tags).toString(), story.kind, story.keep, story.reason, status.name, model)
+        } }
+        dao.saveStoryRows(rows)
+    }
 
     /** Across ALL trips, counted at save time; MANUAL clips are excluded. */
     suspend fun savedAutoDurationMs(sinceMs: Long, untilMs: Long): Long = dao.savedAutoDurationMs(sinceMs, untilMs)
@@ -305,6 +332,8 @@ private fun TalkMetaEntity.toDomain() = TalkMeta(
         val array = JSONArray(raw)
         List(array.length()) { array.getString(it) }
     }, summaryStatus = SummaryStatus.valueOf(summaryStatus), summaryModel = summaryModel,
+    runId = runId, closeReason = closeReason, runClosed = runClosed, storyId = storyId,
+    storyIndex = storyIndex, storyKind = storyKind, storyKeep = storyKeep, storyReason = storyReason,
 )
 
 private fun MemoryEntity.clipRow() = ClipRow(id, filePath)

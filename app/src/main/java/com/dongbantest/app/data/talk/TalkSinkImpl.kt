@@ -14,17 +14,18 @@ class TalkSinkImpl(
     private val onPendingSaved: (Long) -> Unit = {},
 ) : TalkSink {
     override suspend fun onKeptBlock(block: KeptBlock): Boolean {
-        val id = repository.saveTalkClip(
+        repository.saveTalkClip(
             block, canSave = { consent.get(block.tripId) == true },
             sendToAi = { consent.getSendToAi(block.tripId) },
             writeAudio = { writer.write(block.audio.pcm, it) },
         ) ?: return false
-        if (repository.getPendingTalkSummary(id) != null) {
-            try { onPendingSaved(id) } catch (_: IllegalStateException) {
-                // Persistence already succeeded; startup enqueue will recover an unavailable scheduler.
-            }
-        }
         return true
+    }
+
+    override suspend fun onRunClosed(tripId: Long, runId: String) {
+        repository.closeTalkRun(tripId, runId)?.let { id ->
+            try { onPendingSaved(id) } catch (_: IllegalStateException) { /* Recovered at startup. */ }
+        }
     }
 
     override suspend fun deletePreviousSavedClip(tripId: Long, refusalId: String): Boolean =

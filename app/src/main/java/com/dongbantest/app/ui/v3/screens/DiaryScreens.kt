@@ -22,6 +22,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.dongbantest.app.ui.v3.components.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -223,6 +227,7 @@ data class DiaryUiState(
     val photoPlaceholder: String = "사진 자리",
     /** 재생 중인 이야기(time). 진행 표시는 시연용 30% 고정 */
     val playingTime: String? = null,
+    val playingId: String? = null,
     val recordingText: String = Sample.REC_ON,
 )
 
@@ -351,8 +356,15 @@ private fun DiaryTalks(state: DiaryUiState, onPlay: (TalkUi) -> Unit) {
     val c = DbTheme.colors
     val t = DbTheme.type
     Text(state.talksTitle, style = t.titleLg, color = c.ink, modifier = Modifier.padding(bottom = Spacing.xs).semantics { heading() })
-    state.record.talks.forEach { talk ->
-        val on = state.playingTime == talk.time
+    var hiddenExpanded by remember(state.record.id) { mutableStateOf(false) }
+    val hidden = state.record.talks.filter { it.hidden }
+    val visible = state.record.talks.filter { !it.hidden }
+    val shown = visible + if (hiddenExpanded) hidden else emptyList()
+    shown.forEachIndexed { index, talk ->
+        if (index == visible.size && hiddenExpanded) {
+            OutlineButton("숨긴 대화 ${hidden.size}개 접기", { hiddenExpanded = false })
+        }
+        val on = if (talk.id.isNotEmpty()) state.playingId == talk.id else state.playingTime == talk.time
         Row(
             Modifier.fillMaxWidth().topRule(if (DbTheme.layout.wide) c.ruleSoft else c.ruleSoft).padding(vertical = Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
@@ -367,7 +379,11 @@ private fun DiaryTalks(state: DiaryUiState, onPlay: (TalkUi) -> Unit) {
                     }
                     Text("${elapsed30(talk.audio)} / ${talk.audio}", style = t.caption.copy(fontWeight = FontWeight.Normal), color = c.ink2)
                 } else {
-                    Text("음성 ${talk.audio}", style = t.bodySm, color = c.muted)
+                    Text("음성 ${talk.audio} · 클립 ${talk.clipCount}개" + when (talk.kind) {
+                        "story" -> " · 이야기"
+                        "moment" -> " · 순간"
+                        else -> ""
+                    }, style = t.bodySm, color = c.muted)
                 }
                 // talk-rec 연동: 태그 칩(작은 Tag 재사용). 동반이 질문 표시와 같은 줄에 둔다.
                 if (talk.fromQuestion || talk.tags.isNotEmpty()) {
@@ -381,6 +397,9 @@ private fun DiaryTalks(state: DiaryUiState, onPlay: (TalkUi) -> Unit) {
             }
             PlayButton(on, "${talk.title} 재생", { onPlay(talk) })
         }
+    }
+    if (hidden.isNotEmpty() && !hiddenExpanded) {
+        OutlineButton("숨긴 대화 ${hidden.size}개", { hiddenExpanded = true })
     }
 }
 

@@ -11,7 +11,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * v4 → v5 마이그레이션 시험.
+ * v4 → v6 / 현재 v5 → v6 마이그레이션 시험.
  * room-testing(MigrationTestHelper)은 앱의 kotlinx-serialization 1.7.3(Mapbox 경유)과 충돌해 쓰지 않는다.
  * 대신 v4 테이블을 직접 만든 뒤 실제 앱처럼 Room 으로 연다. Room 이 열 때 마이그레이션을 돌리고
  * 엔티티 정의와 실제 테이블이 같은지 검사하므로, 다르면 여기서 IllegalStateException 이 난다.
@@ -19,12 +19,20 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class TalkMigrationTest {
     @Test fun migrate4To5PreservesTeamTablesAndAddsNullableCascadingMetadata() {
+        migrate(4)
+    }
+
+    @Test fun migrate5To6PreservesClipSummaryAndAddsNullableStoryFields() {
+        migrate(5)
+    }
+
+    private fun migrate(fromVersion: Int) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         context.deleteDatabase(DB_NAME)
         // v4 disabled schema export, so build the actual v4 fixture by hand.
         val old = FrameworkSQLiteOpenHelperFactory().create(
             SupportSQLiteOpenHelper.Configuration.builder(context).name(DB_NAME)
-                .callback(object : SupportSQLiteOpenHelper.Callback(4) {
+                .callback(object : SupportSQLiteOpenHelper.Callback(fromVersion) {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         db.execSQL("""CREATE TABLE IF NOT EXISTS `trips` (
                             `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `title` TEXT NOT NULL,
@@ -48,6 +56,7 @@ class TalkMigrationTest {
                             `recordedAt` INTEGER NOT NULL, `type` TEXT NOT NULL,
                             FOREIGN KEY(`tripId`) REFERENCES `trips`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE)""")
                         db.execSQL("CREATE INDEX IF NOT EXISTS `index_vehicle_signals_tripId` ON `vehicle_signals` (`tripId`)")
+                        if (fromVersion == 5) DongbanDatabase.MIGRATION_4_5.migrate(db)
                     }
                     override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = error("fixture only")
                 }).build(),
@@ -58,15 +67,25 @@ class TalkMigrationTest {
             db.execSQL("INSERT INTO memories VALUES (3,1,'TEXT',210,'synthetic memo',NULL,NULL,NULL)")
             db.execSQL("INSERT INTO location_points VALUES (4,1,220,37.0,127.0,3.0)")
             db.execSQL("INSERT INTO vehicle_signals VALUES (5,1,230,'PARKED')")
+            if (fromVersion == 5) db.execSQL("""INSERT INTO talk_meta (memoryId,source,blockStartMs,blockEndMs,title,tags,summaryStatus)
+                VALUES (2,'AUTO',100,200,'synthetic title','["놀이"]','DONE')""")
             snapshot(db)
         }
         old.close()
         val room = Room.databaseBuilder(context, DongbanDatabase::class.java, DB_NAME)
-            .addMigrations(DongbanDatabase.MIGRATION_4_5).build()
+            .addMigrations(DongbanDatabase.MIGRATION_4_5, DongbanDatabase.MIGRATION_5_6).build()
         try {
             val db = room.openHelper.writableDatabase
-            assertEquals(5, db.version)
+            assertEquals(6, db.version)
             assertEquals(before, snapshot(db))
+            if (fromVersion == 5) {
+                db.query("SELECT title,tags,summaryStatus,runId,closeReason,runClosed,storyId,storyIndex,storyKind,storyKeep,storyReason FROM talk_meta WHERE memoryId=2").use {
+                    assertTrue(it.moveToFirst()); assertEquals("synthetic title", it.getString(0))
+                    assertEquals("[\"놀이\"]", it.getString(1)); assertEquals("DONE", it.getString(2))
+                    for (column in 3..10) assertTrue(it.isNull(column))
+                }
+                db.execSQL("DELETE FROM talk_meta WHERE memoryId=2")
+            }
             db.execSQL("PRAGMA foreign_keys=ON")
             db.execSQL("""INSERT INTO talk_meta (memoryId,source,blockStartMs,blockEndMs,keepScore,kind,title,tags,summaryStatus,summaryModel)
                 VALUES (2,'AUTO',100,200,NULL,NULL,NULL,NULL,'SKIPPED',NULL)""")

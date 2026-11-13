@@ -9,13 +9,22 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [TripEntity::class, MemoryEntity::class, LocationPointEntity::class, VehicleSignalEntity::class, TalkMetaEntity::class],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class DongbanDatabase : RoomDatabase() {
     abstract fun tripDao(): TripDao
 
     companion object {
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                listOf("runId" to "TEXT", "closeReason" to "TEXT", "runClosed" to "INTEGER",
+                    "storyId" to "TEXT", "storyIndex" to "INTEGER", "storyKind" to "TEXT",
+                    "storyKeep" to "INTEGER", "storyReason" to "TEXT").forEach { (name, type) ->
+                    db.execSQL("ALTER TABLE `talk_meta` ADD COLUMN `$name` $type")
+                }
+            }
+        }
         /** v5 only adds metadata; the four team tables are untouched. */
         val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -35,7 +44,7 @@ abstract class DongbanDatabase : RoomDatabase() {
 
         fun create(context: Context): DongbanDatabase =
             Room.databaseBuilder(context, DongbanDatabase::class.java, "dongbancha.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .build()
 
         /** v2: 위치 기록 테이블 추가. 기존 여행·추억 데이터는 그대로 유지한다. */

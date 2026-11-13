@@ -70,6 +70,14 @@ data class TalkMetaEntity(
     val tags: String? = null,
     val summaryStatus: String,
     val summaryModel: String? = null,
+    val runId: String? = null,
+    val closeReason: String? = null,
+    val runClosed: Boolean? = null,
+    val storyId: String? = null,
+    val storyIndex: Int? = null,
+    val storyKind: String? = null,
+    val storyKeep: Boolean? = null,
+    val storyReason: String? = null,
 )
 
 data class MemoryWithTalk(

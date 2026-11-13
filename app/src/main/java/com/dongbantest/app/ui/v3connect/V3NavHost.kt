@@ -299,6 +299,7 @@ fun V3NavHost(
                     recordingToggleEnabled = !recordingToggleBlocked,
                 )
             val events = DrivingEvents(
+                onPlayStory = { id -> state.data?.talks()?.firstOrNull { it.talk.id == id }?.paths?.let(vm::toggleStory) },
                 onTab = onTab,
                 onMoment = {
                     if (!momentDone && !recordingToggleBlocked && vm.uiState.value.toDriving(now, TalkRec.state.value).momentButton) {
@@ -309,18 +310,16 @@ fun V3NavHost(
                 },
                 onRecordingToggle = {
                     val current = vm.uiState.value
-                    if (!recordingToggleBlocked && current.toDriving(now, TalkRec.state.value).recordingToggleText != null) {
+                    val text = current.toDriving(now, TalkRec.state.value).recordingToggleText
+                    if (!recordingToggleBlocked && text != null) {
                         recordingToggleBlocked = true
-                        when (current.recordingMode) {
-                            RecordingMode.ON -> {
-                                vm.pauseRecording()
-                                vm.showMessage("녹음을 잠시 멈췄어요")
-                            }
-                            RecordingMode.PAUSED -> {
-                                vm.resumeRecording()
-                                vm.showMessage("다시 녹음할게요")
-                            }
-                            RecordingMode.READY, RecordingMode.OFF -> Unit
+                        // 화면에 보이는 버튼 그대로 동작한다(모드 ON이지만 캡처가 멈춘 경우 포함).
+                        if (text == RESUME_TEXT) {
+                            vm.resumeRecording()
+                            vm.showMessage("다시 녹음할게요")
+                        } else {
+                            vm.pauseRecording()
+                            vm.showMessage("녹음을 잠시 멈췄어요")
                         }
                     }
                 },
@@ -454,13 +453,13 @@ fun V3NavHost(
             }
             var editStep by rememberSaveable { mutableIntStateOf(0) } // 0 닫힘, 1 편집 메뉴, 2 지우기 확인
             val talks = remember(data) { data.talks() }
-            val playing = talks.firstOrNull { it.path != null && it.path == state.playingPath }?.talk?.time
+            val playing = talks.firstOrNull { state.playingPath in it.paths }?.talk
             Box(Modifier.fillMaxSize()) {
             DiaryScreen(
                 state = DiaryUiState(
                     record = data.toRecord(),
                     live = data.trip.isOngoing && !restricted,
-                    playingTime = playing,
+                    playingTime = playing?.time, playingId = playing?.id,
                     recordingText = "여행 기록 중",
                 ),
                 onTab = onTab,
@@ -473,7 +472,7 @@ fun V3NavHost(
                         navController.navigate(V3Routes.diary(next)) { popUpTo(V3Routes.DIARY) { inclusive = true } }
                     }
                 },
-                onPlay = { talk -> talks.firstOrNull { it.talk == talk }?.path?.let(vm::togglePlay) },
+                onPlay = { talk -> talks.firstOrNull { it.talk == talk }?.paths?.let(vm::toggleStory) },
                 map = { m ->
                     RouteMap(
                         routes = listOf(RealMapRoute(tripId, RouteColors.forTrip(tripId), data.drive.path, data.drive.timeline)),

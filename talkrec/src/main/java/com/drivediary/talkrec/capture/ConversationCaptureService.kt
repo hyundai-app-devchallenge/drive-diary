@@ -38,7 +38,7 @@ class ConversationCaptureService : Service() {
     }
     private class ClosedBlock(val block: ConversationBlock) {
         val id = UUID.randomUUID().toString()
-        val trace: DebugBlockTrace? = TalkRecDebug.blockClosed(id, block)
+        val trace: DebugBlockTrace? = TalkRecDebug.blockClosed(id, block, deferred = true)
     }
     private class Candidate(val closed: ClosedBlock, val audio: PcmSlice) {
         val block get() = closed.block
@@ -109,7 +109,7 @@ class ConversationCaptureService : Service() {
                 endInput()
                 request = event.request; factory = event.request.options.audioSource; stoppedEvent = false
                 assembler = BlockAssembler(silenceRms = event.request.options.silenceRms)
-                TalkRec.mutableState.value = CaptureState()
+                TalkRec.mutableState.value = CaptureState(tripId = event.request.tripId)
                 startInput()
             }
             is Event.Control -> when (event.action) {
@@ -183,6 +183,7 @@ class ConversationCaptureService : Service() {
         candidates = queue
         processJob = scope.launch(Dispatchers.IO) {
             var judge: ConversationJudge? = null
+            var processor: CaptureProcessor? = null
             try {
                 val policy = PolicyGate.fromAssets { assets.open(it) }
                 judge = try { ConversationJudge.fromAssets { assets.open(it) } }
@@ -190,17 +191,18 @@ class ConversationCaptureService : Service() {
                     catch (_: LinkageError) { Log.w(TAG, "judge unavailable fallback=hourly_budget"); null }
                     catch (_: OutOfMemoryError) { Log.w(TAG, "judge unavailable fallback=hourly_budget"); null }
                 val loaded = judge
-                val processor = CaptureProcessor(active.tripId, policy, active.options.sink, active.options.budgetOverride ?: TalkRec.budget,
+                val consumer = CaptureProcessor(active.tripId, policy, active.options.sink, active.options.budgetOverride ?: TalkRec.budget,
                     loaded?.let { model -> { texts -> model.judge(texts) } },
                     onJudgeFailure = {
                         try { loaded?.close() } catch (_: Exception) { /* No exception messages. */ }
                         Log.w(TAG, "judge failed fallback=hourly_budget")
                     })
+                processor = consumer
                 for (candidate in queue) {
                     // The processor owns/erases this PCM even if the app's signal provider fails.
                     try {
                         val signals = active.options.signals(candidate.block.startMs, candidate.block.endMs)
-                        val delta = withTimeout(30_000) { processor.process(candidate.block, candidate.audio, signals,
+                        val delta = withTimeout(30_000) { consumer.process(candidate.block, candidate.audio, signals,
                             candidate.closed.id, candidate.closed.trace) }
                         // A durable acknowledgement must update the count even if pause just cancelled this job.
                         // endInput joins this worker before starting/resetting another trip's state.
@@ -215,7 +217,10 @@ class ConversationCaptureService : Service() {
             catch (cancel: CancellationException) { throw cancel }
             catch (_: Exception) { events.send(Event.Failed(id)) }
             catch (_: LinkageError) { events.send(Event.Failed(id)) }
-            finally { try { judge?.close() } finally { queue.cancel() } }
+            finally {
+                try { withContext(NonCancellable) { processor?.closeRun() } }
+                finally { try { judge?.close() } finally { queue.cancel() } }
+            }
         }
         val client = PleosSttClient(this, scope, active.options.locale) { dispatch(Event.Failed(id)) }
         stt = client
@@ -286,8 +291,9 @@ class ConversationCaptureService : Service() {
         initializeJob?.cancelAndJoin(); initializeJob = null
         stt?.close(); stt = null
         lineJob?.cancelAndJoin(); lineJob = null
-        candidates?.cancel(); candidates = null
-        processJob?.cancelAndJoin(); processJob = null
+        // Drain queued saves, then close their run in the consumer's finally block.
+        candidates?.close(); candidates = null
+        processJob?.join(); processJob = null
         pending.forEach { it.trace?.finish() }; pending.clear()
         debugTraces.forEach { it.finish() }; debugTraces.clear()
         assembler.reset(); ring.clear(); lastEnd = null; route = null

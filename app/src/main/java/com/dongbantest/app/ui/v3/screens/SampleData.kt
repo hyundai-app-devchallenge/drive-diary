@@ -19,6 +19,10 @@ data class TalkUi(
     val tags: List<String> = emptyList(),
     // 기기 태그만 있는 행은 분류 칩으로 강조하지 않는다.
     val category: String? = null,
+    val id: String = "",
+    val clipCount: Int = 1,
+    val kind: String? = null,
+    val hidden: Boolean = false,
 )
 
 /** 기록(여행) 한 건. 웹 data-v3.ts 의 TripRecord 와 같은 필드. */
