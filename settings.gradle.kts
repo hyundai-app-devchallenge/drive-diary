@@ -23,8 +23,14 @@ dependencyResolutionManagement {
         maven {
             url = uri("https://nexus-playground.pleos.ai/repository/maven-releases/")
         }
+        // Mapbox Maven repository (지도 SDK)
+        maven {
+            url = uri("https://api.mapbox.com/downloads/v2/releases/maven")
+        }
     }
 }
 
 rootProject.name = "Dongbantest"
 include(":app")
+// 대화 기록 라이브러리 모듈을 등록한다.
+include(":talkrec")

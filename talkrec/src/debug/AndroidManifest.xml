@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:networkSecurityConfig="@xml/talkrec_debug_network_security_config">
+        <receiver android:name="com.drivediary.talkrec.debug.DebugCaptureReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="com.drivediary.talkrec.DEBUG_START" />
+                <action android:name="com.drivediary.talkrec.DEBUG_INJECT" />
+                <action android:name="com.drivediary.talkrec.DEBUG_MIC" />
+                <action android:name="com.drivediary.talkrec.DEBUG_PAUSE" />
+                <action android:name="com.drivediary.talkrec.DEBUG_RESUME" />
+                <action android:name="com.drivediary.talkrec.DEBUG_MARK" />
+                <action android:name="com.drivediary.talkrec.DEBUG_STOP" />
+                <action android:name="com.drivediary.talkrec.DEBUG_STATE" />
+            </intent-filter>
+        </receiver>
+        <!-- Shell launch supplies the visible-Activity eligibility for microphone FGS on Android 14+. -->
+        <activity android:name="com.drivediary.talkrec.debug.DebugCaptureActivity" android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" android:excludeFromRecents="true" />
+    </application>
+</manifest>

@@ -20,6 +20,12 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import com.dongbantest.app.ui.v3.components.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -209,9 +215,14 @@ fun HomeBody(
 /* ───────── S02 여행 설정 ───────── */
 
 data class TripSetupUiState(
-    val title: String = "오늘은 어디로 가요?",
+    val title: String = "여행 제목을 지어 주세요",
+    val tripTitleLabel: String = "여행 제목",
+    val tripTitle: String = "강릉 바다 여행",
+    val tripTitlePlaceholder: String = "예: 판교 여행",
     val destinationLabel: String = "목적지",
-    val destination: String = "강릉 경포해변",
+    /** 내비에 찍힌 목적지 이름. 아직 없으면 null. */
+    val naviDestination: String? = "강릉 경포해변",
+    val noDestination: String = "내비에서 목적지를 찍으면 여기에 나와요",
     val withLabel: String = "누구와 가요?",
     val companions: List<String> = listOf("가족", "연인", "친구"),
     val selectedCompanion: String = "친구",
@@ -228,7 +239,7 @@ data class TripSetupUiState(
 fun TripSetupScreen(
     state: TripSetupUiState = TripSetupUiState(),
     onTab: (DbTab) -> Unit = {},
-    onDestinationChange: (String) -> Unit = {},
+    onTripTitleChange: (String) -> Unit = {},
     onCompanionSelect: (String) -> Unit = {},
     onHeadcountChange: (Int) -> Unit = {},
     onStart: () -> Unit = {},
@@ -243,20 +254,37 @@ fun TripSetupScreen(
             overlay = {
                 DbBottomSheet(state.title) {
                     Text(state.title, style = t.titleLg, color = c.ink, modifier = Modifier.semantics { heading() })
-                    // 목적지 입력: 높이 56, 왼쪽 위치 아이콘
+                    // 여행 제목 입력: 높이 56. 여기 쓴 글이 여행 화면의 제목(예: "판교 여행")이 된다.
                     Box(
                         Modifier.fillMaxWidth().height(56.dp).border(1.dp, c.muted, DbShapes.button).clip(DbShapes.button).background(c.paper),
                         contentAlignment = Alignment.CenterStart,
                     ) {
-                        DbIcon(DbIcons.MapPin, 24.dp, c.muted, Modifier.padding(start = Spacing.md))
                         BasicTextField(
-                            value = state.destination,
-                            onValueChange = onDestinationChange,
+                            value = state.tripTitle,
+                            onValueChange = onTripTitleChange,
                             singleLine = true,
                             textStyle = t.body.copy(color = c.ink),
                             cursorBrush = SolidColor(c.accent),
-                            modifier = Modifier.fillMaxWidth().padding(start = Spacing.xxl, end = Spacing.md)
-                                .semantics { contentDescription = state.destinationLabel },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md)
+                                .semantics { contentDescription = state.tripTitleLabel },
+                            decorationBox = { field ->
+                                if (state.tripTitle.isEmpty()) Text(state.tripTitlePlaceholder, style = t.body, color = c.muted)
+                                field()
+                            },
+                        )
+                    }
+                    // 목적지: 내비에 찍힌 곳을 그대로 보여준다(여기서 고치지 않는다).
+                    Row(
+                        Modifier.fillMaxWidth().semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        DbIcon(DbIcons.MapPin, 20.dp, if (state.naviDestination != null) c.ink else c.muted)
+                        Text(state.destinationLabel, style = t.bodySm, color = c.muted)
+                        Text(
+                            state.naviDestination ?: state.noDestination,
+                            style = if (state.naviDestination != null) t.body.copy(fontWeight = FontWeight.Medium) else t.bodySm,
+                            color = if (state.naviDestination != null) c.ink else c.muted,
                         )
                     }
                     Column(Modifier.fillMaxWidth()) {
@@ -301,16 +329,30 @@ fun TripSetupScreen(
 
 /* ───────── S03 녹음 동의 ───────── */
 
+// talk-rec 연동: 동의를 세 가지로 나눴다(DESIGN §7). 아래 문구는 초안이며 팀에서 확정한다.
+//  (1) 여행 중 대화 기록  (2) 전사 글을 외부 AI로 보내 제목·태그 만들기(1을 고른 경우만)  (3) 녹음 없이 출발
 data class ConsentUiState(
-    val title: String = "이번 여행을 함께 녹음할까요?",
-    val subtitle: String = "여행이 끝날 때까지 차 안의 대화를 녹음해요",
+    val title: String = "이번 여행의 대화를 기록할까요?",
+    val subtitle: String = "여행 중 차 안의 대화를 듣다가, 남길 만한 이야기만 저장해요",
     val items: List<String> = listOf(
         "녹음 중에는 화면 위쪽에 항상 표시돼요",
         "“녹음 잠시 멈춰”라고 말하면 언제든 멈춰요",
-        "남긴 녹음은 정차 후 언제든 지울 수 있어요",
+        "남긴 대화는 정차 후 언제든 지울 수 있어요",
     ),
-    val primary: String = "모두 동의하고 출발",
-    val secondary: String = "녹음 없이 출발",
+    /** (1) 여행 중 대화 기록 */
+    val recordOption: String = "여행 중 대화 기록",
+    val recordOptionSub: String = "상시 기록해요. 남길 것만 저장하고 나머지는 바로 지워요",
+    /** (2) 외부 AI 제목·태그 (1을 고른 경우에만 켤 수 있음) */
+    val aiOption: String = "전사 글을 외부 AI로 보내 제목·태그 만들기",
+    val aiOptionSub: String = "대화를 글로 옮긴 텍스트만 보내요. 음성, 이름, 위치는 보내지 않아요",
+    /** (3) 녹음 없이 출발 */
+    val noRecordOption: String = "녹음 없이 출발",
+    val noRecordOptionSub: String = "질문만 함께해요",
+    val primaryRecord: String = "대화 기록하고 출발",
+    val primaryNoRecord: String = "녹음 없이 출발",
+    /** 처음 선택 상태. 외부 AI 전송은 직접 체크해야만 켜진다. */
+    val recordSelected: Boolean = true,
+    val sendToAi: Boolean = false,
     val home: HomeUiState = HomeUiState(),
 )
 
@@ -318,14 +360,16 @@ data class ConsentUiState(
 fun ConsentScreen(
     state: ConsentUiState = ConsentUiState(),
     onTab: (DbTab) -> Unit = {},
-    onConsent: () -> Unit = {},
-    onWithoutRecording: () -> Unit = {},
+    /** 출발: record = (1) 선택, sendToAi = (2) 체크(record 가 false 면 항상 false) */
+    onStart: (record: Boolean, sendToAi: Boolean) -> Unit = { _, _ -> },
 ) {
     // 받은 폭으로 Compact·Expanded·Full 을 먼저 정한다(아래에서 DbTheme.layout 을 읽음)
     AdaptiveLayout(Modifier.fillMaxSize()) {
         val c = DbTheme.colors
         val t = DbTheme.type
         val icons = listOf(DbIcons.Eye, DbIcons.MicOff, DbIcons.Trash2)
+        var record by rememberSaveable { mutableStateOf(state.recordSelected) }
+        var sendToAi by rememberSaveable { mutableStateOf(state.sendToAi) }
         AppShell(
             selectedTab = DbTab.Home, onTab = onTab, topBar = { StoppedTopBar() },
             overlay = {
@@ -343,14 +387,74 @@ fun ConsentScreen(
                             }
                         }
                     }
-                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                        PrimaryButton(state.primary, onConsent)
-                        OutlineButton(state.secondary, onWithoutRecording)
+                    Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                        ConsentChoice(
+                            label = state.recordOption, sub = state.recordOptionSub,
+                            selected = record, onClick = { record = true },
+                        )
+                        // (2) 외부 AI 전송: (1)을 고른 경우에만 켤 수 있다
+                        ConsentChoice(
+                            label = state.aiOption, sub = state.aiOptionSub,
+                            selected = record && sendToAi, enabled = record,
+                            checkbox = true, indent = true, onClick = { sendToAi = !sendToAi },
+                        )
+                        ConsentChoice(
+                            label = state.noRecordOption, sub = state.noRecordOptionSub,
+                            selected = !record, onClick = { record = false },
+                        )
                     }
+                    PrimaryButton(
+                        if (record) state.primaryRecord else state.primaryNoRecord,
+                        { onStart(record, record && sendToAi) },
+                    )
                 }
             },
         ) {
             HomeBody(state.home)
+        }
+    }
+}
+
+/** S03 선택 줄: 라디오(둥근) 또는 체크박스(네모) 표시 + 제목 + 설명. 높이 48dp 이상. */
+@Composable
+private fun ConsentChoice(
+    label: String,
+    sub: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    checkbox: Boolean = false,
+    indent: Boolean = false,
+) {
+    val c = DbTheme.colors
+    val t = DbTheme.type
+    val mark = if (checkbox) androidx.compose.foundation.shape.RoundedCornerShape(6.dp) else DbShapes.pill
+    val alpha = if (enabled) 1f else 0.4f
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = if (indent) Spacing.lg else 0.dp)
+            .heightIn(min = 48.dp)
+            .clip(DbShapes.card)
+            .border(1.dp, if (selected) c.ink else c.rule, DbShapes.card)
+            .then(
+                if (checkbox) Modifier.toggleable(selected, enabled = enabled, role = Role.Checkbox, onValueChange = { onClick() })
+                else Modifier.selectable(selected, enabled = enabled, role = Role.RadioButton, onClick = onClick),
+            )
+            .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        Box(
+            Modifier.padding(top = 2.dp).size(22.dp).clip(mark)
+                .background(if (selected) c.ink else c.paper)
+                .border(1.dp, if (selected) c.ink else c.rule, mark),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected) DbIcon(DbIcons.Check, 14.dp, c.paper)
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s3xs)) {
+            Text(label, style = t.body.copy(fontWeight = FontWeight.Medium), color = c.ink.copy(alpha = alpha))
+            Text(sub, style = t.bodySm, color = c.muted.copy(alpha = alpha))
         }
     }
 }

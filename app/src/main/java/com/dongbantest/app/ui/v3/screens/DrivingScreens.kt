@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
@@ -15,6 +16,7 @@ import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
 import com.dongbantest.app.ui.v3.theme.DbShapes
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.dongbantest.app.ui.v3.components.Text
@@ -101,7 +103,21 @@ data class DrivingUiState(
     val nowText: String? = null,
     val footnote: String = "대화 내용은 여행이 끝난 뒤 다이어리로 정리돼요",
     val toast: VoiceToastUi? = null,
+    // talk-rec 연동: 설정 "주행 중 제목 보이기"(기본 켬). 꺼져 있고 주행 중이면 제목·태그를 숨긴다. 저장·설정 화면은 나중에.
+    val showTitlesWhileDriving: Boolean = true,
+    // "이 순간 담기" 버튼: 기록 동의 여행에서 주행 중에만 보인다. 누른 직후 잠깐은 눌림 막음 + 완료 문구.
+    val momentButton: Boolean = false,
+    val momentDone: Boolean = false,
+    /** 동의한 진행 중 여행에서만 녹음 일시정지·재개 버튼을 표시한다. */
+    val recordingToggleText: String? = null,
+    val recordingToggleEnabled: Boolean = true,
 )
+
+/** 주행 중(= 정차가 아님)에 제목·태그를 숨겨야 하는지 */
+private fun DrivingUiState.hideTitles() = !stopped && !showTitlesWhileDriving
+
+/** 주행 중에는 최근 3개만, 정차 중에는 전부 (asked 는 최신순) */
+private fun DrivingUiState.visibleAsked() = if (stopped) asked else asked.take(3)
 
 /** 주행 화면 이벤트. 음성 예시·녹음 칩·말풍선·진행 알약은 데모 지름길(버튼 모양 없음). */
 data class DrivingEvents(
@@ -113,6 +129,10 @@ data class DrivingEvents(
     val onTripPill: (() -> Unit)? = null,
     /** 확인 알림의 "아니야" 버튼 */
     val onToastSay: (String) -> Unit = {},
+    /** "이 순간 담기" 탭 */
+    val onMoment: () -> Unit = {},
+    val onRecordingToggle: () -> Unit = {},
+    val onPlayStory: (String) -> Unit = {},
 )
 
 /** 주행 화면 틀. overlay 로 시트·대화상자를 얹는다. */
@@ -126,7 +146,8 @@ fun DrivingLayout(
     AdaptiveLayout(Modifier.fillMaxSize()) {
         val layout = DbTheme.layout
         val toast = state.toast
-        val now = state.nowText ?: state.asked.firstOrNull { it.now }?.title
+        // talk-rec 연동: 제목 숨김이면 "지금: 제목" 줄도 숨긴다(직접 준 nowText 는 유지)
+        val now = state.nowText ?: if (state.hideTitles()) null else state.asked.firstOrNull { it.now }?.title
         AppShell(
             selectedTab = DbTab.Trip,
             onTab = events.onTab,
@@ -147,7 +168,11 @@ fun DrivingLayout(
 private fun AdaptiveDrivingBody(state: DrivingUiState, events: DrivingEvents) {
     val layout = DbTheme.layout
     if (!layout.wide) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) { DrivingLeft(state, events) }
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            DrivingLeft(state, events)
+            if (state.stopped) AskedPanel(state.askedTitle, "${state.asked.size}개", state.asked,
+                modifier = Modifier.fillMaxWidth().height(400.dp), onPlayStory = events.onPlayStory)
+        }
         return
     }
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
@@ -156,7 +181,11 @@ private fun AdaptiveDrivingBody(state: DrivingUiState, events: DrivingEvents) {
         AskedPanel(
             title = state.askedTitle,
             countText = "${state.asked.size}개",
-            items = state.asked,
+            items = state.visibleAsked(),
+            driving = !state.stopped,
+            hideTitles = state.hideTitles(),
+            hiddenLabel = state.askedCountLabel,
+            onPlayStory = events.onPlayStory,
             footnote = if (state.toast == null) state.footnote else null,
             bottom = state.toast?.let { t ->
                 {
@@ -185,6 +214,26 @@ private fun DrivingLeft(state: DrivingUiState, events: DrivingEvents) {
     )
     TripProgress(state, events)
     DongbaniBubble(state.bubble, onBubbleTap = events.onBubble)
+    if (state.momentButton) {
+        com.dongbantest.app.ui.v3.components.DbButton(
+            text = if (state.momentDone) "담았어요" else "이 순간 담기",
+            onClick = events.onMoment,
+            kind = com.dongbantest.app.ui.v3.components.ButtonKind.Outline,
+            modifier = Modifier.padding(bottom = Spacing.xs).heightIn(min = 76.dp),
+            block = true,
+            enabled = !state.momentDone,
+        )
+    }
+    state.recordingToggleText?.let { text ->
+        com.dongbantest.app.ui.v3.components.DbButton(
+            text = text,
+            onClick = events.onRecordingToggle,
+            kind = com.dongbantest.app.ui.v3.components.ButtonKind.Primary,
+            modifier = Modifier.padding(bottom = Spacing.xs).heightIn(min = 76.dp),
+            block = true,
+            enabled = state.recordingToggleEnabled,
+        )
+    }
     when (val card = state.card) {
         is DrivingCard.Question -> QuestionCard(
             tag = card.tag, question = card.question, hint = card.hint, sayLabel = card.sayLabel, say = card.say,
@@ -222,6 +271,7 @@ object DrivingStates {
         asked = Sample.ASKED_QUIET, nowText = "조용히 듣는 중",
     )
     val S05 = DrivingUiState()
+    val S05_MOMENT = DrivingUiState(momentButton = true)
     /** Q02 에서 온 S05: 질문 카드와 나눈 대화 첫 줄이 여행지 질문 */
     val S05_SILENCE = DrivingUiState(
         card = DrivingCard.Question(Sample.Q_SILENCE, Sample.SAY_ON, pauseCaption = Sample.PAUSE_CAPTION),

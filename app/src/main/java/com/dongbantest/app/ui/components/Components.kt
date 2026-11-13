@@ -274,6 +274,8 @@ fun RecordVoiceButton(
     onStop: () -> Unit,
     onPermissionDenied: () -> Unit,
     modifier: Modifier = Modifier,
+    // talk-rec 연동: 상시 캡처 중인 여행이면 "이 순간 담기" 버튼. 동의·마이크 권한은 이미 받았으므로 바로 onStart(=markMoment).
+    momentMode: Boolean = false,
 ) {
     val context = LocalContext.current
     var showConsent by rememberSaveable { mutableStateOf(false) }
@@ -289,7 +291,14 @@ fun RecordVoiceButton(
         elapsed = 0L
     }
 
-    if (isRecording) {
+    if (momentMode && !isRecording) {
+        BigActionButton(
+            text = "이 순간 담기",
+            emoji = "📌",
+            onClick = onStart,
+            modifier = modifier,
+        )
+    } else if (isRecording) {
         BigActionButton(
             text = "녹음 끝내기  ${formatDuration(elapsed)}",
             emoji = "⏹️",

@@ -2,6 +2,7 @@ package com.dongbantest.app.ui.v3.components
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -97,15 +98,16 @@ fun Hairline(modifier: Modifier = Modifier, color: Color = DbTheme.colors.rule) 
     Box(modifier.fillMaxWidth().height(1.dp).background(color))
 }
 
-/** 관계 태그(.tag): accent-soft 바탕 알약. small = .tag-sm */
+/** 관계 태그(.tag): accent-soft 바탕 알약. small = .tag-sm, category = 분류 테두리. */
 @Composable
-fun Tag(text: String, modifier: Modifier = Modifier, small: Boolean = false, height: Dp = if (small) 22.dp else 26.dp) {
+fun Tag(text: String, modifier: Modifier = Modifier, small: Boolean = false, height: Dp = if (small) 22.dp else 26.dp, category: Boolean = false) {
     val c = DbTheme.colors
     Box(
         modifier
             .height(height)
             .clip(DbShapes.pill)
             .background(c.accentSoft)
+            .then(if (category) Modifier.border(1.dp, c.accent.copy(alpha = 0.45f), DbShapes.pill) else Modifier)
             .padding(horizontal = if (small) Spacing.xs else Spacing.sm),
         contentAlignment = Alignment.Center,
     ) {

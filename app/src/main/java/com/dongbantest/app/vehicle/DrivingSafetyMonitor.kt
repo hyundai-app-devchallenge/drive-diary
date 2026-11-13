@@ -48,7 +48,8 @@ class DrivingSafetyMonitor(context: Context) {
         }
         try {
             bridge = CarUxBridge(appContext) { restricted, detail ->
-                _state.value = DrivingSafetyState(SafetySource.CAR_UX_RESTRICTIONS, restricted, detail)
+                carUxState = DrivingSafetyState(SafetySource.CAR_UX_RESTRICTIONS, restricted, detail)
+                _state.value = withSimulatedDriving(carUxState!!)
             }.also { it.connect() }
         } catch (t: Throwable) {
             // android.car 라이브러리 미탑재, 서비스 미연결 등 → Mock 유지
@@ -61,6 +62,27 @@ class DrivingSafetyMonitor(context: Context) {
     fun stop() {
         runCatching { bridge?.disconnect() }
         bridge = null
+    }
+
+    /** CarUx 가 실제로 보낸 마지막 상태. 시연용 주행 상태를 끌 때 이 값으로 돌아간다. */
+    @Volatile private var carUxState: DrivingSafetyState? = null
+
+    /** 시연용 주행 상태. true=주행 중, false=정차 중, null=차량 값을 그대로 쓴다. */
+    @Volatile private var simulatedDriving: Boolean? = null
+
+    /**
+     * 디버그 빌드 시연용: Pleos 에뮬레이터는 Virtual Console 에서 기어를 바꿔도 차량 시스템(CarUx)까지
+     * 전달되지 않아 늘 "정차 중"이다. 그래서 주행/정차를 직접 정한다. null 이면 차량 값으로 돌아간다.
+     */
+    fun simulateDriving(driving: Boolean?) {
+        simulatedDriving = driving
+        Log.i(TAG, "주행 상태 흉내: ${driving ?: "끔"}")
+        _state.value = withSimulatedDriving(carUxState ?: _state.value)
+    }
+
+    private fun withSimulatedDriving(state: DrivingSafetyState): DrivingSafetyState {
+        val driving = simulatedDriving ?: return state
+        return state.copy(isRestricted = driving, detail = "시연용 주행 상태")
     }
 
     /** Mock 모드에서만 동작: 모의 주행/정차 전환 */

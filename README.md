@@ -41,7 +41,7 @@
 - Pleos Vehicle SDK는 차대번호·누적 주행거리와, 정차 판단에 쓰는 운전석 착석·안전벨트·문 열림 상태를 읽는 데 사용합니다. 기어 P는 AAOS `CarPropertyManager`로 읽습니다. 차량 제어 API는 호출하지 않습니다. Pleos 연결에 실패하거나 일반 Android 기기에서 실행하면 Mock 차량 정보로 동작합니다.
 - 위치는 Pleos FusedLocation으로 먼저 수집하고, 사용할 수 없으면 Android `LocationManager`의 GPS_PROVIDER로 수집합니다.
 - Pleos NaviHelper로 내비 목적지·남은 거리·도착 신호를 받아 길 리본 진행률과 도착 시 여행 자동 종료에 사용합니다. 경로 안내 자체는 차량 내비가 맡습니다.
-- 다이어리와 기록 지도는 MapLibre(OpenFreeMap 지도, API 키 없음)에 실제 주행 경로를 여행별 색으로 그립니다.
+- 다이어리와 기록 지도는 Mapbox 지도(Light 스타일, 한국어 지명)에 실제 주행 경로를 여행별 색으로 그립니다. Mapbox 공개 토큰이 필요합니다(아래 "Mapbox 토큰 넣기").
 - AAOS 주행 제한 API로 주행 중 글쓰기·사진 조작과 기록 열람을 제한합니다.
 - STT·TTS, 음성 명령 인식, 침묵 감지 및 AI 다이어리 정리는 구현되지 않았습니다. 화면의 음성 명령 예시는 누르면 그 말을 한 것으로 처리하는 시연용입니다. 기획 단계 제안과 실제 구현을 구분해 주세요.
 
@@ -54,6 +54,24 @@ Android SDK가 설치된 환경과 Android 기기 또는 에뮬레이터가 필�
 ```
 
 POSIX 환경에서 실행 권한 오류가 나면 `sh ./gradlew installDebug`를 사용합니다. Pleos 에뮬레이터의 user 10 실행 절차, 권한·차량 연결 확인, 기능별 제약은 [Android MVP 실행 및 검증 안내](docs/android-mvp.md)를 참고하세요. 일반 기기에서는 차량 정보가 Mock으로 표시됩니다.
+
+#### Mapbox 토큰 넣기
+
+지도는 Mapbox를 사용하므로 빌드 전에 각자 Mapbox **공개 토큰**을 넣어야 합니다. 토큰이 없어도 빌드는 되지만 지도 자리에 토큰을 넣으라는 안내 문구만 나옵니다.
+
+1. [account.mapbox.com](https://account.mapbox.com/)에 로그인해 **Tokens** 페이지에서 `pk.`으로 시작하는 공개 토큰(Default public token)을 복사합니다.
+2. 프로젝트 맨 위의 `local.properties` 파일 맨 아래에 다음 한 줄을 추가합니다. `=` 앞뒤에 띄어쓰기와 따옴표를 넣지 않습니다.
+
+   ```properties
+   MAPBOX_ACCESS_TOKEN=pk.복사한토큰
+   ```
+
+3. 다시 빌드합니다. `app/build.gradle.kts`가 이 값을 `mapbox_access_token` 문자열 리소스로 넣고, Mapbox SDK가 자동으로 읽습니다.
+
+- `local.properties`는 `.gitignore`에 들어 있어 Git에 올라가지 않습니다. 토큰을 코드나 채팅, 이슈에 붙여 넣지 마세요.
+- Android Studio의 "Android" 보기에서는 **Gradle Scripts → local.properties**에 있습니다.
+- Mapbox는 사용량 기반 요금제이며 매달 무료 사용량이 있습니다. 토큰이 밖으로 새어 나갔다면 Tokens 페이지에서 교체(Rotate)합니다.
+- Pleos 차량에는 Google Play 서비스가 없을 수 있어, Mapbox SDK의 Google Play 의존성(`play-services-cronet`)은 빼고 Mapbox 기본 HTTP 클라이언트를 사용합니다.
 
 ### 위치·정차·도착 기준
 

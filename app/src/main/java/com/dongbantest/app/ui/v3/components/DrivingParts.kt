@@ -1,6 +1,8 @@
 package com.dongbantest.app.ui.v3.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -261,6 +263,12 @@ fun AskedPanel(
     nowNote: String = "지금 이야기 중",
     footnote: String? = null,
     bottom: (@Composable ColumnScope.() -> Unit)? = null,
+    // talk-rec 연동(DESIGN §6): 주행 중에는 제목 한 줄 + 태그 2개까지. 조작 없음(목록은 스크롤·펼치기 없음).
+    driving: Boolean = false,
+    // 주행 중 제목 보이기 설정이 꺼져 있으면 제목·태그 대신 중립 문구만 보인다.
+    hideTitles: Boolean = false,
+    hiddenLabel: String = "나눈 대화",
+    onPlayStory: (String) -> Unit = {},
 ) {
     val c = DbTheme.colors
     val t = DbTheme.type
@@ -272,6 +280,7 @@ fun AskedPanel(
             Text(title, style = t.title, color = c.ink, modifier = Modifier.weight(1f).semantics { heading() })
             Text(countText, style = t.bodySm, color = c.muted)
         }
+        Column(Modifier.weight(1f).then(if (!driving) Modifier.verticalScroll(rememberScrollState()) else Modifier)) {
         items.forEach { a ->
             Row(
                 Modifier.fillMaxWidth().topRule(c.rule).padding(vertical = Spacing.sm),
@@ -280,20 +289,46 @@ fun AskedPanel(
                 Text(a.time, style = t.bodySm, color = c.muted, modifier = Modifier.width(if (full) 64.dp else 52.dp).padding(top = Spacing.s3xs))
                 val titleStyle = t.title.copy(fontWeight = FontWeight.Medium, lineHeight = t.title.fontSize * 1.4f)
                 val note = @Composable { Text(nowNote, style = t.caption.copy(fontWeight = FontWeight.SemiBold), color = c.ink, maxLines = 1) }
+                // talk-rec 연동: 주행 중 제목은 한 줄 말줄임. 제목 숨김이면 중립 문구.
+                val titleText = if (hideTitles) hiddenLabel else a.title
+                val titleLines = if (driving) 1 else Int.MAX_VALUE
+                val titleColor = if (hideTitles) c.muted else c.ink
+                val tagRow = @Composable {
+                    if (!hideTitles && a.audio != null) {
+                        Text("음성 ${a.audio} · 클립 ${a.clipCount}개" + when (a.kind) {
+                            "story" -> " · 이야기"
+                            "moment" -> " · 순간"
+                            else -> ""
+                        }, style = t.caption, color = c.muted)
+                    }
+                    if (!hideTitles && a.fromQuestion) Tag("동반이 질문", small = true)
+                    val shown = if (driving) a.tags.take(2) else a.tags
+                    if (!hideTitles && shown.isNotEmpty()) {
+                        Row(Modifier.padding(top = Spacing.s2xs), horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                            // MIXED: 첫 태그는 분류, 주행 중에는 분류 + 첫 키워드까지.
+                            shown.forEachIndexed { index, tag -> Tag(tag, small = true, category = index == 0) }
+                        }
+                    }
+                }
                 if (full) {
-                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                        Text(a.title, style = titleStyle, color = c.ink, modifier = Modifier.weight(1f))
-                        if (a.now) note()
+                    Column(Modifier.weight(1f)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                            Text(titleText, style = titleStyle, color = titleColor, maxLines = titleLines, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            if (a.now && !hideTitles) note()
+                        }
+                        tagRow()
                     }
                 } else {
                     Column(Modifier.weight(1f)) {
-                        Text(a.title, style = titleStyle, color = c.ink)
-                        if (a.now) note()
+                        Text(titleText, style = titleStyle, color = titleColor, maxLines = titleLines, overflow = TextOverflow.Ellipsis)
+                        if (a.now && !hideTitles) note()
+                        tagRow()
                     }
                 }
+                if (!driving && a.id.isNotEmpty()) PlayButton(false, "${a.title} 재생", { onPlayStory(a.id) })
             }
         }
-        Spacer(Modifier.weight(1f))
+        }
         when {
             bottom != null -> bottom()
             footnote != null -> Row(Modifier.padding(top = Spacing.lg), horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {

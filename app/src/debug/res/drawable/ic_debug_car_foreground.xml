@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 임시 디버그 아이콘: 본 앱과 같은 자동차에 작은 렌치 배지를 붙인다. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:fillType="evenOdd"
+        android:pathData="M39,33H69Q72,33 73,37L78,50Q81,52 81,56V69Q81,72 78,72H77V76H69V72H39V76H31V72H30Q27,72 27,69V56Q27,52 30,50L35,37Q36,33 39,33ZM41,39L37,50H71L67,39ZM39,57A4,4 0,1 0,39,65A4,4 0,1 0,39,57ZM69,57A4,4 0,1 0,69,65A4,4 0,1 0,69,57Z" />
+    <path android:fillColor="#0F2A4A"
+        android:pathData="M70,57A12,12 0,1 0,70,81A12,12 0,1 0,70,57Z" />
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M75,61L71,65L73,68L77,64Q79,70 73,72L67,78Q65,79 63,77Q62,75 64,73L70,67Q69,62 75,61Z" />
+</vector>

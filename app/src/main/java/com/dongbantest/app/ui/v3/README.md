@@ -8,7 +8,7 @@
 |---|---|
 | `theme/` | `DongbanchaV3Theme`, 색 토큰 `DbColors`(흰 바탕 + Hyundai Blue #002C5F, 기록 색 3개, 예시 지도 색), 글자 `DbTypography`(Pretendard, 웹 크기 토큰과 같은 sp, Material3 역할에도 매핑), `DbShapes`(8/14/16/20/알약), `Spacing`(2–48), `DbLayout`(Compact/Expanded/Full), 아이콘 `DbIcons`(웹과 같은 Lucide 경로) |
 | `components/` | `AppShell`(상단 줄 + 본문 + 하단 탭바 또는 왼쪽 레일), `RecordingChip`(5 상태), `RoadRibbon`(진행·멈춤·도착), `VoiceToast`(성공/못 들음/확인 필요 + "아니야" 48dp), `RecordCard`(기록·진행 중), `PrimaryButton`/`OutlineButton`/`DbTextButton`/`CircleIconButton`/`PlayButton`, `DriveStatusBar`·`StoppedTopBar`·`StateChip`, `DbNavigationBar`·`DbNavigationRail`, `QuestionCard`·`SayList`·`QuietFace`, `DongbaniBubble`, `PhotoSlot`, `AskedPanel`·`AskedSummary`, `ExampleMap`(웹 SVG 예시 지도를 Canvas로), `DbBottomSheet`·`DbDialog`, 한국어 어절 줄바꿈 `Text` |
-| `screens/` | 21화면. 각 화면은 `XxxUiState`(기본값 = 웹 시연 데이터)와 이벤트 람다만 받는 상태 없는 Composable. `ScreenCatalog`(화면 목록), `ScreenPreviews`(화면마다 3크기 미리보기), `SampleData`(시연 데이터) |
+| `screens/` | 21화면. 각 화면은 `XxxUiState`(기본값 = 웹 시연 데이터)와 이벤트 람다만 받는 상태 없는 Composable. `ScreenPreviews`(화면마다 3크기 미리보기), `SampleData`(시연 데이터) |
 
 리소스: `res/font/pretendard_{regular,medium,semibold,bold}.otf`(SIL OFL 1.1, 라이선스 `assets/licenses/pretendard-OFL.txt`), `res/drawable/v3_dongbani.xml`(동반이).
 

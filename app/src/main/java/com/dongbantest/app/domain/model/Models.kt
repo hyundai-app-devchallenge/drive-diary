@@ -40,7 +40,7 @@ enum class MemoryType { TEXT, VOICE, PHOTO, ARRIVAL, QUESTION }
 /**
  * 여행 중 남긴 하나의 기록.
  * - TEXT: [text] 에 메모
- * - VOICE: [filePath] 에 녹음 원본, [transcript] 에 STT 결과(별도 데이터, 현재는 미지원 → null)
+ * - VOICE: [filePath] 에 녹음 원본, [transcript] 에 STT 결과
  * - PHOTO: [filePath] 에 앱 전용 저장소로 복사한 사진
  * - ARRIVAL: 도착 기록 (수동 버튼)
  * - QUESTION: 함께 나눈 질문
@@ -54,6 +54,31 @@ data class Memory(
     val filePath: String? = null,
     val transcript: String? = null,
     val durationMs: Long? = null,
+    val talk: TalkMeta? = null,
+)
+
+enum class TalkSource { AUTO, MANUAL }
+enum class SummaryStatus { PENDING, DONE, FAILED, SKIPPED }
+
+data class TalkMeta(
+    val memoryId: Long,
+    val source: TalkSource,
+    val blockStartMs: Long,
+    val blockEndMs: Long,
+    val keepScore: Double?,
+    val kind: String?,
+    val title: String? = null,
+    val tags: List<String>? = null,
+    val summaryStatus: SummaryStatus,
+    val summaryModel: String? = null,
+    val runId: String? = null,
+    val closeReason: String? = null,
+    val runClosed: Boolean? = null,
+    val storyId: String? = null,
+    val storyIndex: Int? = null,
+    val storyKind: String? = null,
+    val storyKeep: Boolean? = null,
+    val storyReason: String? = null,
 )
 
 data class TripWithMemories(

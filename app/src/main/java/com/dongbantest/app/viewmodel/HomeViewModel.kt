@@ -3,6 +3,7 @@ package com.dongbantest.app.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dongbantest.app.data.repository.TripRepository
+import com.dongbantest.app.data.talk.TalkRecordingController
 import com.dongbantest.app.domain.model.Trip
 import com.dongbantest.app.navi.NaviMonitor
 import com.dongbantest.app.navi.NaviRoute
@@ -31,6 +32,7 @@ class HomeViewModel(
     private val vehicleRepository: VehicleRepository,
     private val safetyMonitor: DrivingSafetyMonitor,
     private val naviMonitor: NaviMonitor,
+    private val talkRecording: TalkRecordingController,
 ) : ViewModel() {
 
     val uiState: StateFlow<HomeUiState> = combine(
@@ -63,6 +65,8 @@ class HomeViewModel(
                 odometerSource = vehicle.odometer?.let { vehicle.source },
             )
             onStarted(id)
+            // S03's callback persists consent; permissions may be granted on the trip screen later.
+            talkRecording.startForTrip(id)
         }
     }
 

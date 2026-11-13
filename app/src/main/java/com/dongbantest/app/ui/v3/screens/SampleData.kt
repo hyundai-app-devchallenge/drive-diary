@@ -10,7 +10,20 @@ import com.dongbantest.app.ui.v3.components.TripTone
 import com.dongbantest.app.ui.v3.components.VoiceToastUi
 
 /** 다이어리 한 줄: 시각, 제목, 음성 길이, 동반이 질문에서 나왔는지 */
-data class TalkUi(val time: String, val title: String, val audio: String, val fromQuestion: Boolean)
+data class TalkUi(
+    val time: String,
+    val title: String,
+    val audio: String,
+    val fromQuestion: Boolean,
+    // talk-rec 연동: 대화 태그(없으면 칩을 그리지 않음)
+    val tags: List<String> = emptyList(),
+    // 기기 태그만 있는 행은 분류 칩으로 강조하지 않는다.
+    val category: String? = null,
+    val id: String = "",
+    val clipCount: Int = 1,
+    val kind: String? = null,
+    val hidden: Boolean = false,
+)
 
 /** 기록(여행) 한 건. 웹 data-v3.ts 의 TripRecord 와 같은 필드. */
 data class TripRecordUi(
@@ -69,13 +82,13 @@ object Sample {
     const val BUBBLE_READY = "출발하면 모두의 이야기를 담기 시작할게요."
 
     val ASKED_BASE = listOf(
-        AskedItem("10:15", "처음 만났던 날", now = true),
-        AskedItem("09:48", "휴게소에서 뭐 먹을까"),
+        AskedItem("10:15", "처음 만났던 날", now = true, tags = listOf("추억", "연애")),
+        AskedItem("09:48", "휴게소에서 뭐 먹을까", tags = listOf("음식")),
     )
     val ASKED_AFTER_NEW = listOf(
-        AskedItem("10:32", "오늘 제일 기대되는 것", now = true),
-        AskedItem("10:15", "처음 만났던 날"),
-        AskedItem("09:48", "휴게소에서 뭐 먹을까"),
+        AskedItem("10:32", "오늘 제일 기대되는 것", now = true, tags = listOf("기대", "여행", "설렘")),
+        AskedItem("10:15", "처음 만났던 날", tags = listOf("추억", "연애")),
+        AskedItem("09:48", "휴게소에서 뭐 먹을까", tags = listOf("음식")),
     )
     val ASKED_QUIET = listOf(AskedItem("09:48", "휴게소에서 뭐 먹을까"))
     val ASKED_SILENCE = listOf(
@@ -93,9 +106,9 @@ object Sample {
         from = FROM, startTime = START, to = TO, arriveTime = ARRIVE, duration = TOTAL,
         photos = listOf("경포에서 넷이", "호두과자 논쟁"),
         talks = listOf(
-            TalkUi("09:52", "휴게소 호두과자 논쟁", "0:48", false),
-            TalkUi("10:05", "운전 교대 가위바위보", "1:05", false),
-            TalkUi("10:15", "처음 만났던 날", "3:20", true),
+            TalkUi("09:52", "휴게소 호두과자 논쟁", "0:48", false, tags = listOf("음식", "웃음")),
+            TalkUi("10:05", "운전 교대 가위바위보", "1:05", false, tags = listOf("게임")),
+            TalkUi("10:15", "처음 만났던 날", "3:20", true, tags = listOf("추억", "연애", "첫만남")),
         ),
     )
     val JEJU = TripRecordUi(

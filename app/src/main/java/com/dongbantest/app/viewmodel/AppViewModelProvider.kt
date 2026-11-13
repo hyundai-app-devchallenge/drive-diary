@@ -8,7 +8,6 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.dongbantest.app.AppContainer
 import com.dongbantest.app.DongbanApplication
 import com.dongbantest.app.audio.VoiceRecorder
-import com.dongbantest.app.data.repository.RecordingConsentStore
 
 /** ViewModel 팩토리 모음 (수동 DI) */
 object AppViewModelProvider {
@@ -19,7 +18,7 @@ object AppViewModelProvider {
     val Home: ViewModelProvider.Factory = viewModelFactory {
         initializer {
             val c = container()
-            HomeViewModel(c.tripRepository, c.vehicleRepository, c.drivingSafetyMonitor, c.naviMonitor)
+            HomeViewModel(c.tripRepository, c.vehicleRepository, c.drivingSafetyMonitor, c.naviMonitor, c.talkRecording)
         }
     }
 
@@ -45,7 +44,8 @@ object AppViewModelProvider {
                 arrivalManager = c.arrivalManager,
                 placeRecorder = c.tripPlaceRecorder,
                 naviMonitor = c.naviMonitor,
-                consentStore = RecordingConsentStore(app()),
+                consentStore = c.recordingConsentStore,
+                talkRecording = c.talkRecording,
             )
         }
     }
