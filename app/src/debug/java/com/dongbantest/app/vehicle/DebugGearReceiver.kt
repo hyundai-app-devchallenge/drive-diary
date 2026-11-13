@@ -3,6 +3,7 @@ package com.dongbantest.app.vehicle
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.dongbantest.app.AppContainer
 import com.dongbantest.app.DongbanApplication
 import com.dongbantest.app.domain.model.VehicleSignalType
 
@@ -20,16 +21,18 @@ import com.dongbantest.app.domain.model.VehicleSignalType
 class DebugGearReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val container = (context.applicationContext as DongbanApplication).container
-        when (intent.getStringExtra("gear")?.uppercase()) {
-            "D" -> {
-                container.drivingSafetyMonitor.simulateDriving(true)
-                container.vehicleSignalTracker.simulate(VehicleSignalType.GEAR_NOT_PARKED)
-            }
-            "P" -> {
-                container.drivingSafetyMonitor.simulateDriving(false)
-                container.vehicleSignalTracker.simulate(VehicleSignalType.PARKED)
-            }
-            "OFF" -> container.drivingSafetyMonitor.simulateDriving(null)
-        }
+        DebugGear.entries.firstOrNull { it.name.equals(intent.getStringExtra("gear"), ignoreCase = true) }
+            ?.apply(container)
+    }
+}
+
+internal enum class DebugGear(private val driving: Boolean?, private val signal: VehicleSignalType?) {
+    D(true, VehicleSignalType.GEAR_NOT_PARKED),
+    P(false, VehicleSignalType.PARKED),
+    OFF(null, null);
+
+    fun apply(container: AppContainer) {
+        container.drivingSafetyMonitor.simulateDriving(driving)
+        signal?.let(container.vehicleSignalTracker::simulate)
     }
 }

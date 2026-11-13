@@ -1,5 +1,6 @@
 package com.dongbantest.app.ui.v3.screens
 
+import com.dongbantest.app.gleo.GleoRecordingAction
 import androidx.compose.foundation.layout.fillMaxSize
 import com.dongbantest.app.ui.v3.theme.AdaptiveLayout
 import androidx.compose.foundation.background
@@ -92,6 +93,7 @@ fun HomeScreen(
     onOpenPastTrip: (String) -> Unit = {},
     onOpenLiveTrip: () -> Unit = {},
     onPastLocked: () -> Unit = {},
+    onSettings: (() -> Unit)? = null,
 ) {
     // 받은 폭으로 Compact·Expanded·Full 을 먼저 정한다(아래에서 DbTheme.layout 을 읽음)
     AdaptiveLayout(Modifier.fillMaxSize()) {
@@ -99,7 +101,8 @@ fun HomeScreen(
             selectedTab = DbTab.Home,
             onTab = onTab,
             topBar = {
-                if (state.driving) DriveStatusBar(RecordingState.On, state.recordingText, stopped = false) else StoppedTopBar()
+                if (state.driving) DriveStatusBar(RecordingState.On, state.recordingText, stopped = false)
+                else StoppedTopBar(onSettings = onSettings)
             },
             verticalArrangement = HomeArrangement(),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -336,7 +339,7 @@ data class ConsentUiState(
     val subtitle: String = "여행 중 차 안의 대화를 듣다가, 남길 만한 이야기만 저장해요",
     val items: List<String> = listOf(
         "녹음 중에는 화면 위쪽에 항상 표시돼요",
-        "“녹음 잠시 멈춰”라고 말하면 언제든 멈춰요",
+        "“${GleoRecordingAction.PAUSE.example}”라고 말하면 녹음을 멈출 수 있어요",
         "남긴 대화는 정차 후 언제든 지울 수 있어요",
     ),
     /** (1) 여행 중 대화 기록 */

@@ -9,6 +9,7 @@ import com.dongbantest.app.data.repository.RecordingConsentStore
 import com.dongbantest.app.data.talk.TalkRecordingController
 import com.dongbantest.app.data.talk.TalkSinkImpl
 import com.dongbantest.app.data.talk.RepositorySummaryTarget
+import com.dongbantest.app.data.talk.RecordingSettingsStore
 import com.drivediary.talkrec.summary.SummarySettingsStore
 import com.drivediary.talkrec.summary.SummaryWorkScheduler
 import com.drivediary.talkrec.summary.SummaryWorkerDependencies
@@ -35,13 +36,16 @@ class AppContainer(context: Context) : SummaryWorkerDependencies {
     val mediaFileStore by lazy { MediaFileStore(context) }
     val tripRepository by lazy { TripRepository(database.tripDao(), mediaFileStore) }
     val recordingConsentStore by lazy { RecordingConsentStore(context) }
+    val recordingSettingsStore by lazy { RecordingSettingsStore(context) }
     override val summarySettingsStore by lazy { SummarySettingsStore(context) }
     override val summaryTarget by lazy { RepositorySummaryTarget(tripRepository, recordingConsentStore) }
     val talkSink by lazy {
         TalkSinkImpl(tripRepository, recordingConsentStore,
             onPendingSaved = { id -> SummaryWorkScheduler.enqueue(context, id) })
     }
-    val talkRecording by lazy { TalkRecordingController(context, tripRepository, recordingConsentStore, talkSink) }
+    val talkRecording by lazy {
+        TalkRecordingController(context, tripRepository, recordingConsentStore, talkSink, recordingSettingsStore)
+    }
     val vehicleRepository by lazy { VehicleRepository(context, appScope) }
     val drivingSafetyMonitor by lazy { DrivingSafetyMonitor(context) }
     val locationTracker by lazy { LocationTracker(LocationReader(context), tripRepository, appScope) }

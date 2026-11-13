@@ -44,7 +44,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import com.dongbantest.app.DongbanApplication
 import com.dongbantest.app.ui.v3.theme.DongbanchaV3Theme
 import com.drivediary.talkrec.DebugOutcome
@@ -64,7 +63,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -157,22 +155,12 @@ class TalkRecLabActivity : ComponentActivity() {
                 }
             }
         }
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                // MainActivity stops this shared monitor when another Activity comes forward.
-                while (true) {
-                    container.drivingSafetyMonitor.start()
-                    delay(2_000)
-                }
-            }
-        }
         setContent {
             DongbanchaV3Theme {
                 val capture by TalkRecLab.state.collectAsStateWithLifecycle()
                 val sink by TalkRecLab.sink.collectAsStateWithLifecycle()
                 val stopping by TalkRecLab.stopping.collectAsStateWithLifecycle()
                 val settings by container.summarySettingsStore.settings.collectAsStateWithLifecycle()
-                val driving by container.drivingSafetyMonitor.state.collectAsStateWithLifecycle()
                 val available = TalkRecLab.canStart()
                 LaunchedEffect(capture, sink) {
                     // A real trip can replace a lab without this Activity initiating stop.
@@ -182,16 +170,18 @@ class TalkRecLabActivity : ComponentActivity() {
                         ui.banner = "실험이 끝났어요. 여행 녹음 상태를 확인해 주세요."
                     }
                 }
-                LabScreen(
-                    ui, capture, settings, available, stopping, driving.isRestricted,
-                    onPick = ::pickDocument,
-                    onRefresh = ::refreshFiles,
-                    onSelectFile = ::selectFile,
-                    onStart = ::requestStart,
-                    onStop = { stopLab("실험을 정지했어요") },
-                    onSummary = ::summarize,
-                    onSplit = ::splitStories,
-                )
+                DebugToolsLayout(container) { restricted ->
+                    LabScreen(
+                        ui, capture, settings, available, stopping, restricted,
+                        onPick = ::pickDocument,
+                        onRefresh = ::refreshFiles,
+                        onSelectFile = ::selectFile,
+                        onStart = ::requestStart,
+                        onStop = { stopLab("실험을 정지했어요") },
+                        onSummary = ::summarize,
+                        onSplit = ::splitStories,
+                    )
+                }
             }
         }
     }

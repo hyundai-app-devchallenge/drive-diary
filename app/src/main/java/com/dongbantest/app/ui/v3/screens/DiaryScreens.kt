@@ -46,6 +46,8 @@ import com.dongbantest.app.ui.v3.components.Mascot
 import com.dongbantest.app.ui.v3.components.OutlineButton
 import com.dongbantest.app.ui.v3.components.PhotoSlot
 import com.dongbantest.app.ui.v3.components.PlayButton
+import com.dongbantest.app.ui.v3.components.PlaybackBar
+import com.dongbantest.app.ui.v3.components.PlaybackUi
 import com.dongbantest.app.ui.v3.components.PrimaryButton
 import com.dongbantest.app.ui.v3.components.RecordCard
 import com.dongbantest.app.ui.v3.components.RecordingChip
@@ -225,9 +227,8 @@ data class DiaryUiState(
     val talksTitle: String = "나눈 이야기",
     val fromQuestionTag: String = "동반이 질문",
     val photoPlaceholder: String = "사진 자리",
-    /** 재생 중인 이야기(time). 진행 표시는 시연용 30% 고정 */
-    val playingTime: String? = null,
-    val playingId: String? = null,
+    val playback: PlaybackUi? = null,
+    val playbackEnabled: Boolean = true,
     val recordingText: String = Sample.REC_ON,
 )
 
@@ -238,6 +239,7 @@ fun DiaryScreen(
     onBack: () -> Unit = {},
     onNextPage: () -> Unit = {},
     onPlay: (TalkUi) -> Unit = {},
+    onSeek: (TalkUi, Long) -> Unit = { _, _ -> },
     /** 지도 칸. null 이면 예시 지도(ExampleMap). 팀 앱은 실제 경로 지도(MapLibre)를 넣는다. */
     map: (@Composable (Modifier) -> Unit)? = null,
     /** "편집" 버튼. null 이면 비활성(확정안 기본). */
@@ -259,11 +261,11 @@ fun DiaryScreen(
                         Modifier.weight(1f).fillMaxHeight().clip(DbShapes.card).border(1.dp, DbTheme.colors.rule, DbShapes.card)
                             .background(DbTheme.colors.paper).verticalScroll(rememberScrollState())
                             .padding(horizontal = Spacing.lg, vertical = Spacing.md),
-                    ) { DiaryTalks(state, onPlay) }
+                    ) { DiaryTalks(state, onPlay, onSeek) }
                 }
             } else {
                 DiaryInfo(state, map)
-                Column(Modifier.padding(top = Spacing.xl)) { DiaryTalks(state, onPlay) }
+                Column(Modifier.padding(top = Spacing.xl)) { DiaryTalks(state, onPlay, onSeek) }
             }
         }
     }
@@ -345,14 +347,8 @@ private fun FlowPeople(people: List<String>, modifier: Modifier = Modifier) {
     }
 }
 
-private fun elapsed30(audio: String): String {
-    val (m, s) = audio.split(":").map { it.toInt() }
-    val sec = ((m * 60 + s) * 0.3).toInt()
-    return "${sec / 60}:${(sec % 60).toString().padStart(2, '0')}"
-}
-
 @Composable
-private fun DiaryTalks(state: DiaryUiState, onPlay: (TalkUi) -> Unit) {
+private fun DiaryTalks(state: DiaryUiState, onPlay: (TalkUi) -> Unit, onSeek: (TalkUi, Long) -> Unit) {
     val c = DbTheme.colors
     val t = DbTheme.type
     Text(state.talksTitle, style = t.titleLg, color = c.ink, modifier = Modifier.padding(bottom = Spacing.xs).semantics { heading() })
@@ -364,7 +360,7 @@ private fun DiaryTalks(state: DiaryUiState, onPlay: (TalkUi) -> Unit) {
         if (index == visible.size && hiddenExpanded) {
             OutlineButton("숨긴 대화 ${hidden.size}개 접기", { hiddenExpanded = false })
         }
-        val on = if (talk.id.isNotEmpty()) state.playingId == talk.id else state.playingTime == talk.time
+        val active = state.playback?.takeIf { state.playbackEnabled && it.id == talk.id }
         Row(
             Modifier.fillMaxWidth().topRule(if (DbTheme.layout.wide) c.ruleSoft else c.ruleSoft).padding(vertical = Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
@@ -373,11 +369,8 @@ private fun DiaryTalks(state: DiaryUiState, onPlay: (TalkUi) -> Unit) {
             Text(talk.time, style = t.bodySm, color = c.muted, modifier = Modifier.width(52.dp).align(Alignment.Top).padding(top = Spacing.s3xs))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s3xs)) {
                 Text(talk.title, style = t.title, color = c.ink, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                if (on) {
-                    Box(Modifier.padding(top = Spacing.s2xs).fillMaxWidth().height(3.dp).clip(DbShapes.pill).background(c.ruleSoft)) {
-                        Box(Modifier.fillMaxWidth(0.3f).height(3.dp).background(c.accent))
-                    }
-                    Text("${elapsed30(talk.audio)} / ${talk.audio}", style = t.caption.copy(fontWeight = FontWeight.Normal), color = c.ink2)
+                if (active != null && active.durationMs > 0) {
+                    PlaybackBar(active) { onSeek(talk, it) }
                 } else {
                     Text("음성 ${talk.audio} · 클립 ${talk.clipCount}개" + when (talk.kind) {
                         "story" -> " · 이야기"
@@ -395,7 +388,11 @@ private fun DiaryTalks(state: DiaryUiState, onPlay: (TalkUi) -> Unit) {
                     }
                 }
             }
-            PlayButton(on, "${talk.title} 재생", { onPlay(talk) })
+            if (state.playbackEnabled) {
+                val playing = active?.isPlaying == true
+                val action = if (playing) "일시정지" else "재생"
+                PlayButton(playing, "${talk.title} $action", { onPlay(talk) }, Modifier.align(Alignment.Top))
+            }
         }
     }
     if (hidden.isNotEmpty() && !hiddenExpanded) {

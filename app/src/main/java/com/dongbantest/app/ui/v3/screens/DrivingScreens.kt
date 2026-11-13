@@ -1,6 +1,7 @@
 package com.dongbantest.app.ui.v3.screens
 
 import com.dongbantest.app.ui.v3.theme.AdaptiveLayout
+import com.dongbantest.app.gleo.GleoRecordingAction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -43,6 +44,7 @@ import com.dongbantest.app.ui.v3.components.DriveStatusBar
 import com.dongbantest.app.ui.v3.components.Hairline
 import com.dongbantest.app.ui.v3.components.Mascot
 import com.dongbantest.app.ui.v3.components.OutlineButton
+import com.dongbantest.app.ui.v3.components.PlaybackUi
 import com.dongbantest.app.ui.v3.components.PrimaryButton
 import com.dongbantest.app.ui.v3.components.QuestionCard
 import com.dongbantest.app.ui.v3.components.QuietFace
@@ -71,14 +73,14 @@ sealed interface DrivingCard {
         val tag: String = Sample.RELATION,
         val hint: String = Sample.HINT,
         val sayLabel: String = Sample.SAY_LABEL,
-        /** 녹음 중일 때 "녹음 멈춤은 ‘녹음 잠시 멈춰’" (S05·S06·S08) */
+        /** 현재 녹음 상태에 맞는 Gleo 명령 안내. */
         val pauseCaption: String? = null,
     ) : DrivingCard
 
     data class Quiet(
         val title: String = "대화가 이어지는 동안은 조용히 들을게요",
         val body: String = "대화가 한동안 없으면 동반이가 먼저 말을 걸어요.",
-        val pauseHint: String = "“녹음 잠시 멈춰”라고 하면 언제든 멈춰요",
+        val pauseHint: String? = "“${GleoRecordingAction.PAUSE.example}”",
     ) : DrivingCard
 }
 
@@ -99,16 +101,17 @@ data class DrivingUiState(
     val askedTitle: String = "지금까지 나눈 대화",
     val askedCountLabel: String = "나눈 대화",
     val asked: List<AskedItem> = Sample.ASKED_BASE,
+    val playback: PlaybackUi? = null,
     /** 요약 줄 오른쪽 "지금: …". null 이면 asked 의 지금 이야기 중 제목 */
     val nowText: String? = null,
     val footnote: String = "대화 내용은 여행이 끝난 뒤 다이어리로 정리돼요",
     val toast: VoiceToastUi? = null,
-    // talk-rec 연동: 설정 "주행 중 제목 보이기"(기본 켬). 꺼져 있고 주행 중이면 제목·태그를 숨긴다. 저장·설정 화면은 나중에.
+    // 설정 "주행 중 제목 보이기"가 꺼져 있으면 주행 중에 제목을 숨긴다.
     val showTitlesWhileDriving: Boolean = true,
     // "이 순간 담기" 버튼: 기록 동의 여행에서 주행 중에만 보인다. 누른 직후 잠깐은 눌림 막음 + 완료 문구.
     val momentButton: Boolean = false,
     val momentDone: Boolean = false,
-    /** 동의한 진행 중 여행에서만 녹음 일시정지·재개 버튼을 표시한다. */
+    /** 정차 중이고 녹음에 동의한 진행 중 여행에 표시한다. */
     val recordingToggleText: String? = null,
     val recordingToggleEnabled: Boolean = true,
 )
@@ -133,6 +136,7 @@ data class DrivingEvents(
     val onMoment: () -> Unit = {},
     val onRecordingToggle: () -> Unit = {},
     val onPlayStory: (String) -> Unit = {},
+    val onSeekStory: (String, Long) -> Unit = { _, _ -> },
 )
 
 /** 주행 화면 틀. overlay 로 시트·대화상자를 얹는다. */
@@ -170,8 +174,13 @@ private fun AdaptiveDrivingBody(state: DrivingUiState, events: DrivingEvents) {
     if (!layout.wide) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             DrivingLeft(state, events)
-            if (state.stopped) AskedPanel(state.askedTitle, "${state.asked.size}개", state.asked,
-                modifier = Modifier.fillMaxWidth().height(400.dp), onPlayStory = events.onPlayStory)
+            if (state.stopped) AskedPanel(
+                state.askedTitle, "${state.asked.size}개", state.asked,
+                modifier = Modifier.fillMaxWidth().height(400.dp),
+                onPlayStory = events.onPlayStory,
+                playback = state.playback,
+                onSeekStory = events.onSeekStory,
+            )
         }
         return
     }
@@ -186,6 +195,8 @@ private fun AdaptiveDrivingBody(state: DrivingUiState, events: DrivingEvents) {
             hideTitles = state.hideTitles(),
             hiddenLabel = state.askedCountLabel,
             onPlayStory = events.onPlayStory,
+            playback = state.playback,
+            onSeekStory = events.onSeekStory,
             footnote = if (state.toast == null) state.footnote else null,
             bottom = state.toast?.let { t ->
                 {
@@ -224,7 +235,7 @@ private fun DrivingLeft(state: DrivingUiState, events: DrivingEvents) {
             enabled = !state.momentDone,
         )
     }
-    state.recordingToggleText?.let { text ->
+    state.recordingToggleText?.takeIf { state.stopped }?.let { text ->
         com.dongbantest.app.ui.v3.components.DbButton(
             text = text,
             onClick = events.onRecordingToggle,
@@ -243,7 +254,7 @@ private fun DrivingLeft(state: DrivingUiState, events: DrivingEvents) {
                 ToastKind.Success -> SayDensity.ToastTight
                 else -> SayDensity.Toast
             },
-            onSay = events.onVoiceExample,
+            onSay = events.onVoiceExample.takeIf { state.stopped },
         )
         is DrivingCard.Quiet -> QuietFace(card.title, card.body, card.pauseHint)
     }
@@ -318,12 +329,10 @@ data class VoiceCommandUi(val say: String, val desc: String)
 
 data class VoiceGuideUiState(
     val title: String = "주행 중에는 말로 불러 주세요",
-    val body: String = "화면을 누르지 않아도 돼요. 동반이가 듣고 있어요.",
+    val body: String = "글레오를 부르면 화면을 누르지 않고 녹음을 제어할 수 있어요.",
     val commands: List<VoiceCommandUi> = listOf(
-        VoiceCommandUi("다른 질문 해 줘", "새로운 대화 주제를 받아요"),
-        VoiceCommandUi("질문 그만", "이번 여행에서 질문을 쉬어요"),
-        VoiceCommandUi("녹음 잠시 멈춰", "녹음을 잠깐 멈춰요"),
-        VoiceCommandUi("다시 녹음해 줘", "멈춘 녹음을 이어가요"),
+        VoiceCommandUi(GleoRecordingAction.PAUSE.example, "여행 녹음을 잠깐 멈춰요"),
+        VoiceCommandUi(GleoRecordingAction.RESUME.example, "멈춘 여행 녹음을 이어가요"),
     ),
     val primary: String = "알겠어요, 출발",
     val background: DrivingUiState = DrivingStates.S04,

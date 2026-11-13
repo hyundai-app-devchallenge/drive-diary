@@ -27,6 +27,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -41,7 +43,7 @@ data class TripUiState(
     val message: String? = null,
     /** 진행 중인 여행의 길 리본 (출발지 → 목적지 진행). 끝난 여행이면 null. */
     val ribbon: RouteRibbon? = null,
-    /** 녹음 모드 (S03 동의 결과와 "녹음 잠시 멈춰" 같은 말로 바뀐다) */
+    /** 여행별 녹음 동의와 현재 일시정지 상태. */
     val recordingMode: RecordingMode = RecordingMode.READY,
     /** "질문 그만": 이번 여행에서는 먼저 묻지 않는다 */
     val quiet: Boolean = false,
@@ -62,7 +64,6 @@ private data class LocalState(
     val isRecording: Boolean = false,
     val recordingStartedAt: Long? = null,
     val message: String? = null,
-    val recordingMode: RecordingMode = RecordingMode.READY,
     val quiet: Boolean = false,
     val voiceFeedback: VoiceFeedback? = null,
 )
@@ -87,16 +88,18 @@ class TripViewModel(
     private val talkRecording: TalkRecordingController,
 ) : ViewModel() {
 
-    private val player = VoicePlayer()
-    private val local = MutableStateFlow(
-        LocalState(
-            recordingMode = when (consentStore.get(tripId)) {
-                true -> RecordingMode.ON
-                false -> RecordingMode.OFF
-                null -> RecordingMode.READY
-            },
-        )
-    )
+    private val player = VoicePlayer(viewModelScope) { showMessage("음성을 재생할 수 없어요.") }
+    val playback = player.playback
+    private val local = MutableStateFlow(LocalState())
+    private val recordingMode = combine(consentStore.changes(), talkRecording.pausedTripId) { _, _ ->
+        currentRecordingMode()
+    }.distinctUntilChanged()
+
+    private fun currentRecordingMode() = when (consentStore.get(tripId)) {
+        true -> if (talkRecording.pausedTripId.value == tripId) RecordingMode.PAUSED else RecordingMode.ON
+        false -> RecordingMode.OFF
+        null -> RecordingMode.READY
+    }
 
     /** 화면이 보이는 동안 15초마다 내비에 남은 거리·시간을 물어본다. */
     private val naviRoute = combine(
@@ -112,11 +115,11 @@ class TripViewModel(
 
     val uiState: StateFlow<TripUiState> = combine(
         tripRepository.observeTripWithMemories(tripId),
-        local,
-        player.playingPath,
+        combine(local, recordingMode) { ui, mode -> ui to mode },
+        playback.map { it?.takeIf { playback -> playback.isPlaying }?.path }.distinctUntilChanged(),
         safetyMonitor.state,
         naviRoute,
-    ) { data, l, playing, safety, route ->
+    ) { data, (l, mode), playing, safety, route ->
         TripUiState(
             data = data,
             question = l.question,
@@ -136,7 +139,7 @@ class TripViewModel(
                     companionCount = trip.companions.size,
                 )
             },
-            recordingMode = l.recordingMode,
+            recordingMode = mode,
             quiet = l.quiet,
             voiceFeedback = l.voiceFeedback,
         )
@@ -184,7 +187,6 @@ class TripViewModel(
         if (consentStore.get(tripId) == true) {
             if (recorder.isRecording) saveCurrentClip()
             talkRecording.pause(tripId)
-            local.update { it.copy(recordingMode = RecordingMode.PAUSED) }
             return
         }
         val result = recorder.stop()
@@ -201,12 +203,19 @@ class TripViewModel(
 
     fun togglePlay(path: String) {
         if (recorder.isRecording) return
-        if (!player.toggle(path)) showMessage("음성을 재생할 수 없어요.")
+        val current = playback.value
+        if (current?.path == path && current.isPlaying) player.stop()
+        else player.toggle(listOf(path))
     }
 
     fun toggleStory(paths: List<String>) {
-        if (recorder.isRecording || uiState.value.safety.isRestricted) return
-        if (!player.toggle(paths)) showMessage("음성을 재생할 수 없어요.")
+        if (recorder.isRecording || safetyMonitor.state.value.isRestricted) return
+        player.toggle(paths)
+    }
+
+    fun seekStory(paths: List<String>, positionMs: Long) {
+        if (recorder.isRecording || safetyMonitor.state.value.isRestricted) return
+        player.seek(paths, positionMs)
     }
 
     fun addPhoto(uri: Uri) = viewModelScope.launch {
@@ -284,7 +293,7 @@ class TripViewModel(
             talkRecording.stopForTrip(tripId)
             return@launch
         }
-        if (local.value.recordingMode == RecordingMode.ON && hasMicPermission) {
+        if (currentRecordingMode() == RecordingMode.ON && hasMicPermission) {
             if (recorder.isRecording) saveCurrentClip()
             talkRecording.startForTrip(tripId)
         }
@@ -298,7 +307,6 @@ class TripViewModel(
             if (recorder.isRecording) saveCurrentClip()
             viewModelScope.launch { talkRecording.startForTrip(tripId) }
         }
-        local.update { it.copy(recordingMode = if (consent) RecordingMode.ON else RecordingMode.OFF) }
     }
 
     /** 지금 질문 카드의 질문을 "나눈 대화"로 남긴다 (메시지 없이). */
@@ -306,11 +314,9 @@ class TripViewModel(
         tripRepository.addQuestion(tripId, local.value.question)
     }
 
-    /**
-     * 음성 명령. 지금은 음성 인식이 없어서 화면의 예시 문장을 누르면 그 말을 한 것으로 본다.
-     * 음성 인식이 붙으면 인식 결과로 이 함수를 부르면 된다.
-     */
-    fun onVoiceCommand(say: String) {
+    /** 정차 중 질문 카드의 예시를 눌렀을 때 실행하는 질문 동작. */
+    fun onVoiceExampleTapped(say: String) {
+        if (safetyMonitor.state.value.isRestricted) return
         when (say) {
             "다른 질문 해 줘" -> {
                 nextQuestion()
@@ -322,31 +328,22 @@ class TripViewModel(
                 local.update { it.copy(quiet = true) }
                 feedback(VoiceFeedback.Kind.SUCCESS, say, "이번 여행에서는 먼저 묻지 않을게요")
             }
-            "녹음 잠시 멈춰" -> {
-                pauseRecording()
-                feedback(VoiceFeedback.Kind.CONFIRM, say, "녹음을 잠시 멈췄어요")
-            }
-            "다시 녹음해 줘", "녹음 시작해 줘", "아니야" -> {
-                resumeRecording()
-                feedback(VoiceFeedback.Kind.SUCCESS, say, "녹음을 다시 시작했어요")
-            }
             else -> feedback(VoiceFeedback.Kind.NOT_HEARD, say, "잘 못 들었어요. 다시 말해 주세요")
         }
     }
 
-    /** 녹음 잠시 멈춤. 음성 명령과 화면 버튼이 함께 쓴다(버튼은 "들었어요" 안내 없이). */
-    fun pauseRecording() {
-        talkRecording.pause(tripId)
+    fun toggleRecordingWhileStopped(resume: Boolean) {
+        if (safetyMonitor.state.value.isRestricted || consentStore.get(tripId) != true) return
         if (recorder.isRecording) saveCurrentClip()
-        local.update { it.copy(recordingMode = RecordingMode.PAUSED) }
-    }
-
-    /** 녹음 다시 시작. 음성 명령과 화면 버튼이 함께 쓴다. */
-    fun resumeRecording() {
-        consentStore.set(tripId, true)
-        local.update { it.copy(recordingMode = RecordingMode.ON) }
-        if (recorder.isRecording) saveCurrentClip()
-        viewModelScope.launch { talkRecording.resume(tripId) }
+        if (resume) {
+            viewModelScope.launch {
+                if (talkRecording.resume(tripId)) showMessage("다시 녹음할게요")
+                else showMessage("녹음을 다시 시작할 수 없어요. 마이크 상태를 확인해 주세요.")
+            }
+        } else {
+            talkRecording.pause(tripId)
+            showMessage("녹음을 잠시 멈췄어요")
+        }
     }
 
     fun consumeVoiceFeedback() = local.update { it.copy(voiceFeedback = null) }

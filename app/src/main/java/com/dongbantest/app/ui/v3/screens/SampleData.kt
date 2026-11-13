@@ -82,13 +82,13 @@ object Sample {
     const val BUBBLE_READY = "출발하면 모두의 이야기를 담기 시작할게요."
 
     val ASKED_BASE = listOf(
-        AskedItem("10:15", "처음 만났던 날", now = true, tags = listOf("추억", "연애")),
-        AskedItem("09:48", "휴게소에서 뭐 먹을까", tags = listOf("음식")),
+        AskedItem("10:15", "처음 만났던 날", now = true),
+        AskedItem("09:48", "휴게소에서 뭐 먹을까"),
     )
     val ASKED_AFTER_NEW = listOf(
-        AskedItem("10:32", "오늘 제일 기대되는 것", now = true, tags = listOf("기대", "여행", "설렘")),
-        AskedItem("10:15", "처음 만났던 날", tags = listOf("추억", "연애")),
-        AskedItem("09:48", "휴게소에서 뭐 먹을까", tags = listOf("음식")),
+        AskedItem("10:32", "오늘 제일 기대되는 것", now = true),
+        AskedItem("10:15", "처음 만났던 날"),
+        AskedItem("09:48", "휴게소에서 뭐 먹을까"),
     )
     val ASKED_QUIET = listOf(AskedItem("09:48", "휴게소에서 뭐 먹을까"))
     val ASKED_SILENCE = listOf(

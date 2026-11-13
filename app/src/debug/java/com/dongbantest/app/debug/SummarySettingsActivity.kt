@@ -48,7 +48,6 @@ import com.drivediary.talkrec.summary.SummaryException
 import com.drivediary.talkrec.summary.SummaryProviderType
 import com.drivediary.talkrec.summary.SummarySettingsStore
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -62,16 +61,9 @@ class SummarySettingsActivity : ComponentActivity() {
         val container = (application as DongbanApplication).container
         setContent {
             DongbanchaV3Theme {
-                // MainActivity.onStop 이 모니터를 멈추므로(이 화면이 앞에 오면 멈춘다) 살아 있는 동안 주기적으로 다시 시작한다.
-                // start() 는 이미 시작돼 있으면 아무 일도 하지 않는다.
-                LaunchedEffect(Unit) {
-                    while (true) {
-                        container.drivingSafetyMonitor.start()
-                        delay(2_000)
-                    }
+                DebugToolsLayout(container) { restricted ->
+                    SummarySettingsScreen(container.summarySettingsStore, restricted)
                 }
-                val driving by container.drivingSafetyMonitor.state.collectAsStateWithLifecycle()
-                SummarySettingsScreen(container.summarySettingsStore, restricted = driving.isRestricted)
             }
         }
     }

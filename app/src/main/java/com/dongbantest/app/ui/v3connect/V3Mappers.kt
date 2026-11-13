@@ -1,5 +1,7 @@
 package com.dongbantest.app.ui.v3connect
 
+import com.dongbantest.app.audio.VoicePlayback
+import com.dongbantest.app.gleo.GleoRecordingAction
 import com.dongbantest.app.domain.model.Memory
 import com.dongbantest.app.domain.model.MemoryType
 import com.dongbantest.app.domain.model.SummaryStatus
@@ -17,6 +19,7 @@ import com.dongbantest.app.ui.components.formatDuration
 import com.dongbantest.app.ui.components.formatElapsed
 import com.dongbantest.app.ui.components.formatShortDate
 import com.dongbantest.app.ui.v3.components.AskedItem
+import com.dongbantest.app.ui.v3.components.PlaybackUi
 import com.dongbantest.app.ui.v3.components.RecordingState
 import com.dongbantest.app.ui.v3.components.ToastKind
 import com.dongbantest.app.ui.v3.components.TripTone
@@ -66,8 +69,6 @@ fun percentOf(progress: Float?): Int = ((progress ?: 0f) * 100).roundToInt().coe
 fun percentOf(route: NaviRoute?): Int = percentOf(RouteRibbon.progressOf(route?.totalMeters, route?.remainMeters))
 
 private val SAY_ON = listOf("다른 질문 해 줘", "질문 그만")
-private val SAY_PAUSED = listOf("다시 녹음해 줘", "다른 질문 해 줘")
-private val SAY_OFF = listOf("녹음 시작해 줘", "다른 질문 해 줘")
 
 /* ───────── 녹음 칩 ───────── */
 
@@ -132,7 +133,11 @@ fun AppHomeUiState.toV3(): HomeUiState {
 
 /* ───────── S05–S10 여행 중 ───────── */
 
-fun TripUiState.toDriving(now: Long, capture: CaptureState = CaptureState()): DrivingUiState {
+fun TripUiState.toDriving(
+    now: Long,
+    capture: CaptureState = CaptureState(),
+    talks: List<TalkWithPath> = data?.talks().orEmpty(),
+): DrivingUiState {
     val trip = data?.trip ?: return DrivingStates.S05.copy(asked = emptyList())
     val ribbon = ribbon
     val (rec, recText) = recordingChip(this, now, capture)
@@ -145,22 +150,20 @@ fun TripUiState.toDriving(now: Long, capture: CaptureState = CaptureState()): Dr
         else -> "$to 가는 중"
     }
     // talk-rec 연동: 동반이 질문(QUESTION)과 저장된 대화 조각(VOICE + talk)을 시각 최신순으로 섞는다.
-    // 대화 조각은 제목·태그만 보이고 전사 글은 절대 쓰지 않는다. 질문은 태그가 없다.
-    val storyItems = data.talks().filter { !it.talk.hidden }.map { row ->
-        row.startMs to AskedItem(row.talk.time, row.drivingTitle, tags = row.llmTags,
-            id = row.talk.id, audio = row.talk.audio, clipCount = row.talk.clipCount,
-            kind = row.talk.kind, fromQuestion = row.talk.fromQuestion)
+    val storyItems = talks.filter { !it.talk.hidden }.map { row ->
+        row.startMs to AskedItem(row.talk.time, row.drivingTitle,
+            id = row.talk.id, audio = row.talk.audio, clipCount = row.talk.clipCount)
     }
     val questionItems = data.memories.filter { it.type == MemoryType.QUESTION && !it.text.isNullOrBlank() }
         .map { it.createdAt to AskedItem(hhmm(it.createdAt), it.text.orEmpty()) }
     val asked = (storyItems + questionItems).sortedByDescending { it.first }.mapIndexed { i, pair ->
         pair.second.copy(now = i == 0 && !quiet && pair.second.id.isEmpty())
     }
-    val say = when (recordingMode) {
-        RecordingMode.PAUSED -> SAY_PAUSED
-        RecordingMode.OFF, RecordingMode.READY -> SAY_OFF
-        RecordingMode.ON -> SAY_ON
-    }
+    val recordingHint = when (rec) {
+        RecordingState.On -> GleoRecordingAction.PAUSE.example
+        RecordingState.Paused -> GleoRecordingAction.RESUME.example
+        else -> null
+    }?.let { "“$it”" }
     val bubble = when (recordingMode) {
         RecordingMode.ON -> "$to 가는 길, 모두의 이야기를 담고 있어요."
         RecordingMode.PAUSED -> "녹음을 잠시 멈췄어요. 질문은 계속할 수 있어요."
@@ -181,21 +184,21 @@ fun TripUiState.toDriving(now: Long, capture: CaptureState = CaptureState()): Dr
         to = to,
         bubble = bubble,
         card = if (quiet) {
-            DrivingCard.Quiet("이번 여행에서는 먼저 묻지 않을게요", "이야기가 필요하면 ‘다른 질문 해 줘’라고 말해 주세요.")
+            DrivingCard.Quiet("이번 여행에서는 먼저 묻지 않을게요", "이야기가 필요하면 ‘다른 질문 해 줘’라고 말해 주세요.", recordingHint)
         } else {
             DrivingCard.Question(
                 question = question,
-                say = say,
+                say = SAY_ON,
                 tag = "동반이 질문",
-                pauseCaption = if (recordingMode == RecordingMode.ON) "녹음 멈춤은 ‘녹음 잠시 멈춰’" else null,
+                pauseCaption = recordingHint,
             )
         },
         asked = asked,
         nowText = if (quiet) "조용히 듣는 중" else null,
-        toast = voiceFeedback?.toToast(),
+        toast = voiceFeedback?.toToast()?.let { if (safety.isRestricted) it.copy(say = null) else it },
         // 모드와 실제 캡처가 모두 녹음 중일 때만 저장 동작을 제공한다.
         momentButton = !ended && recordingMode == RecordingMode.ON && capture.status == CaptureStatus.On,
-        recordingToggleText = if (ended) null else when (recordingMode) {
+        recordingToggleText = if (ended || safety.isRestricted) null else when (recordingMode) {
             // 모드는 ON이어도 캡처가 스스로 멈출 수 있다(음성 인식 오류 등). 그때는 다시 켜는 버튼을 준다.
             RecordingMode.ON -> if (capture.status == CaptureStatus.Paused) RESUME_TEXT else "녹음 멈추기"
             RecordingMode.PAUSED -> RESUME_TEXT
@@ -212,8 +215,7 @@ private fun VoiceFeedback.toToast(): VoiceToastUi = when (kind) {
     VoiceFeedback.Kind.CONFIRM -> VoiceToastUi(ToastKind.Confirm, "‘$heard’로 들었어요.", "잘못 들었다면 이렇게 말해 주세요.", say = "아니야")
 }
 
-/** 주행 중에는 분류 + 키워드만 쓴다. 기존 저장 배열의 순서도 유지한다. 2개 제한은 화면이 건다. */
-private fun TalkMeta?.llmTagsForDriving(): List<String> =
+private fun TalkMeta?.summaryTags(): List<String> =
     if (this?.summaryStatus == SummaryStatus.DONE) tags.orEmpty() else emptyList()
 
 /** 저장된 대화 조각: 목소리 기억 중 talk 메타가 있는 것 */
@@ -226,7 +228,7 @@ private const val TALK_SAVED_LABEL = "대화 저장됨"
 
 /** 이야기 한 줄과 그 음성 파일 경로 (재생할 때 쓴다) */
 data class TalkWithPath(val talk: TalkUi, val paths: List<String>, val startMs: Long,
-    val llmTags: List<String> = emptyList(), val drivingTitle: String = talk.title) {
+    val drivingTitle: String = talk.title) {
     val path: String? get() = paths.firstOrNull()
 }
 
@@ -240,7 +242,7 @@ fun TripWithMemories.talks(): List<TalkWithPath> {
             // 녹음 시작 10분 안에 동반이 질문이 있었으면 "동반이 질문"에서 나온 이야기로 본다.
             val clipStart = m.talk?.blockStartMs ?: (m.createdAt - (m.durationMs ?: 0L))
             val fromQuestion = questions.any { it in (clipStart - 10 * 60_000L)..clipStart }
-            val llmTags = m.talk.llmTagsForDriving()
+            val llmTags = m.talk.summaryTags()
             val pendingRun = m.talk?.runId != null && clips.any { it.talk?.summaryStatus == SummaryStatus.PENDING }
             TalkWithPath(
                 TalkUi(
@@ -257,13 +259,18 @@ fun TripWithMemories.talks(): List<TalkWithPath> {
                     id = key, clipCount = clips.size, kind = m.talk?.storyKind ?: m.talk?.kind,
                     hidden = m.talk?.storyKeep == false,
                 ),
-                ordered.mapNotNull { it.filePath }, clipStart, llmTags,
+                ordered.mapNotNull { it.filePath }, clipStart,
                 if (pendingRun) "이야기 정리 중" else m.talk?.title?.takeIf { it.isNotBlank() } ?: TALK_SAVED_LABEL,
             )
         }.sortedBy { it.startMs }
 }
 
-fun TripWithMemories.toRecord(): TripRecordUi {
+fun VoicePlayback.toUi(talks: List<TalkWithPath>): PlaybackUi? {
+    val id = talks.firstOrNull { path in it.paths }?.talk?.id ?: return null
+    return PlaybackUi(id, isPlaying, positionMs, durationMs)
+}
+
+fun TripWithMemories.toRecord(talks: List<TalkWithPath> = talks()): TripRecordUi {
     val t = trip
     val end = t.endedAt
     return TripRecordUi(
@@ -280,7 +287,7 @@ fun TripWithMemories.toRecord(): TripRecordUi {
         arriveTime = end?.let { hhmm(it) } ?: "진행 중",
         duration = formatElapsed((end ?: System.currentTimeMillis()) - t.startedAt),
         photos = memories.filter { it.type == MemoryType.PHOTO }.map { hhmm(it.createdAt) },
-        talks = talks().map { it.talk },
+        talks = talks.map { it.talk },
     )
 }
 
