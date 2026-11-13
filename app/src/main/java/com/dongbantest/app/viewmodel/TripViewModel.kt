@@ -318,20 +318,30 @@ class TripViewModel(
                 feedback(VoiceFeedback.Kind.SUCCESS, say, "이번 여행에서는 먼저 묻지 않을게요")
             }
             "녹음 잠시 멈춰" -> {
-                talkRecording.pause(tripId)
-                if (recorder.isRecording) saveCurrentClip()
-                local.update { it.copy(recordingMode = RecordingMode.PAUSED) }
+                pauseRecording()
                 feedback(VoiceFeedback.Kind.CONFIRM, say, "녹음을 잠시 멈췄어요")
             }
             "다시 녹음해 줘", "녹음 시작해 줘", "아니야" -> {
-                consentStore.set(tripId, true)
-                local.update { it.copy(recordingMode = RecordingMode.ON) }
-                if (recorder.isRecording) saveCurrentClip()
-                viewModelScope.launch { talkRecording.resume(tripId) }
+                resumeRecording()
                 feedback(VoiceFeedback.Kind.SUCCESS, say, "녹음을 다시 시작했어요")
             }
             else -> feedback(VoiceFeedback.Kind.NOT_HEARD, say, "잘 못 들었어요. 다시 말해 주세요")
         }
+    }
+
+    /** 녹음 잠시 멈춤. 음성 명령과 화면 버튼이 함께 쓴다(버튼은 "들었어요" 안내 없이). */
+    fun pauseRecording() {
+        talkRecording.pause(tripId)
+        if (recorder.isRecording) saveCurrentClip()
+        local.update { it.copy(recordingMode = RecordingMode.PAUSED) }
+    }
+
+    /** 녹음 다시 시작. 음성 명령과 화면 버튼이 함께 쓴다. */
+    fun resumeRecording() {
+        consentStore.set(tripId, true)
+        local.update { it.copy(recordingMode = RecordingMode.ON) }
+        if (recorder.isRecording) saveCurrentClip()
+        viewModelScope.launch { talkRecording.resume(tripId) }
     }
 
     fun consumeVoiceFeedback() = local.update { it.copy(voiceFeedback = null) }

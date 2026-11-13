@@ -77,6 +77,7 @@ import com.dongbantest.app.ui.v3.theme.Spacing
 import com.dongbantest.app.viewmodel.AppViewModelProvider
 import com.dongbantest.app.viewmodel.DiaryListViewModel
 import com.dongbantest.app.viewmodel.HomeViewModel
+import com.dongbantest.app.viewmodel.RecordingMode
 import com.dongbantest.app.viewmodel.TripViewModel
 import kotlinx.coroutines.delay
 import com.dongbantest.app.ui.components.MapRoute as RealMapRoute
@@ -283,15 +284,44 @@ fun V3NavHost(
                     momentDone = false
                 }
             }
+            // 터치 직후 모드가 바뀌어도 1.5초 동안 연속 전환을 막는다.
+            var recordingToggleBlocked by remember(tripId) { mutableStateOf(false) }
+            LaunchedEffect(recordingToggleBlocked) {
+                if (recordingToggleBlocked) {
+                    delay(1_500)
+                    recordingToggleBlocked = false
+                }
+            }
             val driving = state.toDriving(now, capture)
-                .copy(showTitlesWhileDriving = summarySettings.showTitlesWhileDriving, momentDone = momentDone)
+                .copy(
+                    showTitlesWhileDriving = summarySettings.showTitlesWhileDriving,
+                    momentDone = momentDone,
+                    recordingToggleEnabled = !recordingToggleBlocked,
+                )
             val events = DrivingEvents(
                 onTab = onTab,
                 onMoment = {
-                    if (!momentDone) {
+                    if (!momentDone && !recordingToggleBlocked && vm.uiState.value.toDriving(now, TalkRec.state.value).momentButton) {
                         momentDone = true
                         vm.startRecording()
                         vm.showMessage("지금 나눈 대화를 담았어요")
+                    }
+                },
+                onRecordingToggle = {
+                    val current = vm.uiState.value
+                    if (!recordingToggleBlocked && current.toDriving(now, TalkRec.state.value).recordingToggleText != null) {
+                        recordingToggleBlocked = true
+                        when (current.recordingMode) {
+                            RecordingMode.ON -> {
+                                vm.pauseRecording()
+                                vm.showMessage("녹음을 잠시 멈췄어요")
+                            }
+                            RecordingMode.PAUSED -> {
+                                vm.resumeRecording()
+                                vm.showMessage("다시 녹음할게요")
+                            }
+                            RecordingMode.READY, RecordingMode.OFF -> Unit
+                        }
                     }
                 },
                 onVoiceExample = vm::onVoiceCommand,

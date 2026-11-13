@@ -46,7 +46,7 @@ class GeminiSummaryProvider(
     private val requestedModel = checkedModelName(model)
     @Volatile override var modelName: String = requestedModel
         private set
-    private val validator = SummaryValidator(prompt.tags)
+    private val validator = SummaryValidator(prompt.categories)
 
     override suspend fun summarize(transcript: String): SummaryResult {
         if (apiKey.isBlank() || apiKey.any { it <= ' ' || it >= '\u007f' }) {
@@ -82,11 +82,13 @@ class GeminiSummaryProvider(
     internal fun requestJson(transcript: String): String {
         val properties = JSONObject()
             .put("title", JSONObject().put("type", "string").put("minLength", 1).put("maxLength", 25))
-            .put("tags", JSONObject().put("type", "array").put("minItems", 1).put("maxItems", 3)
-                .put("items", JSONObject().put("type", "string").put("enum", JSONArray(prompt.tags))))
+            .put("category", JSONObject().put("type", "string").put("enum", JSONArray(prompt.categories)))
+            .put("keywords", JSONObject().put("type", "array").put("minItems", 0).put("maxItems", 2)
+                .put("items", JSONObject().put("type", "string").put("minLength", 1).put("maxLength", 6)
+                    .put("pattern", "^[가-힣A-Za-z0-9·]{1,6}$")))
             .put("kind", JSONObject().put("type", "string").put("enum", JSONArray(listOf("story", "moment"))))
         val schema = JSONObject().put("type", "object").put("properties", properties)
-            .put("required", JSONArray(listOf("title", "tags", "kind")))
+            .put("required", JSONArray(listOf("title", "category", "keywords", "kind")))
         fun textPart(text: String) = JSONArray().put(JSONObject().put("text", text))
         return JSONObject()
             .put("systemInstruction", JSONObject().put("parts", textPart(prompt.systemInstruction)))
@@ -119,6 +121,7 @@ class AgyBridgeSummaryProvider(
             if (invalid) throw SummaryException(SummaryErrorCode.INVALID_OUTPUT)
         }
         checkSummaryHttp(response)
+        // Ignore the relay's compatibility tags; derive them from validated category + keywords.
         val result = validator.parse(response.body)
         modelName = try { checkedModelName(summaryJsonObject(response.body).opt("model") as? String ?: throw InvalidSummaryOutput()) }
             catch (_: Exception) { throw InvalidSummaryOutput() }
@@ -131,5 +134,5 @@ class FakeSummaryProvider(
     override val modelName: String = SummaryDefaults.FAKE_MODEL,
 ) : SummaryProvider {
     override suspend fun summarize(transcript: String): SummaryResult =
-        validator.validate(SummaryResult("테스트 대화", listOf(validator.allowedTags.first()), "story"))
+        validator.validate(SummaryResult("테스트 대화", validator.allowedCategories.first(), emptyList(), "story"))
 }

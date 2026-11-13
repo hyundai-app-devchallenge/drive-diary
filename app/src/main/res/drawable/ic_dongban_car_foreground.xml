@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 임시 런처 아이콘: 최종 브랜드 아이콘이 준비되면 교체한다. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:fillType="evenOdd"
+        android:pathData="M39,33H69Q72,33 73,37L78,50Q81,52 81,56V69Q81,72 78,72H77V76H69V72H39V76H31V72H30Q27,72 27,69V56Q27,52 30,50L35,37Q36,33 39,33ZM41,39L37,50H71L67,39ZM39,57A4,4 0,1 0,39,65A4,4 0,1 0,39,57ZM69,57A4,4 0,1 0,69,65A4,4 0,1 0,69,57Z" />
+</vector>

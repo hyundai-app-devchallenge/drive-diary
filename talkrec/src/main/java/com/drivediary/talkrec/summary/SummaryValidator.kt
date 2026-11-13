@@ -1,20 +1,27 @@
 package com.drivediary.talkrec.summary
 
+import java.util.Locale
 import org.json.JSONArray
 
-/** One source for both the system instruction and the permitted topic tags. */
+/** One source for both the system instruction and the permitted categories. */
 class SummaryPrompt(val systemInstruction: String) {
-    val tags: List<String> = parseTags(systemInstruction)
+    val categories: List<String> = parseCategories(systemInstruction)
+    // Source compatibility for settings callers; these are categories, never keyword enums.
+    val tags: List<String> get() = categories
 
     companion object {
-        fun parseTags(markdown: String): List<String> {
-            val section = markdown.substringAfter("## 태그", "").substringBefore("\n## ")
-            val lists = section.lineSequence().map { it.trim() }
-                .filter { ',' in it && !it.startsWith("#") }.toList()
-            check(lists.size == 1) { "summary_prompt_tags" }
-            val tags = lists.single().split(',').map { it.trim() }
-            check(tags.all { it.isNotBlank() } && tags.distinct().size == tags.size) { "summary_prompt_tags" }
-            return tags
+        fun parseCategories(markdown: String): List<String> {
+            val section = Regex("^##[ \\t]+분류[ \\t]*\\r?\\n(.*?)(?=^##[ \\t]+|\\z)",
+                setOf(RegexOption.MULTILINE, RegexOption.DOT_MATCHES_ALL))
+                .find(markdown)?.groupValues?.get(1).orEmpty()
+            val lists = section.lineSequence().map { it.trim(::summaryWhitespace) }
+                .filter { ',' in it }.toList()
+            check(lists.size == 1) { "summary_prompt_categories" }
+            val categories = lists.single().split(',').map { it.trim(::summaryWhitespace) }
+            check(categories.all { it.isNotEmpty() } && categories.distinct().size == categories.size) {
+                "summary_prompt_categories"
+            }
+            return categories
         }
     }
 }
@@ -22,20 +29,21 @@ class SummaryPrompt(val systemInstruction: String) {
 /** Never attach a JSON parser exception: it can contain generated private text. */
 class InvalidSummaryOutput : Exception("invalid_output")
 
-class SummaryValidator(val allowedTags: List<String>) {
-    init { check(allowedTags.isNotEmpty()) { "summary_prompt_tags" } }
+class SummaryValidator(val allowedCategories: List<String>) {
+    init { check(allowedCategories.isNotEmpty()) { "summary_prompt_categories" } }
 
     fun parse(raw: String): SummaryResult {
         try {
-            val stripped = raw.trim().let { text ->
-                FENCE.matchEntire(text)?.groupValues?.get(1)?.trim() ?: text
+            val stripped = raw.trim(::summaryWhitespace).let { text ->
+                FENCE.matchEntire(text)?.groupValues?.get(1)?.trim(::summaryWhitespace) ?: text
             }
             val json = summaryJsonObject(stripped)
             val title = json.opt("title") as? String ?: throw InvalidSummaryOutput()
-            val array = json.opt("tags") as? JSONArray ?: throw InvalidSummaryOutput()
-            val tags = (0 until array.length()).map { array.opt(it) as? String ?: throw InvalidSummaryOutput() }
+            val category = json.opt("category") as? String ?: throw InvalidSummaryOutput()
+            val array = json.opt("keywords") as? JSONArray ?: throw InvalidSummaryOutput()
+            val keywords = (0 until array.length()).map { array.opt(it) as? String ?: throw InvalidSummaryOutput() }
             val kind = json.opt("kind") as? String ?: throw InvalidSummaryOutput()
-            return validate(SummaryResult(title, tags, kind))
+            return validate(SummaryResult(title, category, keywords, kind))
         } catch (_: Exception) {
             throw InvalidSummaryOutput()
         }
@@ -43,13 +51,22 @@ class SummaryValidator(val allowedTags: List<String>) {
 
     fun validate(result: SummaryResult): SummaryResult {
         val title = result.title
-        if (title.isBlank() || title.codePointCount(0, title.length) !in 1..25 ||
-            title.any { it == '\n' || it == '\r' || it == '\u2028' || it == '\u2029' } ||
-            !validUnicode(title) || result.tags.size !in 1..3 ||
-            result.tags.any { it !in allowedTags } || result.kind !in setOf("story", "moment")) {
+        if (title.all(::summaryWhitespace) || title.codePointCount(0, title.length) !in 1..25 ||
+            title.any { it == '\n' || it == '\r' } || !validUnicode(title) ||
+            result.category !in allowedCategories || result.keywords.size > 2 ||
+            result.kind !in setOf("story", "moment")) {
             throw InvalidSummaryOutput()
         }
-        return result
+        val seen = mutableSetOf<String>()
+        val keywords = result.keywords.map { raw ->
+            val keyword = raw.trim(::summaryWhitespace)
+            if (!KEYWORD.matches(keyword) || keyword.all { it in '0'..'9' } ||
+                keyword in allowedCategories || !seen.add(keyword.lowercase(Locale.ROOT))) {
+                throw InvalidSummaryOutput()
+            }
+            keyword
+        }
+        return result.copy(keywords = keywords)
     }
 
     private fun validUnicode(value: String): Boolean {
@@ -64,9 +81,13 @@ class SummaryValidator(val allowedTags: List<String>) {
     }
 
     private companion object {
+        val KEYWORD = Regex("[가-힣A-Za-z0-9·]{1,6}")
         val FENCE = Regex("```(?:json)?\\s*\\n?(.*?)\\s*```", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
     }
 }
+
+/** Python str.strip()/isspace() also includes NEXT LINE, unlike Kotlin isWhitespace(). */
+private fun summaryWhitespace(char: Char): Boolean = char.isWhitespace() || char == '\u0085'
 
 enum class SummaryErrorCode(val retryable: Boolean = false) {
     INVALID_OUTPUT, INVALID_SETTINGS, KEY_UNAVAILABLE, AUTH, HTTP_ERROR, REQUEST_TOO_LARGE, STORAGE,

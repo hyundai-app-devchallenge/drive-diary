@@ -5,7 +5,8 @@ import java.time.ZoneId
 import java.time.format.TextStyle
 import java.util.Locale
 
-/** Device-only display enrichment; never persist this list as LLM tags or send it to a provider. */
+/** Device-only display enrichment; never persist this list or send it to a provider.
+ * Preserve category + keywords (and legacy tag arrays) before appending device tags. */
 fun displayTags(
     llmTags: List<String>,
     destination: String?,

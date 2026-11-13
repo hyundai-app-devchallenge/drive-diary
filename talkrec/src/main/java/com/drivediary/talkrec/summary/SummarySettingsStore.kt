@@ -11,7 +11,6 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,14 +28,6 @@ data class SummarySettings(
 ) {
     override fun toString(): String = "SummarySettings(redacted)"
 }
-
-data class ConnectionTestResult(
-    val ok: Boolean,
-    val elapsedMs: Long,
-    val result: SummaryResult? = null,
-    val modelName: String? = null,
-    val errorCode: String? = null,
-)
 
 /**
  * Application-scoped store. UI must use the app's existing parked-only gate for edits/tests.
@@ -112,20 +103,11 @@ class SummarySettingsStore(
     }
 
     /** Uses only this fixed invented dialogue, never a saved clip. */
-    suspend fun testConnection(): ConnectionTestResult {
-        val start = System.nanoTime()
-        return try {
-            val provider = createProvider()
-            val result = validatedSummary(SummaryValidator(prompt.tags)) { provider.summarize(TEST_DIALOGUE) }
-            ConnectionTestResult(true, elapsed(start), result, provider.modelName)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (safe: SummaryException) {
-            ConnectionTestResult(false, elapsed(start), errorCode = safe.code.name.lowercase())
-        } catch (_: Exception) {
-            ConnectionTestResult(false, elapsed(start), errorCode = "connection_error")
-        }
-    }
+    suspend fun testConnection(): ConnectionTestResult = trySummarize(TEST_DIALOGUE)
+
+    /** Explicit user try-out only. Uses current settings and retains/logs none of the input. */
+    suspend fun trySummarize(transcript: String): ConnectionTestResult =
+        runSummaryTryOut(transcript, { SummaryValidator(prompt.tags) }, ::createProvider)
 
     /** Internal DI entry points for SummaryWorker; not a plaintext-key API. */
     internal fun validator(): SummaryValidator = SummaryValidator(prompt.tags)
@@ -199,8 +181,6 @@ class SummarySettingsStore(
                 .build())
         }.generateKey()
     }
-
-    private fun elapsed(start: Long): Long = (System.nanoTime() - start) / 1_000_000
 
     private companion object {
         const val KEY_ALIAS = "talkrec.summary.api-key.v1"

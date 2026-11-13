@@ -22,7 +22,11 @@ class CaptureOptions(
     val audioSource: () -> AudioSource = { MicAudioSource() },
     /** Evidence must describe the entire block. Playback alone is insufficient. */
     val signals: (startMs: Long, endMs: Long) -> AppSignals? = { _, _ -> null },
-) { init { require(silenceRms.isFinite() && silenceRms >= 0) } }
+) {
+    init { require(silenceRms.isFinite() && silenceRms >= 0) }
+    internal var budgetOverride: CaptureBudget? = null
+    internal var onReplaced: () -> Unit = {}
+}
 
 /** Call start after consent + runtime RECORD_AUDIO permission, from a visible Activity. No auto restore. */
 object TalkRec {
@@ -30,6 +34,7 @@ object TalkRec {
     private var application: Context? = null
     private var requested = false
     private var pending: Request? = null
+    private var activeOptions: CaptureOptions? = null
     internal val mutableState = MutableStateFlow(CaptureState())
     val state: StateFlow<CaptureState> = mutableState.asStateFlow()
     internal val budget = CaptureBudget()
@@ -39,15 +44,25 @@ object TalkRec {
         require(tripId >= 0) { "Invalid trip ID" }
         val app = context.applicationContext
         val request = Request(UUID.randomUUID().toString(), tripId, options)
+        activeOptions?.onReplaced?.invoke()
+        activeOptions = options
         application = app; pending = request; requested = true
         try {
             app.startForegroundService(Intent(app, ConversationCaptureService::class.java)
                 .setAction(ConversationCaptureService.START).putExtra("request", request.id))
-        } catch (error: RuntimeException) { pending = null; requested = false; throw error }
+        } catch (error: RuntimeException) { pending = null; requested = false; activeOptions = null; throw error }
     }
 
     @Synchronized internal fun takeRequest(id: String?): Request? = pending?.takeIf { it.id == id }?.also { pending = null }
-    @Synchronized internal fun finished() { requested = false; pending = null }
+    @Synchronized internal fun finished() {
+        requested = false; pending = null
+        activeOptions?.onReplaced?.invoke(); activeOptions = null
+    }
+    /** Includes the start-service handoff and paused captures, which state alone cannot detect. */
+    @Synchronized internal fun isIdle(): Boolean = !requested && state.value.status !in setOf(
+        com.drivediary.talkrec.capture.CaptureStatus.On, com.drivediary.talkrec.capture.CaptureStatus.Paused)
+    @Synchronized internal fun owns(options: CaptureOptions): Boolean = requested && activeOptions === options
+    @Synchronized internal fun stopIfOwner(options: CaptureOptions) { if (owns(options)) stop() }
     fun stop() = control(ConversationCaptureService.STOP)
     fun pause() = control(ConversationCaptureService.PAUSE)
     fun resume() = control(ConversationCaptureService.RESUME)

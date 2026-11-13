@@ -6,7 +6,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SummaryProcessorTest {
-    private val validator = SummaryValidator(summaryPrompt().tags)
+    private val validator = SummaryValidator(summaryPrompt().categories)
 
     private class Target : SummaryTarget {
         val statuses = linkedMapOf(1L to "PENDING", 2L to "SKIPPED")
@@ -74,7 +74,7 @@ class SummaryProcessorTest {
         var calls = 0
         val processor = SummaryProcessor(target, validator) { provider {
             calls++
-            SummaryResult("x".repeat(26), listOf(validator.allowedTags.first()), "story")
+            SummaryResult("x".repeat(26), validator.allowedCategories.first(), emptyList(), "story")
         } }
         assertEquals(SummaryRunResult.COMPLETE, processor.run(0))
         assertEquals(2, calls)
@@ -91,6 +91,29 @@ class SummaryProcessorTest {
         processor.run(0)
         assertEquals(2, calls)
         assertEquals("DONE", target.statuses[1])
+    }
+
+    @Test fun invalidKeywordsRetryOnceThenFailWithoutSaving() = runBlocking {
+        val target = Target()
+        var calls = 0
+        SummaryProcessor(target, validator) { provider {
+            calls++
+            SummaryResult("지어낸 장면", validator.allowedCategories.first(), listOf("ABC", "abc"), "story")
+        } }.run(0)
+        assertEquals(2, calls)
+        assertEquals("FAILED", target.statuses[1])
+        assertTrue(target.saved.isEmpty())
+    }
+
+    @Test fun savesNormalizedCategoryFirstTagsAndEffectiveModel() = runBlocking {
+        val target = Target()
+        SummaryProcessor(target, validator) { provider {
+            SummaryResult("지어낸 장면", "친구 이야기", listOf(" 탁구 ", "라켓"), "story")
+        } }.run(0)
+        val (result, model) = target.saved.getValue(1)
+        assertEquals("DONE", target.statuses[1])
+        assertEquals(listOf("친구 이야기", "탁구", "라켓"), result.tags)
+        assertEquals("test-model", model)
     }
 
     @Test fun relayExhaustedValidationAndAuthFailImmediately() = runBlocking {

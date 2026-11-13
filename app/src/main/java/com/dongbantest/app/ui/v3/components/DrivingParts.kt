@@ -293,7 +293,8 @@ fun AskedPanel(
                     val shown = if (driving) a.tags.take(2) else a.tags
                     if (!hideTitles && shown.isNotEmpty()) {
                         Row(Modifier.padding(top = Spacing.s2xs), horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                            shown.forEach { Tag(it, small = true) }
+                            // MIXED: 첫 태그는 분류, 주행 중에는 분류 + 첫 키워드까지.
+                            shown.forEachIndexed { index, tag -> Tag(tag, small = true, category = index == 0) }
                         }
                     }
                 }

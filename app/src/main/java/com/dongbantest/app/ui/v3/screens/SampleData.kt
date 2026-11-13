@@ -17,6 +17,8 @@ data class TalkUi(
     val fromQuestion: Boolean,
     // talk-rec 연동: 대화 태그(없으면 칩을 그리지 않음)
     val tags: List<String> = emptyList(),
+    // 기기 태그만 있는 행은 분류 칩으로 강조하지 않는다.
+    val category: String? = null,
 )
 
 /** 기록(여행) 한 건. 웹 data-v3.ts 의 TripRecord 와 같은 필드. */

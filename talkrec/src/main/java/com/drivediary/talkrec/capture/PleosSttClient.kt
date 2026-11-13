@@ -8,6 +8,8 @@ import ai.pleos.playground.stt.listener.ResultListener
 import android.content.Context
 import android.util.Log
 import com.drivediary.talkrec.block.FinalLine
+import com.drivediary.talkrec.TalkRecDebug
+import com.drivediary.talkrec.TalkDebugEvent
 import java.util.ArrayDeque
 import java.util.Locale
 import kotlinx.coroutines.CompletableDeferred
@@ -79,10 +81,16 @@ class PleosSttClient(
 
     private fun results(id: Int) = object : ResultListener {
         override fun onUpdated(text: String, completed: Boolean) {
-            if (!completed) return
+            if (!completed) {
+                if (TalkRecDebug.enabled) scope.launch(Dispatchers.Main.immediate) {
+                    if (!closed && generation == id && TalkRecDebug.enabled) TalkRecDebug.emit(TalkDebugEvent.Partial(text))
+                }
+                return
+            }
             val received = System.currentTimeMillis() // Capture BEFORE dispatch, never SDK's contiguous EPD clock.
             scope.launch(Dispatchers.Main.immediate) {
                 if (closed || generation != id) return@launch
+                if (TalkRecDebug.enabled) TalkRecDebug.emit(TalkDebugEvent.Final(text, received))
                 if (!output.trySend(FinalLine(text, received)).isSuccess) { fail(); return@launch }
                 finals++
                 Log.i(TAG, "stt final count=$finals chars=${text.length} receivedMs=$received")
@@ -132,6 +140,7 @@ class PleosSttClient(
 
     private fun reconnect(error: Boolean) {
         if (closed) return
+        if (error && TalkRecDebug.enabled) TalkRecDebug.emit(TalkDebugEvent.SttError("stt_reconnect"))
         if (error) { failures++; consecutiveFailures++ }
         release()
         restarts++
@@ -152,6 +161,7 @@ class PleosSttClient(
 
     private fun fail() {
         if (closed) return
+        if (TalkRecDebug.enabled) TalkRecDebug.emit(TalkDebugEvent.SttError("stt_failed"))
         close(); onFailure()
     }
 

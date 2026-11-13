@@ -107,6 +107,9 @@ data class DrivingUiState(
     // "이 순간 담기" 버튼: 기록 동의 여행에서 주행 중에만 보인다. 누른 직후 잠깐은 눌림 막음 + 완료 문구.
     val momentButton: Boolean = false,
     val momentDone: Boolean = false,
+    /** 동의한 진행 중 여행에서만 녹음 일시정지·재개 버튼을 표시한다. */
+    val recordingToggleText: String? = null,
+    val recordingToggleEnabled: Boolean = true,
 )
 
 /** 주행 중(= 정차가 아님)에 제목·태그를 숨겨야 하는지 */
@@ -127,6 +130,7 @@ data class DrivingEvents(
     val onToastSay: (String) -> Unit = {},
     /** "이 순간 담기" 탭 */
     val onMoment: () -> Unit = {},
+    val onRecordingToggle: () -> Unit = {},
 )
 
 /** 주행 화면 틀. overlay 로 시트·대화상자를 얹는다. */
@@ -211,6 +215,16 @@ private fun DrivingLeft(state: DrivingUiState, events: DrivingEvents) {
             modifier = Modifier.padding(bottom = Spacing.xs).heightIn(min = 76.dp),
             block = true,
             enabled = !state.momentDone,
+        )
+    }
+    state.recordingToggleText?.let { text ->
+        com.dongbantest.app.ui.v3.components.DbButton(
+            text = text,
+            onClick = events.onRecordingToggle,
+            kind = com.dongbantest.app.ui.v3.components.ButtonKind.Primary,
+            modifier = Modifier.padding(bottom = Spacing.xs).heightIn(min = 76.dp),
+            block = true,
+            enabled = state.recordingToggleEnabled,
         )
     }
     when (val card = state.card) {

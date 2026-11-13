@@ -8,7 +8,7 @@ import org.junit.Test
 
 class SummaryProvidersTest {
     private val prompt = summaryPrompt()
-    private val validator = SummaryValidator(prompt.tags)
+    private val validator = SummaryValidator(prompt.categories)
 
     @Test fun geminiUsesHeaderOnlyKeyAndCorrectJsonShape() = runBlocking {
         val transcript = "지어낸 대화 첫 줄\n두 번째 줄"
@@ -20,6 +20,9 @@ class SummaryProvidersTest {
         })
         val result = provider.summarize(transcript)
         validator.validate(result)
+        assertEquals("추억", result.category)
+        assertEquals(listOf("만두", "신발"), result.keywords)
+        assertEquals(listOf("추억", "만두", "신발"), result.tags)
         val request = captured!!
         assertEquals("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent", request.url)
         assertEquals(mapOf("x-goog-api-key" to key), request.headers)
@@ -36,9 +39,20 @@ class SummaryProvidersTest {
         assertEquals(transcript, user.getJSONArray("parts").getJSONObject(0).getString("text"))
         val config = json.getJSONObject("generationConfig")
         assertEquals("application/json", config.getString("responseMimeType"))
-        val tagEnum = config.getJSONObject("responseJsonSchema").getJSONObject("properties").getJSONObject("tags")
-            .getJSONObject("items").getJSONArray("enum")
-        assertEquals(prompt.tags, (0 until tagEnum.length()).map { tagEnum.getString(it) })
+        val schema = config.getJSONObject("responseJsonSchema")
+        val properties = schema.getJSONObject("properties")
+        val categoryEnum = properties.getJSONObject("category").getJSONArray("enum")
+        assertEquals(prompt.categories, (0 until categoryEnum.length()).map { categoryEnum.getString(it) })
+        val keywords = properties.getJSONObject("keywords")
+        assertEquals(0, keywords.getInt("minItems"))
+        assertEquals(2, keywords.getInt("maxItems"))
+        assertEquals(1, keywords.getJSONObject("items").getInt("minLength"))
+        assertEquals(6, keywords.getJSONObject("items").getInt("maxLength"))
+        assertFalse(keywords.getJSONObject("items").has("enum"))
+        val required = schema.getJSONArray("required")
+        assertEquals(setOf("title", "category", "keywords", "kind"),
+            (0 until required.length()).map { required.getString(it) }.toSet())
+        assertFalse(properties.has("tags"))
         assertEquals("gemini-3.8-flash-001", provider.modelName)
     }
 
@@ -62,11 +76,16 @@ class SummaryProvidersTest {
     @Test fun relaySendsOnlyTranscriptAndModelAndParsesActualModel() = runBlocking {
         var request: SummaryHttpRequest? = null
         val answer = JSONObject(validSummaryJson()).put("model", "gemini-3.8-flash-low").put("elapsed_ms", 123)
+            .put("keywords", JSONArray(listOf(" 만두 ", "RC카")))
+            .put("tags", JSONArray(listOf("ignored", "wrong", "legacy")))
         val provider = AgyBridgeSummaryProvider(validator, http = {
             request = it; SummaryHttpResponse(200, answer.toString())
         })
         val transcript = "첫 줄\n다음 줄"
-        validator.validate(provider.summarize(transcript))
+        val result = validator.validate(provider.summarize(transcript))
+        assertEquals("추억", result.category)
+        assertEquals(listOf("만두", "RC카"), result.keywords)
+        assertEquals(listOf("추억", "만두", "RC카"), result.tags)
         assertEquals("http://10.0.2.2:8771/summarize", request!!.url)
         assertTrue(request!!.headers.isEmpty())
         val json = JSONObject(request!!.body)
@@ -91,6 +110,46 @@ class SummaryProvidersTest {
             val provider = AgyBridgeSummaryProvider(validator, http = { calls++; SummaryHttpResponse(200, answer) })
             expectCode(SummaryErrorCode.INVALID_OUTPUT) { validatedSummary(validator) { provider.summarize("invented") } }
             assertEquals(2, calls)
+        }
+    }
+
+    @Test fun bothProvidersRequireMixedShapeAndApplyTheSameKeywordValidation() = runBlocking {
+        val good = JSONObject(validSummaryJson())
+        val invalidAnswers = listOf(
+            "{\"title\":\"옛 출력\",\"tags\":[\"추억\"],\"kind\":\"story\"}",
+            JSONObject(good.toString()).put("category", "unknown").toString(),
+            JSONObject(good.toString()).put("keywords", JSONArray(listOf("만두", "신발", "라켓"))).toString(),
+            JSONObject(good.toString()).put("keywords", JSONArray(listOf("가나다라마바사"))).toString(),
+            JSONObject(good.toString()).put("keywords", JSONArray(listOf("ABC", "abc"))).toString(),
+            JSONObject(good.toString()).put("keywords", JSONArray(listOf("123"))).toString(),
+            JSONObject(good.toString()).put("keywords", JSONArray(listOf("학교"))).toString(),
+        )
+        for (relay in listOf(false, true)) {
+            for (answer in invalidAnswers) {
+                var calls = 0
+                val provider: SummaryProvider = if (relay) AgyBridgeSummaryProvider(validator, http = {
+                    calls++; SummaryHttpResponse(200, JSONObject(answer).put("model", SummaryDefaults.AGY_MODEL).toString())
+                }) else GeminiSummaryProvider(prompt, "test-key", http = {
+                    calls++; SummaryHttpResponse(200, geminiEnvelope(answer))
+                })
+                expectCode(SummaryErrorCode.INVALID_OUTPUT) { validatedSummary(validator) { provider.summarize("invented") } }
+                assertEquals(2, calls)
+            }
+        }
+    }
+
+    @Test fun bothProvidersAcceptNoKeywordsAndIgnoreExtraTags() = runBlocking {
+        val answer = JSONObject(validSummaryJson()).put("keywords", JSONArray())
+            .put("tags", JSONObject().put("ignored", true))
+            .put("model", SummaryDefaults.AGY_MODEL).put("elapsed_ms", 0).toString()
+        val providers = listOf(
+            GeminiSummaryProvider(prompt, "test-key", http = { SummaryHttpResponse(200, geminiEnvelope(answer)) }),
+            AgyBridgeSummaryProvider(validator, http = { SummaryHttpResponse(200, answer) }),
+        )
+        for (provider in providers) {
+            val result = provider.summarize("invented")
+            assertTrue(result.keywords.isEmpty())
+            assertEquals(listOf(result.category), result.tags)
         }
     }
 
@@ -120,10 +179,12 @@ class SummaryProvidersTest {
         assertEquals("http://10.0.2.2:8771", checkedRelayBase("http://10.0.2.2:8771/"))
     }
 
-    @Test fun fakeIsDeterministicAndUsesThePromptTags() = runBlocking {
+    @Test fun fakeIsDeterministicAndUsesAPromptCategoryWithNoKeywords() = runBlocking {
         val fake = FakeSummaryProvider(validator)
         assertEquals(fake.summarize("first"), fake.summarize("second"))
-        assertEquals(prompt.tags.first(), fake.summarize("").tags.single())
+        assertEquals(prompt.categories.first(), fake.summarize("").category)
+        assertTrue(fake.summarize("").keywords.isEmpty())
+        assertEquals(prompt.categories.first(), fake.summarize("").tags.single())
     }
 
     private suspend fun expectCode(code: SummaryErrorCode, call: suspend () -> Unit) {

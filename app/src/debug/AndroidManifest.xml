@@ -2,6 +2,15 @@
 <!-- 디버그 빌드에만 들어가는 설정. 출시용(release) 앱에는 포함되지 않는다. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Android 11+ package visibility for the optional document picker availability check. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.OPEN_DOCUMENT" />
+            <category android:name="android.intent.category.OPENABLE" />
+            <data android:mimeType="*/*" />
+        </intent>
+    </queries>
+
     <application>
         <!-- 에뮬레이터에서 내비 도착을 흉내 내는 테스트용 수신기 -->
         <receiver
@@ -43,14 +52,26 @@
         <activity
             android:name=".debug.SummarySettingsActivity"
             android:exported="false"
+            android:taskAffinity="com.dongbantest.app.debugtools"
             android:label="대화 요약 설정"
             android:theme="@style/Theme.Dongbantest" />
 
-        <!-- 개발 도구(예시 여행 넣기, v3 화면 목록): 런처에 "동반차 디버그" 아이콘으로 따로 보인다 -->
+        <activity
+            android:name=".debug.TalkRecLabActivity"
+            android:exported="false"
+            android:taskAffinity="com.dongbantest.app.debugtools"
+            android:label="인식 실험실"
+            android:theme="@style/Theme.Dongbantest" />
+
+        <!-- 개발 도구: 런처에 "동반차 디버그" 아이콘으로 따로 보인다.
+             taskAffinity 를 따로 둬서, 디버그 화면을 연 뒤 "동반차" 아이콘을 눌러도 본 앱이 열리게 한다. -->
         <activity
             android:name=".debug.V3CatalogActivity"
             android:exported="true"
             android:label="동반차 디버그"
+            android:icon="@mipmap/ic_debug_launcher"
+            android:roundIcon="@mipmap/ic_debug_launcher"
+            android:taskAffinity="com.dongbantest.app.debugtools"
             android:theme="@style/Theme.Dongbantest">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

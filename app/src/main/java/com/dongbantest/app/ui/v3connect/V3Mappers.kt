@@ -193,8 +193,13 @@ fun TripUiState.toDriving(now: Long, capture: CaptureState = CaptureState()): Dr
         asked = asked,
         nowText = if (quiet) "조용히 듣는 중" else null,
         toast = voiceFeedback?.toToast(),
-        // 기록 동의(상시 캡처) 여행이고 녹음 중이며 끝나지 않았을 때만 "이 순간 담기"
-        momentButton = !ended && recordingMode == RecordingMode.ON,
+        // 모드와 실제 캡처가 모두 녹음 중일 때만 저장 동작을 제공한다.
+        momentButton = !ended && recordingMode == RecordingMode.ON && capture.status == CaptureStatus.On,
+        recordingToggleText = if (ended) null else when (recordingMode) {
+            RecordingMode.ON -> "녹음 멈추기"
+            RecordingMode.PAUSED -> "다시 녹음하기"
+            RecordingMode.READY, RecordingMode.OFF -> null
+        },
     )
 }
 
@@ -204,7 +209,7 @@ private fun VoiceFeedback.toToast(): VoiceToastUi = when (kind) {
     VoiceFeedback.Kind.CONFIRM -> VoiceToastUi(ToastKind.Confirm, "‘$heard’로 들었어요.", "잘못 들었다면 이렇게 말해 주세요.", say = "아니야")
 }
 
-/** 주행 중 목록은 LLM 태그만 쓴다(기기 태그 없이 최소). 요약이 끝나지 않았으면 비운다. 2개 제한은 화면이 건다. (I5b) */
+/** 주행 중에는 분류 + 키워드만 쓴다. 기존 저장 배열의 순서도 유지한다. 2개 제한은 화면이 건다. */
 private fun TalkMeta?.llmTagsForDriving(): List<String> =
     if (this?.summaryStatus == SummaryStatus.DONE) tags.orEmpty() else emptyList()
 
@@ -227,6 +232,7 @@ fun TripWithMemories.talks(): List<TalkWithPath> {
             // 녹음 시작 10분 안에 동반이 질문이 있었으면 "동반이 질문"에서 나온 이야기로 본다.
             val clipStart = m.createdAt - (m.durationMs ?: 0L)
             val fromQuestion = questions.any { it in (clipStart - 10 * 60_000L)..m.createdAt }
+            val llmTags = m.talk.llmTagsForDriving()
             TalkWithPath(
                 TalkUi(
                     time = hhmm(clipStart),
@@ -235,10 +241,10 @@ fun TripWithMemories.talks(): List<TalkWithPath> {
                     audio = formatDuration(m.durationMs ?: 0L),
                     fromQuestion = fromQuestion,
                     // talk-rec 연동(I5b): LLM 태그 + 기기 태그(목적지·요일·시간대). 요약 실패·건너뜀·대기는 LLM 태그 없이 기기 태그만.
-                    tags = m.talk?.let { talk ->
-                        val llm = if (talk.summaryStatus == SummaryStatus.DONE) talk.tags.orEmpty() else emptyList()
-                        displayTags(llm, trip.destination, m.createdAt)
+                    tags = m.talk?.let {
+                        displayTags(llmTags, trip.destination, m.createdAt)
                     }.orEmpty(),
+                    category = llmTags.firstOrNull(),
                 ),
                 m.filePath,
             )

@@ -12,6 +12,9 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
 import com.drivediary.talkrec.TalkRec
+import com.drivediary.talkrec.TalkRecDebug
+import com.drivediary.talkrec.TalkDebugEvent
+import com.drivediary.talkrec.DebugBlockTrace
 import com.drivediary.talkrec.block.BlockAssembler
 import com.drivediary.talkrec.block.ConversationBlock
 import com.drivediary.talkrec.block.FinalLine
@@ -20,6 +23,7 @@ import com.drivediary.talkrec.policy.PolicyGate
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collect
+import java.util.UUID
 
 /** Started, non-sticky service. Main owns assembly; IO owns source, inference and ordered sink calls. */
 class ConversationCaptureService : Service() {
@@ -32,11 +36,19 @@ class ConversationCaptureService : Service() {
         class Failed(val session: Long) : Event
         class End(val session: Long) : Event
     }
-    private class Candidate(val block: ConversationBlock, val audio: PcmSlice)
+    private class ClosedBlock(val block: ConversationBlock) {
+        val id = UUID.randomUUID().toString()
+        val trace: DebugBlockTrace? = TalkRecDebug.blockClosed(id, block)
+    }
+    private class Candidate(val closed: ClosedBlock, val audio: PcmSlice) {
+        val block get() = closed.block
+        fun discard() { audio.erase(); closed.trace?.finish() }
+    }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val events = Channel<Event>(128, onUndeliveredElement = { if (it is Event.Audio) it.frame.pcm.fill(0) })
     private val ring = PcmRingBuffer()
-    private val pending = mutableListOf<ConversationBlock>()
+    private val pending = mutableListOf<ClosedBlock>()
+    private val debugTraces = mutableListOf<DebugBlockTrace>()
     private var assembler = BlockAssembler()
     private var request: TalkRec.Request? = null
     private var factory: (() -> AudioSource)? = null
@@ -51,6 +63,7 @@ class ConversationCaptureService : Service() {
     private var lastEnd: Long? = null
     private var route: Int? = null
     private var wake: PowerManager.WakeLock? = null
+    private var stoppedEvent = false
 
     override fun onCreate() {
         super.onCreate()
@@ -94,13 +107,13 @@ class ConversationCaptureService : Service() {
         when (event) {
             is Event.Start -> {
                 endInput()
-                request = event.request; factory = event.request.options.audioSource
+                request = event.request; factory = event.request.options.audioSource; stoppedEvent = false
                 assembler = BlockAssembler(silenceRms = event.request.options.silenceRms)
                 TalkRec.mutableState.value = CaptureState()
                 startInput()
             }
             is Event.Control -> when (event.action) {
-                STOP -> { endInput(); state(CaptureStatus.Off); TalkRec.finished(); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
+                STOP -> { endInput(); debugStopped(); state(CaptureStatus.Off); TalkRec.finished(); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
                 PAUSE -> pauseCapture()
                 RESUME -> if (request != null && TalkRec.state.value.status == CaptureStatus.Paused) startInput()
                 MARK -> if (TalkRec.state.value.status == CaptureStatus.On) {
@@ -129,6 +142,7 @@ class ConversationCaptureService : Service() {
                 }
                 // File source includes a 25 s silent drain. Wait for all closed candidates to finish first.
                 candidates?.close(); processJob?.join()
+                if (TalkRecDebug.enabled) TalkRecDebug.emit(TalkDebugEvent.SourceEnded)
                 pauseCapture()
             }
         }
@@ -165,7 +179,7 @@ class ConversationCaptureService : Service() {
     private fun openRecognition(id: Long) {
         val active = request!!
         val e = ++epoch
-        val queue = Channel<Candidate>(2, onUndeliveredElement = { it.audio.erase() })
+        val queue = Channel<Candidate>(2, onUndeliveredElement = { it.discard() })
         candidates = queue
         processJob = scope.launch(Dispatchers.IO) {
             var judge: ConversationJudge? = null
@@ -176,7 +190,7 @@ class ConversationCaptureService : Service() {
                     catch (_: LinkageError) { Log.w(TAG, "judge unavailable fallback=hourly_budget"); null }
                     catch (_: OutOfMemoryError) { Log.w(TAG, "judge unavailable fallback=hourly_budget"); null }
                 val loaded = judge
-                val processor = CaptureProcessor(active.tripId, policy, active.options.sink, TalkRec.budget,
+                val processor = CaptureProcessor(active.tripId, policy, active.options.sink, active.options.budgetOverride ?: TalkRec.budget,
                     loaded?.let { model -> { texts -> model.judge(texts) } },
                     onJudgeFailure = {
                         try { loaded?.close() } catch (_: Exception) { /* No exception messages. */ }
@@ -186,7 +200,8 @@ class ConversationCaptureService : Service() {
                     // The processor owns/erases this PCM even if the app's signal provider fails.
                     try {
                         val signals = active.options.signals(candidate.block.startMs, candidate.block.endMs)
-                        val delta = withTimeout(30_000) { processor.process(candidate.block, candidate.audio, signals) }
+                        val delta = withTimeout(30_000) { processor.process(candidate.block, candidate.audio, signals,
+                            candidate.closed.id, candidate.closed.trace) }
                         // A durable acknowledgement must update the count even if pause just cancelled this job.
                         // endInput joins this worker before starting/resetting another trip's state.
                         if (delta != 0) withContext(NonCancellable + Dispatchers.Main.immediate) {
@@ -194,7 +209,7 @@ class ConversationCaptureService : Service() {
                             TalkRec.mutableState.value = current.copy(savedCount = (current.savedCount + delta).coerceAtLeast(0))
                             Log.i(TAG, "sink saved=${TalkRec.state.value.savedCount} delta=$delta")
                         }
-                    } finally { candidate.audio.erase() }
+                    } finally { candidate.discard() }
                 }
             } catch (_: TimeoutCancellationException) { events.send(Event.Failed(id)) }
             catch (cancel: CancellationException) { throw cancel }
@@ -232,7 +247,9 @@ class ConversationCaptureService : Service() {
             val current = TalkRec.state.value
             TalkRec.mutableState.value = current.copy(accumulatedCaptureMs = current.accumulatedCaptureMs + 100,
                 frameCount = current.frameCount + 1)
-            assembler.onEnergy(frame.startMs, frame.endMs, frame.rms()).forEach(::closed)
+            val rms = frame.rms()
+            if (TalkRecDebug.enabled) TalkRecDebug.level(rms, frame.endMs)
+            assembler.onEnergy(frame.startMs, frame.endMs, rms).forEach(::closed)
             flushCandidates(frame.endMs)
             if (TalkRec.state.value.frameCount % 100 == 0L) {
                 val s = TalkRec.state.value
@@ -242,7 +259,9 @@ class ConversationCaptureService : Service() {
     }
 
     private fun closed(block: ConversationBlock) {
-        pending += block
+        val closed = ClosedBlock(block)
+        pending += closed
+        closed.trace?.let(debugTraces::add)
         val current = TalkRec.state.value
         TalkRec.mutableState.value = current.copy(blockCount = current.blockCount + 1)
         Log.i(TAG, "block closed reason=${block.reason} lines=${block.lines.size} durationMs=${block.endMs - block.startMs}")
@@ -251,11 +270,12 @@ class ConversationCaptureService : Service() {
     private fun flushCandidates(audioUntil: Long) {
         val iterator = pending.iterator()
         while (iterator.hasNext()) {
-            val block = iterator.next()
+            val closed = iterator.next()
+            val block = closed.block
             if (audioUntil < block.endMs + 2000) continue
             val audio = ring.slice(block.startMs - 3000, block.endMs + 2000)
-            if (candidates?.trySend(Candidate(block, audio))?.isSuccess != true) {
-                audio.erase(); dispatch(Event.Failed(session))
+            if (candidates?.trySend(Candidate(closed, audio))?.isSuccess != true) {
+                audio.erase(); closed.trace?.finish(); dispatch(Event.Failed(session))
             }
             iterator.remove()
         }
@@ -268,7 +288,9 @@ class ConversationCaptureService : Service() {
         lineJob?.cancelAndJoin(); lineJob = null
         candidates?.cancel(); candidates = null
         processJob?.cancelAndJoin(); processJob = null
-        pending.clear(); assembler.reset(); ring.clear(); lastEnd = null; route = null
+        pending.forEach { it.trace?.finish() }; pending.clear()
+        debugTraces.forEach { it.finish() }; debugTraces.clear()
+        assembler.reset(); ring.clear(); lastEnd = null; route = null
     }
 
     private suspend fun endInput() {
@@ -290,6 +312,13 @@ class ConversationCaptureService : Service() {
         Log.w(TAG, "capture error count=${TalkRec.state.value.errorCount}")
     }
 
+    private fun debugStopped() {
+        if (!stoppedEvent) {
+            stoppedEvent = true
+            if (TalkRecDebug.enabled) TalkRecDebug.emit(TalkDebugEvent.Stopped)
+        }
+    }
+
     private fun notification(paused: Boolean): Notification {
         fun action(label: String, command: String, code: Int): Notification.Action {
             val pending = PendingIntent.getService(this, code, Intent(this, ConversationCaptureService::class.java)
@@ -308,7 +337,9 @@ class ConversationCaptureService : Service() {
     override fun onDestroy() {
         TalkRec.switchSource = null
         scope.cancel(); events.cancel(); stt?.close(); candidates?.cancel()
-        pending.clear(); assembler.reset(); ring.clear()
+        pending.forEach { it.trace?.finish() }; pending.clear(); assembler.reset(); ring.clear()
+        debugTraces.forEach { it.finish() }; debugTraces.clear()
+        debugStopped()
         wake?.let { if (it.isHeld) it.release() }; wake = null
         state(CaptureStatus.Off); TalkRec.finished()
         super.onDestroy()

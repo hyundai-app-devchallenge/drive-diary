@@ -57,6 +57,17 @@ adb shell am start --user 10 -n com.dongbantest.app/com.drivediary.talkrec.debug
 
 `TalkRec` 로그는 입력 프레임 수, 확정 줄 수/글자 수/수신 시각, 묶음 닫힘 이유, 점수와 저장 수만 남긴다. 원문·파일 내용·예외 메시지는 남기지 않는다. 20분 입력이면 `frameCount=12000`, 비반복 자동 tail까지 포함하면 `12250`이다. `stt ... sent`, `finals`, `errors`, `block closed reason=SILENCE/LENGTH`를 함께 확인한다. 실제 20분 무누락/무오류 판정은 AVD에서 수행해야 한다.
 
+## 인식 실험실 파일 입력 (I8c)
+
+**동반차 디버그 → 인식 실험실 → 음성 파일**은 앱 내부 `context.filesDir.resolve("lab")`의 wav/m4a/mp3/ogg를 이름순으로 표시한다. PC에서 아래 스크립트로 넣은 뒤 **새로고침 → 파일 선택 → 시작**한다. `소리도 같이 재생`으로 같은 변환 PCM을 들을 수 있다. 파일 관리자가 없는 Pleos AVD에서도 동작하며, `다른 파일 고르기`는 시스템 선택기를 지원할 때만 활성화된다.
+
+```powershell
+.\talkrec\tools\push-lab-audio.ps1 -Path "C:\audio" -User 10
+.\talkrec\tools\push-lab-audio.ps1 -Path "C:\audio\sample.wav" -Serial emulator-5554 -User 10
+```
+
+PowerShell 5.1+, PATH의 `adb`, 해당 Android user에 설치된 **debug 빌드(run-as 가능)**가 필요하다. 폴더는 바로 아래 파일만 복사하며 같은 이름은 덮어쓴다. `/data/local/tmp/<이름>`에 push → chmod 644 → `run-as com.dongbantest.app --user 10 mkdir -p files/lab` → 명시적 파일명으로 cp → 임시 파일 삭제 후 내부 목록을 출력한다. 앱 삭제/데이터 초기화 시 내부 음성도 삭제된다. 실제 음성은 로컬 시험 자료로만 관리하고 APK/assets/repo에 넣지 않는다. 앱은 파일명·경로를 로그로 남기지 않으며 추가 저장소 권한을 요청하지 않는다.
+
 ## JVM 정책 패리티 재생성
 
 ```powershell

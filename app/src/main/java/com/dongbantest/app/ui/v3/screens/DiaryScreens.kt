@@ -373,7 +373,9 @@ private fun DiaryTalks(state: DiaryUiState, onPlay: (TalkUi) -> Unit) {
                 if (talk.fromQuestion || talk.tags.isNotEmpty()) {
                     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                         if (talk.fromQuestion) Tag(state.fromQuestionTag, small = true)
-                        talk.tags.take(3).forEach { Tag(it, small = true) }
+                        talk.tags.take(3).forEachIndexed { index, tag ->
+                            Tag(tag, small = true, category = index == 0 && tag == talk.category)
+                        }
                     }
                 }
             }
