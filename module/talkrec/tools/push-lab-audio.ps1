@@ -3,7 +3,7 @@
 .SYNOPSIS
 Copies local test audio into the debug app's INTERNAL files/lab (no DocumentsUI needed).
 .EXAMPLE
-.\talkrec\tools\push-lab-audio.ps1 -Path C:\audio -Serial emulator-5554 -User 10
+.\module\talkrec\tools\push-lab-audio.ps1 -Path C:\audio -Serial emulator-5554 -User 10
 #>
 [CmdletBinding()]
 param(

@@ -1,7 +1,7 @@
 """Export invented T56 cases with Python gate outputs, never private transcripts.
 
 Run with the reference venv's python -B, passing --reference <model-create>.
-All writes go beneath this worktree's talkrec/src/test/resources/policy.
+All writes go beneath this worktree's module/talkrec/src/test/resources/policy.
 """
 import argparse
 import hashlib

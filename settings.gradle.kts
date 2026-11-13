@@ -32,5 +32,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "Dongbantest"
 include(":app")
-// 대화 기록 라이브러리 모듈을 등록한다.
+// 대화 기록 라이브러리 모듈. 폴더는 module/talkrec, Gradle 이름은 :talkrec이다.
 include(":talkrec")
+project(":talkrec").projectDir = file("module/talkrec")

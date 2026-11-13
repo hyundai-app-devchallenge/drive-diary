@@ -1,4 +1,22 @@
-# talkrec 캡처 (I3)
+# talkrec 모듈
+
+여행 중 대화를 기록하는 Android 라이브러리 모듈이다. 폴더는 `module/talkrec`, Gradle 이름은 `:talkrec`이다(`settings.gradle.kts`의 `projectDir`). 앱은 `implementation(project(":talkrec"))`로 쓴다.
+
+저장소 루트의 `talk-rec/`는 이 모듈과 다르다. 모델·규칙·프롬프트를 만들고 측정하는 연구 공간이며 Gradle에 들어가지 않는다. `src/main/assets`의 `m1/`(판정 모델), `policy/rules.json`(정책 규칙), `prompts/`(요약·이야기 묶기 프롬프트)는 `talk-rec/model-create`에서 만든 결과를 옮긴 것이므로 여기서 직접 고치지 않는다. 설계와 작업별 기록은 [talk-rec/docs/app-integration](../../talk-rec/docs/app-integration/DESIGN.md)에 있다.
+
+| 소스 묶음 | 내용 |
+|---|---|
+| `src/main` | 캡처·묶음·정책·판정·조각 저장·요약 (패키지 구성은 [루트 README](../../README.md#대화-기록-모듈talkrec-안)) |
+| `src/debug` | ADB 디버그 수신기·시작 Activity, 시험용 agy 중계 요약 제공자 |
+| `src/release` | 요약 제공자 목록(Cloudflare / Fake만) |
+| `src/test`, `testDebug`, `testRelease` | JVM 단위 테스트. `talkrec.assetsDir`로 실제 assets를 읽는다 |
+| `tools/` | 실험실 음성 넣기(`push-lab-audio.ps1`), 정책 패리티 자료 재생성(`export-policy-cases.py`) |
+
+```powershell
+.\gradlew.bat :talkrec:testDebugUnitTest
+```
+
+## 캡처 (I3)
 
 앱은 녹음 동의와 `RECORD_AUDIO` 런타임 권한을 받은 뒤, 화면이 보일 때 시작한다.
 
@@ -62,8 +80,8 @@ adb shell am start --user 10 -n com.dongbantest.app/com.drivediary.talkrec.debug
 **동반차 디버그 → 인식 실험실 → 음성 파일**은 앱 내부 `context.filesDir.resolve("lab")`의 wav/m4a/mp3/ogg를 이름순으로 표시한다. PC에서 아래 스크립트로 넣은 뒤 **새로고침 → 파일 선택 → 시작**한다. `소리도 같이 재생`으로 같은 변환 PCM을 들을 수 있다. 파일 관리자가 없는 Pleos AVD에서도 동작하며, `다른 파일 고르기`는 시스템 선택기를 지원할 때만 활성화된다.
 
 ```powershell
-.\talkrec\tools\push-lab-audio.ps1 -Path "C:\audio" -User 10
-.\talkrec\tools\push-lab-audio.ps1 -Path "C:\audio\sample.wav" -Serial emulator-5554 -User 10
+.\module\talkrec\tools\push-lab-audio.ps1 -Path "C:\audio" -User 10
+.\module\talkrec\tools\push-lab-audio.ps1 -Path "C:\audio\sample.wav" -Serial emulator-5554 -User 10
 ```
 
 PowerShell 5.1+, PATH의 `adb`, 해당 Android user에 설치된 **debug 빌드(run-as 가능)**가 필요하다. 폴더는 바로 아래 파일만 복사하며 같은 이름은 덮어쓴다. `/data/local/tmp/<이름>`에 push → chmod 644 → `run-as com.dongbantest.app --user 10 mkdir -p files/lab` → 명시적 파일명으로 cp → 임시 파일 삭제 후 내부 목록을 출력한다. 앱 삭제/데이터 초기화 시 내부 음성도 삭제된다. 실제 음성은 로컬 시험 자료로만 관리하고 APK/assets/repo에 넣지 않는다. 앱은 파일명·경로를 로그로 남기지 않으며 추가 저장소 권한을 요청하지 않는다.
@@ -71,7 +89,7 @@ PowerShell 5.1+, PATH의 `adb`, 해당 Android user에 설치된 **debug 빌드(
 ## JVM 정책 패리티 재생성
 
 ```powershell
-C:\github\drive-diary\talk-rec\model-create\.venv\Scripts\python.exe -X utf8 -B talkrec/tools/export-policy-cases.py --reference C:\github\drive-diary\talk-rec\model-create
+C:\github\drive-diary\talk-rec\model-create\.venv\Scripts\python.exe -X utf8 -B module/talkrec/tools/export-policy-cases.py --reference C:\github\drive-diary\talk-rec\model-create
 ```
 
 `synth/policy_cases.py`가 직접 지은 자료임을 T56 문서와 소스에서 확인했다. 기준은 생성기의 목표 정답이 아니라 **Python `policy.gate`가 실제 반환한 값**이다. T56 2,140건 + 경계/앱 신호 52건에서 block/drop_lines/retro_delete/reasons 전체를 비교한다. 규칙 파일 SHA256도 비교한다. 실제 전사는 이 자료에 없다.
