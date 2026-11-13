@@ -107,6 +107,8 @@ SummaryWorker (WorkManager, 네트워크 있을 때)                 ── 우�
 
 **제공자**: `SummaryProvider` 인터페이스 뒤에 둔다. 설정 화면(아래)에서 고른다.
 
+> **2026-11-13 변경 (I12, T63)**: 기본 제공자를 Gemini에서 **Cloudflare Workers AI `@cf/google/gemma-4-26b-a4b-it`**(`CloudflareSummaryProvider`)로 바꾸고 Gemini 제공자와 키 저장을 지웠다. 설정 항목은 Cloudflare 계정 ID와 API 토큰이다. agy 중계는 debug 빌드에만 시험용으로 남고, release 제공자는 Cloudflare / Fake뿐이다. 아래 Gemini 내용은 처음 설계 기록이다. 근거와 측정은 [T63](../model-create/T63-cloudflare-relay.md), 구현은 [I12](I12-cloudflare-provider.md)에 있다. 설정 화면이 debug 전용이라 **release 빌드에서는 키를 넣을 방법이 아직 없다**.
+
 | 구현 | 쓰임 |
 | --- | --- |
 | `GeminiSummaryProvider` (기본값) | REST `generateContent` + JSON 응답 형식. 우리가 이미 Gemini 3.8 Flash로 Pleos 전사 판정(dev 0.919)을 검증했고 지시문 자산이 있다 |
@@ -156,7 +158,8 @@ SummaryWorker (WorkManager, 네트워크 있을 때)                 ── 우�
 ## 8. 저장소·브랜치·협업
 
 - 브랜치: `feat/mapbox-map`에서 **`feat/talk-rec-integration`**을 만든다. 데모가 돌면 PR로 팀과 검토한다.
-- 우리 쪽 새 파일: `talkrec/` 모듈 전체, M1 자산(`model.int8.onnx` 14.7MB, `vocab.txt`, `threshold.json`, `rules.json`)은 `talkrec/src/main/assets/`. 모델 파일 크기 때문에 **Git LFS 여부를 팀과 정한다**.
+- 우리 쪽 새 파일: `module/talkrec/` 모듈 전체, M1 자산(`model.int8.onnx` 14.7MB, `vocab.txt`, `threshold.json`, `rules.json`)은 `module/talkrec/src/main/assets/`. 모델 파일 크기 때문에 **Git LFS 여부를 팀과 정한다**.
+- 모듈 폴더는 처음에 저장소 루트의 `talkrec/`였다. 연구 공간 `talk-rec/`와 헷갈리지 않도록 2026-11-13에 `module/talkrec/`로 옮겼다. Gradle 이름은 그대로 `:talkrec`이다(`settings.gradle.kts`의 `projectDir`). I1~I12 작업 문서의 `talkrec/...` 경로는 옮기기 전 기록이므로 `module/talkrec/...`로 읽는다.
 - 팀원 파일에서 고칠 곳(최소): `settings.gradle.kts`(모듈 추가), `app/build.gradle.kts`(의존성), `AndroidManifest.xml`(서비스·`FOREGROUND_SERVICE_MICROPHONE`·`pleos.car.permission.STT_SERVICE`), `AppContainer`(연결), `DongbanDatabase`(버전 5, `talk_meta`), `Models.kt`(`TalkMeta`), `V3Mappers`(§6), S03 동의 화면 문구.
 - 의존성 추가: `onnxruntime-android`, `androidx.work`, Pleos SpeechToText SDK, HTTP(팀 앱에 이미 있는 것을 쓰고, 없으면 `HttpURLConnection`).
 
