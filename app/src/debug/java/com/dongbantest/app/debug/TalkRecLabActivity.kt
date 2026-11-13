@@ -463,7 +463,7 @@ private fun LabScreen(
                 ui.filesError -> Text("실험실 폴더를 읽을 수 없어요. 새로고침해 주세요.")
                 ui.files.isEmpty() -> Text(
                     "files/lab에 음성 파일이 없어요. PC에서 추가한 뒤 새로고침하세요:\n" +
-                        ".\\talkrec\\tools\\push-lab-audio.ps1 -Path \"C:\\audio\" -User 10",
+                        ".\\module\\talkrec\\tools\\push-lab-audio.ps1 -Path \"C:\\audio\" -User 10",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 else -> LazyColumn(Modifier.fillMaxWidth().height(140.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

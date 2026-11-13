@@ -33,6 +33,43 @@
 
 회의에서 나온 구상이며 제출용 최종 범위는 미정입니다. 장시간 녹음·사진 전송·AI 연동은 구현 가능 여부와 방식을 검토 중입니다.
 
+## 저장소 구조
+
+```text
+drive-diary/
+├── app/              Android 앱: 화면, Room, 차량·위치, 여행 흐름
+├── module/
+│   └── talkrec/      대화 기록 라이브러리 모듈 (Gradle 이름 :talkrec), 앱에 함께 빌드됨
+├── talk-rec/         대화 기록 연구 공간: 판정 모델 제작, STT 실험, 설계·작업 문서 (앱 빌드에 들어가지 않음)
+├── docs/             앱 실행·검증 안내, 화면 연동 문서
+└── .github/          이슈·PR 템플릿
+```
+
+이름이 비슷한 두 폴더는 역할이 다릅니다.
+
+| 폴더 | 무엇인가 | 누가 보나 |
+|---|---|---|
+| `module/talkrec` | 앱에 들어가는 대화 기록 코드. `settings.gradle.kts`가 `:talkrec`으로 등록하고 `app`이 `implementation(project(":talkrec"))`로 씁니다 | 앱 작업자 |
+| `talk-rec` | 그 코드에 들어갈 판정 모델·규칙·프롬프트를 만들고 측정하는 Python·실험 공간. Gradle에 포함되지 않습니다 | 모델·연구 작업자 |
+
+- `module/talkrec/src/main/assets`의 판정 모델(`m1/`), 정책 규칙(`policy/rules.json`), 요약 프롬프트(`prompts/`)는 `talk-rec/model-create`에서 만든 결과를 옮긴 것입니다. 앱 쪽에서 직접 고치지 말고 `talk-rec`에서 다시 만들어 옮깁니다.
+- 모듈의 사용법과 디버그 명령은 [module/talkrec/README.md](module/talkrec/README.md), 앱 연동 설계와 작업별 기록(I번호)은 [talk-rec/docs/app-integration](talk-rec/docs/app-integration/DESIGN.md)에 있습니다.
+
+### 대화 기록 모듈(`:talkrec`) 안
+
+| 패키지 | 하는 일 |
+|---|---|
+| `TalkRec.kt` | 앱이 부르는 입구: `start`, `pause`, `resume`, `markMoment`, `stop`, 상태 `StateFlow` |
+| `capture/` | 포그라운드 서비스, 마이크 입력, Pleos STT 연속 전사, 최근 3분 PCM 버퍼 |
+| `block/` | 전사 줄을 대화 묶음으로 나눔 (침묵 20초 또는 90초) |
+| `policy/` | 기록 거부·음성 명령 등 규칙 (`rules.json`) |
+| `judge/` | 기기 안 판정 모델(M1, ONNX)로 남길 대화인지 판단 |
+| `clip/` | 남길 묶음을 음성 조각(.m4a)으로 저장 |
+| `sink/` | 저장한 조각을 앱에 넘기는 `TalkSink` 인터페이스 |
+| `summary/` | 외부 LLM으로 제목·태그를 붙이고 이어지는 조각을 이야기로 묶음, `SummaryWorker`, 요약 설정 저장소 |
+
+앱 쪽 연결 지점은 `app/.../data/talk/`(`TalkSinkImpl`, `TalkRecordingController`, `RepositorySummaryTarget`, `ClipPersistence`), `DongbanApplication`, `ui/v3connect`이고, 디버그 전용 화면 `app/src/debug/.../debug/`(`SummarySettingsActivity`, `TalkRecLabActivity`)가 있습니다.
+
 ## 현재 Android MVP 구현
 
 앱은 Jetpack Compose로 화면을 구성하고 Room에 여행·위치·메모·음성·사진 기록을 저장합니다. 여행 시작·종료, 주행 기록과 이동 타임라인, 음성 메모 녹음·재생, 사진 첨부를 지원합니다.
@@ -43,7 +80,8 @@
 - Pleos NaviHelper로 내비 목적지·남은 거리·도착 신호를 받아 길 리본 진행률과 도착 시 여행 자동 종료에 사용합니다. 경로 안내 자체는 차량 내비가 맡습니다.
 - 다이어리와 기록 지도는 Mapbox 지도(Light 스타일, 한국어 지명)에 실제 주행 경로를 여행별 색으로 그립니다. Mapbox 공개 토큰이 필요합니다(아래 "Mapbox 토큰 넣기").
 - AAOS 주행 제한 API로 주행 중 글쓰기·사진 조작과 기록 열람을 제한합니다.
-- STT·TTS, 음성 명령 인식, 침묵 감지 및 AI 다이어리 정리는 구현되지 않았습니다. 화면의 음성 명령 예시는 누르면 그 말을 한 것으로 처리하는 시연용입니다. 기획 단계 제안과 실제 구현을 구분해 주세요.
+- **여행 중 대화 기록**(`:talkrec` 모듈): 녹음 동의를 받은 여행에서 대화를 Pleos STT(기기 안)로 글로 옮기고, 기기 안 판정 모델로 남길 만한 대화만 음성 조각으로 저장합니다. 외부 AI 전송에도 동의하면 저장한 조각의 전사 글을 Cloudflare Workers AI(Gemma 4)로 보내 한 줄 제목·태그를 붙이고, 이어지는 조각을 하나의 이야기로 묶습니다. 키가 필요합니다(아래 "Cloudflare 키 넣기").
+- TTS, 음성 명령 인식, 침묵 감지 질문, 여행 전체 다이어리 문장 정리는 구현되지 않았습니다. 화면의 음성 명령 예시는 누르면 그 말을 한 것으로 처리하는 시연용입니다. 기획 단계 제안과 실제 구현을 구분해 주세요.
 
 ### Android에서 실행
 
@@ -72,6 +110,20 @@ POSIX 환경에서 실행 권한 오류가 나면 `sh ./gradlew installDebug`를
 - Android Studio의 "Android" 보기에서는 **Gradle Scripts → local.properties**에 있습니다.
 - Mapbox는 사용량 기반 요금제이며 매달 무료 사용량이 있습니다. 토큰이 밖으로 새어 나갔다면 Tokens 페이지에서 교체(Rotate)합니다.
 - Pleos 차량에는 Google Play 서비스가 없을 수 있어, Mapbox SDK의 Google Play 의존성(`play-services-cronet`)은 빼고 Mapbox 기본 HTTP 클라이언트를 사용합니다.
+
+#### Cloudflare 키 넣기 (대화 요약)
+
+대화 조각의 제목·태그와 이야기 묶기는 Cloudflare Workers AI의 `@cf/google/gemma-4-26b-a4b-it` 모델을 씁니다. 키가 없어도 대화 기록과 음성 조각 저장은 되지만 제목·태그가 붙지 않습니다.
+
+1. Cloudflare 대시보드에서 **계정 ID**(32자리)를 확인하고, **My Profile → API Tokens**에서 Workers AI 권한이 있는 API 토큰을 만듭니다.
+2. debug 빌드를 설치하면 런처에 **동반차 디버그** 아이콘이 따로 생깁니다. **동반차 디버그 → 대화 요약 설정**에서 제공자를 Cloudflare로 두고 계정 ID와 토큰을 각각 저장합니다.
+3. **연결 시험**을 눌러 성공하는지 확인합니다. 지어낸 두 줄 대화만 보냅니다.
+
+- 키는 기기 안에만 저장됩니다. 계정 ID는 앱 설정 파일에, 토큰은 Android Keystore로 암호화해 둡니다. 앱을 다시 설치(`installDebug`)해도 남고, 앱을 지우거나 데이터를 지우면 사라집니다. 백업·기기 이전에서는 제외됩니다.
+- 화면에는 토큰 끝 4자리만 보입니다. 키를 코드나 채팅, 이슈에 붙여 넣지 마세요.
+- Pleos AVD에서 PC 클립보드 붙여넣기가 안 되면 입력칸을 누른 뒤 PC에서 `adb shell input text <값>`으로 넣습니다.
+- 대화 요약 설정 화면은 **debug 빌드에만** 있습니다. release 빌드는 기본 제공자가 Cloudflare지만 키를 넣을 화면이 없어 지금은 요약이 동작하지 않습니다.
+- 정차 중에만 설정을 바꿀 수 있습니다.
 
 ### 위치·정차·도착 기준
 
