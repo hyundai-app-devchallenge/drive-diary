@@ -9,174 +9,163 @@ import org.junit.Test
 class SummaryProvidersTest {
     private val prompt = summaryPrompt()
     private val validator = SummaryValidator(prompt.categories)
-
-    @Test fun geminiUsesHeaderOnlyKeyAndCorrectJsonShape() = runBlocking {
-        val transcript = "지어낸 대화 첫 줄\n두 번째 줄"
-        val key = "test-private-key"
-        var captured: SummaryHttpRequest? = null
-        val provider = GeminiSummaryProvider(prompt, key, http = { request ->
-            captured = request
-            SummaryHttpResponse(200, geminiEnvelope(validSummaryJson(), "gemini-3.8-flash-001"))
-        })
-        val result = provider.summarize(transcript)
-        validator.validate(result)
-        assertEquals("추억", result.category)
-        assertEquals(listOf("만두", "신발"), result.keywords)
-        assertEquals(listOf("추억", "만두", "신발"), result.tags)
-        val request = captured!!
-        assertEquals("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent", request.url)
-        assertEquals(mapOf("x-goog-api-key" to key), request.headers)
-        assertFalse(request.url.contains(key))
-        assertFalse(request.body.contains(key))
-        assertFalse(request.toString().contains(key))
-        assertFalse(request.toString().contains(transcript))
-        assertEquals(30_000, request.readTimeoutMs)
-        val json = JSONObject(request.body)
-        assertEquals(setOf("systemInstruction", "contents", "generationConfig"), json.keys().asSequence().toSet())
-        assertEquals(prompt.systemInstruction, json.getJSONObject("systemInstruction").getJSONArray("parts").getJSONObject(0).getString("text"))
-        val user = json.getJSONArray("contents").getJSONObject(0)
-        assertEquals("user", user.getString("role"))
-        assertEquals(transcript, user.getJSONArray("parts").getJSONObject(0).getString("text"))
-        val config = json.getJSONObject("generationConfig")
-        assertEquals("application/json", config.getString("responseMimeType"))
-        val schema = config.getJSONObject("responseJsonSchema")
-        val properties = schema.getJSONObject("properties")
-        val categoryEnum = properties.getJSONObject("category").getJSONArray("enum")
-        assertEquals(prompt.categories, (0 until categoryEnum.length()).map { categoryEnum.getString(it) })
-        val keywords = properties.getJSONObject("keywords")
-        assertEquals(0, keywords.getInt("minItems"))
-        assertEquals(2, keywords.getInt("maxItems"))
-        assertEquals(1, keywords.getJSONObject("items").getInt("minLength"))
-        assertEquals(6, keywords.getJSONObject("items").getInt("maxLength"))
-        assertFalse(keywords.getJSONObject("items").has("enum"))
-        val required = schema.getJSONArray("required")
-        assertEquals(setOf("title", "category", "keywords", "kind"),
-            (0 until required.length()).map { required.getString(it) }.toSet())
-        assertFalse(properties.has("tags"))
-        assertEquals("gemini-3.8-flash-001", provider.modelName)
+    private val storyPrompt = SummaryPrompt(java.io.File(System.getProperty("talkrec.assetsDir") ?: "src/main/assets",
+        "prompts/story_split.md").readText())
+    private fun provider(http: SummaryHttpClient, model: String = SummaryDefaults.CLOUDFLARE_MODEL) =
+        CloudflareSummaryProvider(prompt, TEST_ACCOUNT_ID, "private-test-token", model, http, storyPrompt)
+    private suspend fun request(provider: SummaryProvider, story: Boolean) {
+        if (story) provider.storySplit(listOf("first", "second")) else provider.summarize("first\nsecond")
     }
 
-    @Test fun geminiInvalidOutputRetriesExactlyOnceThroughTheSharedRunner() = runBlocking {
+    @Test fun cloudflareMapsBothPromptsInputsSchemasAndBearerHeader() = runBlocking {
+        for (story in listOf(false, true)) {
+            var captured: SummaryHttpRequest? = null
+            val selected = provider({ captured = it
+                SummaryHttpResponse(200, cloudflareEnvelope(if (story) validStoryJson() else validSummaryJson())) })
+            request(selected, story)
+            val req = captured!!
+            assertEquals("https://api.cloudflare.com/client/v4/accounts/$TEST_ACCOUNT_ID/ai/v1/chat/completions", req.url)
+            assertEquals(mapOf("Authorization" to "Bearer private-test-token"), req.headers)
+            assertEquals(60_000, req.readTimeoutMs)
+            assertFalse(req.body.contains("private-test-token"))
+            assertFalse(req.toString().contains(TEST_ACCOUNT_ID))
+            assertFalse(req.toString().contains("first"))
+            assertFalse(selected.toString().contains("private-test-token"))
+            val body = JSONObject(req.body)
+            assertEquals(SummaryDefaults.CLOUDFLARE_MODEL, body.getString("model"))
+            assertEquals(1024, body.getInt("max_completion_tokens"))
+            assertEquals(0.2, body.getDouble("temperature"), 0.0)
+            val messages = body.getJSONArray("messages")
+            assertEquals(2, messages.length())
+            assertEquals("system", messages.getJSONObject(0).getString("role"))
+            assertEquals((if (story) storyPrompt else prompt).systemInstruction, messages.getJSONObject(0).getString("content"))
+            assertEquals("user", messages.getJSONObject(1).getString("role"))
+            assertEquals(if (story) "[1]\nfirst\n\n[2]\nsecond" else "first\nsecond", messages.getJSONObject(1).getString("content"))
+            val format = body.getJSONObject("response_format")
+            assertEquals("json_schema", format.getString("type"))
+            val props = format.getJSONObject("json_schema").getJSONObject("properties")
+            assertTrue(props.has(if (story) "stories" else "category"))
+            // Workers AI xgrammar rejects these; validators enforce them instead (T63).
+            val schemaText = format.getJSONObject("json_schema").toString()
+            for (banned in listOf("pattern", "minLength", "maxLength", "anyOf", "const")) assertFalse(banned, schemaText.contains("\"$banned\""))
+            assertEquals(false, body.getJSONObject("chat_template_kwargs").getBoolean("enable_thinking"))
+            if (!story) {
+                assertFalse(props.getJSONObject("keywords").getJSONObject("items").has("enum"))
+                assertEquals(prompt.categories, props.getJSONObject("category").getJSONArray("enum").let { a -> List(a.length()) { a.getString(it) } })
+            }
+            assertEquals(SummaryDefaults.CLOUDFLARE_MODEL, selected.modelName)
+        }
+    }
+
+    @Test fun acceptsPlainFencedAndThinkPrefixedObjectsForBothOperations() = runBlocking {
+        for (story in listOf(false, true)) {
+            val answer = if (story) validStoryJson() else validSummaryJson()
+            for (text in listOf(answer, "```json\n$answer\n```", "<think>{\"private\":true}</think>\nHere is the result:\n$answer",
+                "prose {not json}\n```json\n$answer\n``` trailing text"))
+                request(provider({ SummaryHttpResponse(200, cloudflareEnvelope(text)) }), story)
+        }
+        val braces = "{\"title\":\"a } { \\\" b\"}"
+        assertEquals(braces, firstSummaryJsonObject("prefix $braces suffix"))
+        assertEquals("{}", firstSummaryJsonObject("{} ${validSummaryJson()}"))
+    }
+
+    @Test fun jsonModeRejectionFallsBackOnceAndIsRememberedAcrossInstancesAndOperations() = runBlocking {
+        for ((index, error) in listOf("response_format is unsupported", "JSON mode not supported", "json_schema not supported").withIndex()) {
+            val model = "@cf/test/fallback-$index"
+            val requests = mutableListOf<SummaryHttpRequest>()
+            val http = SummaryHttpClient {
+                requests += it
+                if (requests.size == 1) SummaryHttpResponse(400, JSONObject().put("success", false)
+                    .put("errors", JSONArray().put(JSONObject().put("message", error))).toString())
+                else SummaryHttpResponse(200, cloudflareEnvelope(if (requests.size == 3) validStoryJson() else validSummaryJson(), model))
+            }
+            provider(http, model).summarize("invented")
+            provider(http, model).storySplit(listOf("first", "second"))
+            assertEquals(3, requests.size)
+            assertTrue(JSONObject(requests[0].body).has("response_format"))
+            assertTrue(requests.drop(1).all { !JSONObject(it.body).has("response_format") })
+            assertEquals(JSONObject(requests[0].body).apply { remove("response_format") }.toString(), JSONObject(requests[1].body).toString())
+        }
+    }
+
+    @Test fun fallbackIsBoundedEvenIfSecondResponseAlsoRejectsJsonMode() = runBlocking {
         var calls = 0
-        val provider = GeminiSummaryProvider(prompt, "test-key", http = {
-            calls++; SummaryHttpResponse(200, geminiEnvelope("{}"))
-        })
-        expectCode(SummaryErrorCode.INVALID_OUTPUT) { validatedSummary(validator) { provider.summarize("invented") } }
+        val selected = provider({ calls++; SummaryHttpResponse(422, "response_format unsupported") }, "@cf/test/bounded")
+        expectCode(SummaryErrorCode.HTTP_ERROR) { selected.summarize("invented") }
         assertEquals(2, calls)
     }
 
-    @Test fun geminiParsesFencesAndIgnoresThoughtParts() = runBlocking {
-        val envelope = JSONObject(geminiEnvelope("```json\n${validSummaryJson()}\n```"))
-        val parts = envelope.getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts")
-        parts.put(JSONObject().put("thought", true).put("text", "not output"))
-        val provider = GeminiSummaryProvider(prompt, "test-key", http = { SummaryHttpResponse(200, envelope.toString()) })
-        assertEquals("story", provider.summarize("invented").kind)
-    }
-
-    @Test fun relaySendsOnlyTranscriptAndModelAndParsesActualModel() = runBlocking {
-        var request: SummaryHttpRequest? = null
-        val answer = JSONObject(validSummaryJson()).put("model", "gemini-3.8-flash-low").put("elapsed_ms", 123)
-            .put("keywords", JSONArray(listOf(" 만두 ", "RC카")))
-            .put("tags", JSONArray(listOf("ignored", "wrong", "legacy")))
-        val provider = AgyBridgeSummaryProvider(validator, http = {
-            request = it; SummaryHttpResponse(200, answer.toString())
-        })
-        val transcript = "첫 줄\n다음 줄"
-        val result = validator.validate(provider.summarize(transcript))
-        assertEquals("추억", result.category)
-        assertEquals(listOf("만두", "RC카"), result.keywords)
-        assertEquals(listOf("추억", "만두", "RC카"), result.tags)
-        assertEquals("http://10.0.2.2:8771/summarize", request!!.url)
-        assertTrue(request!!.headers.isEmpty())
-        val json = JSONObject(request!!.body)
-        assertEquals(setOf("transcript", "model"), json.keys().asSequence().toSet())
-        assertEquals(transcript, json.getString("transcript"))
-        assertEquals(SummaryDefaults.AGY_MODEL, json.getString("model"))
-        assertEquals("gemini-3.8-flash-low", provider.modelName)
-    }
-
-    @Test fun relayValidationExhaustionDoesNotMultiplyServerRetries() = runBlocking {
+    @Test fun storyFallbackAndFormatRetryHaveIndependentBounds() = runBlocking {
         var calls = 0
-        val provider = AgyBridgeSummaryProvider(validator, http = {
-            calls++; SummaryHttpResponse(502, "{\"error\":\"invalid_output\"}")
-        })
-        expectCode(SummaryErrorCode.INVALID_OUTPUT) { validatedSummary(validator) { provider.summarize("invented") } }
-        assertEquals(1, calls)
-    }
-
-    @Test fun relayMalformedSuccessfulResponsesHaveOneRetry() = runBlocking {
-        for (answer in listOf("[]", "{}", JSONObject(validSummaryJson()).put("model", "bad/model").toString())) {
-            var calls = 0
-            val provider = AgyBridgeSummaryProvider(validator, http = { calls++; SummaryHttpResponse(200, answer) })
-            expectCode(SummaryErrorCode.INVALID_OUTPUT) { validatedSummary(validator) { provider.summarize("invented") } }
-            assertEquals(2, calls)
+        val selected = provider({ request ->
+            calls++
+            assertEquals(calls == 1, JSONObject(request.body).has("response_format"))
+            if (calls == 1) SummaryHttpResponse(422, "response_format is not supported")
+            else SummaryHttpResponse(200, cloudflareEnvelope("{}"))
+        }, "@cf/test/story-fallback-format")
+        expectCode(SummaryErrorCode.INVALID_OUTPUT) {
+            validatedStorySplit(StorySplitValidator(storyPrompt.categories), 2) { selected.storySplit(listOf("first", "second")) }
         }
+        assertEquals(3, calls) // Schema request, fallback, single invalid-output re-request.
     }
 
-    @Test fun bothProvidersRequireMixedShapeAndApplyTheSameKeywordValidation() = runBlocking {
-        val good = JSONObject(validSummaryJson())
-        val invalidAnswers = listOf(
-            "{\"title\":\"옛 출력\",\"tags\":[\"추억\"],\"kind\":\"story\"}",
-            JSONObject(good.toString()).put("category", "unknown").toString(),
-            JSONObject(good.toString()).put("keywords", JSONArray(listOf("만두", "신발", "라켓"))).toString(),
-            JSONObject(good.toString()).put("keywords", JSONArray(listOf("가나다라마바사"))).toString(),
-            JSONObject(good.toString()).put("keywords", JSONArray(listOf("ABC", "abc"))).toString(),
-            JSONObject(good.toString()).put("keywords", JSONArray(listOf("123"))).toString(),
-            JSONObject(good.toString()).put("keywords", JSONArray(listOf("학교"))).toString(),
-        )
-        for (relay in listOf(false, true)) {
-            for (answer in invalidAnswers) {
+    @Test fun errorsMapToSafeCodesWithoutRetryForBothOperations() = runBlocking {
+        for (story in listOf(false, true)) {
+            for ((status, code) in listOf(401 to SummaryErrorCode.AUTH, 403 to SummaryErrorCode.AUTH,
+                429 to SummaryErrorCode.RATE_LIMIT, 500 to SummaryErrorCode.NETWORK, 502 to SummaryErrorCode.NETWORK,
+                503 to SummaryErrorCode.NETWORK, 408 to SummaryErrorCode.NETWORK, 400 to SummaryErrorCode.HTTP_ERROR)) {
                 var calls = 0
-                val provider: SummaryProvider = if (relay) AgyBridgeSummaryProvider(validator, http = {
-                    calls++; SummaryHttpResponse(200, JSONObject(answer).put("model", SummaryDefaults.AGY_MODEL).toString())
-                }) else GeminiSummaryProvider(prompt, "test-key", http = {
-                    calls++; SummaryHttpResponse(200, geminiEnvelope(answer))
-                })
-                expectCode(SummaryErrorCode.INVALID_OUTPUT) { validatedSummary(validator) { provider.summarize("invented") } }
+                val selected = provider({ calls++; SummaryHttpResponse(status, if (status == 400) "bad model" else "JSON mode: private error") })
+                expectCode(code) { request(selected, story) }
+                assertEquals(1, calls)
+                assertEquals(code in setOf(SummaryErrorCode.NETWORK, SummaryErrorCode.RATE_LIMIT), code.retryable)
+            }
+        }
+        expectCode(SummaryErrorCode.NETWORK) { provider({ throw SummaryException(SummaryErrorCode.TIMEOUT) }).summarize("invented") }
+        expectCode(SummaryErrorCode.HTTP_ERROR) { provider({ SummaryHttpResponse(200, "{\"success\":false,\"errors\":[]}") }).summarize("invented") }
+    }
+
+    @Test fun invalidContentAndTruncationGetOnlyOneFormatRerequest() = runBlocking {
+        for (story in listOf(false, true)) {
+            for (content in listOf("{}", "[]", "no answer", "{\"title\":\"old\",\"tags\":[],\"kind\":\"story\"}")) {
+                var calls = 0
+                val selected = provider({ calls++; SummaryHttpResponse(200, cloudflareEnvelope(content)) })
+                expectCode(SummaryErrorCode.INVALID_OUTPUT) {
+                    if (story) validatedStorySplit(StorySplitValidator(storyPrompt.categories), 2) { selected.storySplit(listOf("first", "second")) }
+                    else validatedSummary(validator) { selected.summarize("invented") }
+                }
                 assertEquals(2, calls)
             }
         }
+        var calls = 0
+        val truncated = provider({ calls++; SummaryHttpResponse(200, cloudflareEnvelope(validSummaryJson(), finishReason = "length")) })
+        expectCode(SummaryErrorCode.INVALID_OUTPUT) { validatedSummary(validator) { truncated.summarize("invented") } }
+        assertEquals(2, calls)
     }
 
-    @Test fun bothProvidersAcceptNoKeywordsAndIgnoreExtraTags() = runBlocking {
-        val answer = JSONObject(validSummaryJson()).put("keywords", JSONArray())
-            .put("tags", JSONObject().put("ignored", true))
-            .put("model", SummaryDefaults.AGY_MODEL).put("elapsed_ms", 0).toString()
-        val providers = listOf(
-            GeminiSummaryProvider(prompt, "test-key", http = { SummaryHttpResponse(200, geminiEnvelope(answer)) }),
-            AgyBridgeSummaryProvider(validator, http = { SummaryHttpResponse(200, answer) }),
-        )
-        for (provider in providers) {
-            val result = provider.summarize("invented")
-            assertTrue(result.keywords.isEmpty())
-            assertEquals(listOf(result.category), result.tags)
+    @Test fun summaryStillEnforcesCategoryAndKeywordRules() = runBlocking {
+        for (answer in listOf(JSONObject(validSummaryJson()).put("category", "unknown"),
+            JSONObject(validSummaryJson()).put("keywords", JSONArray(listOf("만두", "신발", "라켓"))),
+            JSONObject(validSummaryJson()).put("keywords", JSONArray(listOf("가나다라마바사"))),
+            JSONObject(validSummaryJson()).put("keywords", JSONArray(listOf("ABC", "abc"))),
+            JSONObject(validSummaryJson()).put("keywords", JSONArray(listOf("123"))))) {
+            var calls = 0
+            val selected = provider({ calls++; SummaryHttpResponse(200, cloudflareEnvelope(answer.toString())) })
+            expectCode(SummaryErrorCode.INVALID_OUTPUT) { validatedSummary(validator) { selected.summarize("invented") } }
+            assertEquals(2, calls)
         }
+        assertTrue(provider({ SummaryHttpResponse(200, cloudflareEnvelope(JSONObject(validSummaryJson())
+            .put("keywords", JSONArray()).put("tags", "ignored").toString())) }).summarize("invented").keywords.isEmpty())
     }
 
-    @Test fun errorsMapToBoundedSafeCodes() = runBlocking {
-        for ((status, code) in listOf(401 to SummaryErrorCode.AUTH, 429 to SummaryErrorCode.RATE_LIMIT,
-            500 to SummaryErrorCode.SERVER_ERROR, 502 to SummaryErrorCode.SERVER_ERROR, 400 to SummaryErrorCode.HTTP_ERROR)) {
-            val provider = AgyBridgeSummaryProvider(validator, http = { SummaryHttpResponse(status, "private provider error") })
-            expectCode(code) { provider.summarize("private transcript") }
-        }
-    }
-
-    @Test fun relayRejectsOversizeBodyWithoutTruncatingOrSending() = runBlocking {
-        var called = false
-        val provider = AgyBridgeSummaryProvider(validator, http = { called = true; error("not expected") })
-        expectCode(SummaryErrorCode.REQUEST_TOO_LARGE) { provider.summarize("가".repeat(12_000)) }
-        assertFalse(called)
-    }
-
-    @Test fun modelAndRelaySettingsRejectUrlInjectionOrOtherCleartextHosts() {
-        for (model in listOf("", "models/foo", "model?key=private", "model\nheader", "x".repeat(129))) {
+    @Test fun settingsValidateCloudflareModelIdsAndAccountIds() {
+        assertEquals(SummaryDefaults.CLOUDFLARE_MODEL, checkedModelName(SummaryDefaults.CLOUDFLARE_MODEL))
+        for (model in listOf("", "model?key=private", "model\nheader", "../foo", "x".repeat(193))) {
             try { checkedModelName(model); fail() } catch (e: SummaryException) { assertEquals(SummaryErrorCode.INVALID_SETTINGS, e.code) }
         }
-        for (url in listOf("http://example.com", "http://10.0.2.2.evil", "http://10.0.2.2@evil", "https://example.com?key=private",
-            "https://user:pass@example.com", "file:///private", "http://10.0.2.2:0")) {
-            try { checkedRelayBase(url); fail() } catch (e: SummaryException) { assertEquals(SummaryErrorCode.INVALID_SETTINGS, e.code) }
+        for (account in listOf("", "account/path", "x".repeat(32))) {
+            try { checkedCloudflareAccountId(account); fail() } catch (e: SummaryException) { assertEquals(SummaryErrorCode.INVALID_SETTINGS, e.code) }
         }
-        assertEquals("http://10.0.2.2:8771", checkedRelayBase("http://10.0.2.2:8771/"))
     }
 
     @Test fun fakeIsDeterministicAndUsesAPromptCategoryWithNoKeywords() = runBlocking {
@@ -184,7 +173,6 @@ class SummaryProvidersTest {
         assertEquals(fake.summarize("first"), fake.summarize("second"))
         assertEquals(prompt.categories.first(), fake.summarize("").category)
         assertTrue(fake.summarize("").keywords.isEmpty())
-        assertEquals(prompt.categories.first(), fake.summarize("").tags.single())
     }
 
     private suspend fun expectCode(code: SummaryErrorCode, call: suspend () -> Unit) {

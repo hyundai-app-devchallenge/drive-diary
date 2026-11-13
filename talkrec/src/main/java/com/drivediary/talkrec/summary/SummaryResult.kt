@@ -9,4 +9,5 @@ data class SummaryResult(
 ) {
     /** 기존 tags JSON 저장 열과 표시 호출부의 순서를 유지한다. */
     val tags: List<String> get() = listOf(category) + keywords
+    override fun toString(): String = "SummaryResult(redacted)"
 }

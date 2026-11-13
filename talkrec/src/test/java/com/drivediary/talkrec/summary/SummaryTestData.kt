@@ -13,7 +13,11 @@ internal fun validSummaryJson(prompt: SummaryPrompt = summaryPrompt()): String =
     .put("title", "비 오던 날의 대화").put("category", prompt.categories.first())
     .put("keywords", JSONArray(listOf("만두", "신발"))).put("kind", "story").toString()
 
-internal fun geminiEnvelope(answer: String, model: String = SummaryDefaults.GEMINI_MODEL): String = JSONObject()
-    .put("modelVersion", model)
-    .put("candidates", JSONArray().put(JSONObject().put("content", JSONObject()
-        .put("parts", JSONArray().put(JSONObject().put("text", answer)))))).toString()
+internal const val TEST_ACCOUNT_ID = "0123456789abcdef0123456789abcdef"
+
+internal fun cloudflareEnvelope(answer: String, model: String = SummaryDefaults.CLOUDFLARE_MODEL,
+    finishReason: String = "stop"): String = JSONObject().put("model", model)
+    .put("choices", JSONArray().put(JSONObject().put("finish_reason", finishReason)
+        .put("message", JSONObject().put("role", "assistant").put("content", answer)))).toString()
+
+internal fun validStoryJson(): String = """{"stories":[{"segments":[1,2],"title":"종이배 이야기","category":"놀이","keywords":["종이배"],"kind":"story","keep":true,"reason":""}]}"""

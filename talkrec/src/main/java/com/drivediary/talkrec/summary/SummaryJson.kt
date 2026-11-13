@@ -2,6 +2,35 @@ package com.drivediary.talkrec.summary
 
 import org.json.JSONObject
 
+/** Ignore prose/fences and complete reasoning blocks, then take the first strict JSON object.
+ * A parseable but invalid object is left for the validators; never search for a nicer answer. */
+internal fun firstSummaryJsonObject(raw: String): String {
+    if (raw.length > 65_536) throw InvalidSummaryOutput()
+    val text = raw.replace(Regex("<think>.*?</think>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+    for (start in text.indices) {
+        if (text[start] != '{') continue
+        var depth = 0
+        var quoted = false
+        var escaped = false
+        for (end in start until text.length) {
+            val c = text[end]
+            if (quoted) {
+                if (escaped) escaped = false
+                else if (c == '\\') escaped = true
+                else if (c == '"') quoted = false
+            } else when (c) {
+                '"' -> quoted = true
+                '{' -> depth++
+                '}' -> if (--depth == 0) {
+                    val candidate = text.substring(start, end + 1)
+                    try { summaryJsonObject(candidate); return candidate } catch (_: InvalidSummaryOutput) { break }
+                }
+            }
+        }
+    }
+    throw InvalidSummaryOutput()
+}
+
 /** Android's org.json accepts non-JSON syntax (single quotes, unquoted keys, trailing commas).
  * Check JSON syntax first so validation behaves the same on Android and the host JVM. */
 internal fun summaryJsonObject(text: String): JSONObject {

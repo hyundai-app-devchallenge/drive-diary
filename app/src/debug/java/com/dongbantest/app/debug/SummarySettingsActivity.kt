@@ -40,6 +40,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dongbantest.app.DongbanApplication
 import com.dongbantest.app.ui.v3.theme.DongbanchaV3Theme
 import com.drivediary.talkrec.summary.ConnectionTestResult
+import com.drivediary.talkrec.summary.AgySummaryDefaults
+import com.drivediary.talkrec.summary.relayBaseUrl
+import com.drivediary.talkrec.summary.setRelayBaseUrl
 import com.drivediary.talkrec.summary.SummaryDefaults
 import com.drivediary.talkrec.summary.SummaryException
 import com.drivediary.talkrec.summary.SummaryProviderType
@@ -51,7 +54,7 @@ import kotlinx.coroutines.launch
 /**
  * talk-rec 연동(I5b): 대화 요약 설정 화면. 디버그 빌드에만 들어간다(src/debug 매니페스트).
  * 키·모델·중계 주소는 여기서 정하고, 정차 중에만 바꿀 수 있다(팀 앱의 [DrivingSafetyMonitor] 신호 사용).
- * API 키 원문은 화면·로그·토스트 어디에도 내보내지 않는다. 입력칸은 저장하자마자 비운다.
+ * 토큰은 비밀번호 입력칸과 저장된 끝 4자리로만 표시하며 저장 요청 시 입력칸을 비운다.
  */
 class SummarySettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -77,14 +80,15 @@ class SummarySettingsActivity : ComponentActivity() {
 /** 오류 코드 → 짧은 한글 문구. 원문 응답·예외 메시지는 쓰지 않는다. */
 private fun errorText(code: String?, context: String = ""): String = when (code) {
     "invalid_settings" -> when (context) {
-        "model" -> "모델 이름은 영문·숫자와 . _ - 만 쓸 수 있어요 (128자 이하)"
+        "model" -> "모델 ID는 영문·숫자와 @ / . _ - 만 쓸 수 있어요 (192자 이하)"
         "relay" -> "주소는 https:// 이거나 http://10.0.2.2:포트 여야 해요"
-        "key" -> "키에 공백이나 한글이 들어 있어요"
+        "account" -> "계정 ID는 32자리 16진수(0~9, a~f)여야 해요"
+        "key" -> "토큰에 공백이나 한글이 들어 있어요"
         else -> "설정값이 올바르지 않아요"
     }
     "invalid_output" -> "응답 형식이 올바르지 않아요"
-    "key_unavailable" -> "저장된 키를 읽을 수 없어요. 다시 저장해 주세요"
-    "auth" -> "키가 거절됐어요 (인증 실패)"
+    "key_unavailable" -> "계정 ID와 API 토큰을 저장해 주세요. 저장된 토큰을 읽을 수 없으면 다시 저장해 주세요"
+    "auth" -> "계정 ID·토큰과 Workers AI 권한을 확인해 주세요 (인증 실패)"
     "network" -> "네트워크에 연결할 수 없어요"
     "timeout" -> "응답이 너무 늦어요 (시간 초과)"
     "rate_limit" -> "요청이 너무 많아요. 잠시 뒤에 다시 해 보세요"
@@ -97,7 +101,7 @@ private fun errorText(code: String?, context: String = ""): String = when (code)
 }
 
 private fun providerLabel(p: SummaryProviderType) = when (p) {
-    SummaryProviderType.GEMINI -> "Gemini"
+    SummaryProviderType.CLOUDFLARE -> "Cloudflare"
     SummaryProviderType.AGY -> "agy 중계"
     SummaryProviderType.FAKE -> "Fake"
 }
@@ -108,7 +112,9 @@ private fun SummarySettingsScreen(store: SummarySettingsStore, restricted: Boole
     val scope = rememberCoroutineScope()
 
     var modelText by remember(settings.provider, settings.modelName) { mutableStateOf(settings.modelName) }
-    var relayText by remember(settings.relayBaseUrl) { mutableStateOf(settings.relayBaseUrl) }
+    var relayText by remember { mutableStateOf(store.relayBaseUrl()) }
+    var accountText by remember(settings.cloudflareAccountId) { mutableStateOf(settings.cloudflareAccountId) }
+    var accountError by remember { mutableStateOf<String?>(null) }
     var keyText by remember { mutableStateOf("") }
     var last4 by remember { mutableStateOf<String?>(null) }
     var keyChecked by remember { mutableStateOf(false) }
@@ -125,10 +131,14 @@ private fun SummarySettingsScreen(store: SummarySettingsStore, restricted: Boole
     LaunchedEffect(restricted) { if (restricted) keyText = "" }
 
     suspend fun refreshLast4() {
-        last4 = try { store.apiKeyLast4() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+        last4 = try { store.cloudflareTokenLast4() } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
         keyChecked = true
     }
-    LaunchedEffect(settings.provider) { if (settings.provider == SummaryProviderType.GEMINI) refreshLast4() }
+    LaunchedEffect(settings.provider) {
+        keyText = ""
+        testResult = null
+        if (settings.provider == SummaryProviderType.CLOUDFLARE) refreshLast4()
+    }
 
     Column(
         Modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState()).padding(24.dp),
@@ -136,7 +146,7 @@ private fun SummarySettingsScreen(store: SummarySettingsStore, restricted: Boole
     ) {
         Text("대화 요약 설정", style = MaterialTheme.typography.titleLarge)
         Text(
-            "데모 전용이에요. 무료 등급 키는 보낸 내용이 서비스 개선에 쓰일 수 있으니 유료 등급 키를 권장해요.",
+            "외부 AI 전송 동의는 여행 설정을 따라요. 제공자·요금제의 데이터 처리 정책을 확인해 주세요. agy 중계는 debug 실험용이에요.",
             style = MaterialTheme.typography.bodyMedium,
         )
         if (restricted) {
@@ -181,21 +191,36 @@ private fun SummarySettingsScreen(store: SummarySettingsStore, restricted: Boole
         }
         Text("기본값: ${SummaryDefaults.modelName(settings.provider)}", style = MaterialTheme.typography.bodySmall)
 
-        // API 키 (Gemini 만)
-        if (settings.provider == SummaryProviderType.GEMINI) {
+        // Cloudflare 계정 및 암호화 API 토큰
+        if (settings.provider == SummaryProviderType.CLOUDFLARE) {
             HorizontalDivider()
-            Text("API 키", style = MaterialTheme.typography.titleMedium)
+            Text("Cloudflare Workers AI", style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(
+                value = accountText, onValueChange = { accountText = it; accountError = null },
+                label = { Text("Cloudflare 계정 ID") }, singleLine = true, enabled = enabled,
+                isError = accountError != null, supportingText = accountError?.let { { Text(it) } },
+                keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Button(enabled = enabled, onClick = {
+                scope.launch {
+                    try { store.setCloudflareAccountId(accountText); accountError = null }
+                    catch (e: CancellationException) { throw e }
+                    catch (e: SummaryException) { accountError = errorText(e.code.name.lowercase(), "account") }
+                }
+            }) { Text("계정 ID 저장") }
+            Text("API 토큰", style = MaterialTheme.typography.titleMedium)
             Text(
                 when {
                     !keyChecked -> "확인 중…"
                     last4 != null -> "끝 4자리: ••••$last4"
-                    else -> "저장된 키 없음"
+                    else -> "저장된 토큰 없음"
                 },
                 style = MaterialTheme.typography.bodyLarge,
             )
             OutlinedTextField(
                 value = keyText, onValueChange = { keyText = it; keyMessage = null },
-                label = { Text("새 API 키") }, singleLine = true, enabled = enabled,
+                label = { Text("새 API 토큰") }, singleLine = true, enabled = enabled,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
                 modifier = Modifier.fillMaxWidth(),
@@ -209,21 +234,21 @@ private fun SummarySettingsScreen(store: SummarySettingsStore, restricted: Boole
                     keyText = "" // 저장 요청과 함께 입력칸을 바로 비운다
                     scope.launch {
                         try {
-                            store.setApiKey(value); refreshLast4()
+                            store.setCloudflareToken(value); refreshLast4()
                             keyMessage = "저장했어요"; keyIsError = false
                         } catch (e: CancellationException) { throw e }
                         catch (e: SummaryException) { keyMessage = errorText(e.code.name.lowercase(), "key"); keyIsError = true }
                     }
-                }) { Text("키 저장") }
-                OutlinedButton(enabled = enabled && last4 != null, onClick = {
+                }) { Text("토큰 저장") }
+                OutlinedButton(enabled = enabled, onClick = {
                     scope.launch {
                         try {
-                            store.setApiKey(""); keyText = ""; refreshLast4()
+                            store.setCloudflareToken(""); keyText = ""; refreshLast4()
                             keyMessage = "지웠어요"; keyIsError = false
                         } catch (e: CancellationException) { throw e }
                         catch (e: SummaryException) { keyMessage = errorText(e.code.name.lowercase()); keyIsError = true }
                     }
-                }) { Text("키 지우기") }
+                }) { Text("토큰 지우기") }
             }
         }
 
@@ -233,20 +258,20 @@ private fun SummarySettingsScreen(store: SummarySettingsStore, restricted: Boole
             OutlinedTextField(
                 value = relayText, onValueChange = { relayText = it; relayError = null },
                 label = { Text("중계 서버 주소") }, singleLine = true, enabled = enabled,
-                isError = relayError != null, supportingText = { Text(relayError ?: "기본값 ${SummaryDefaults.RELAY_BASE_URL}") },
+                isError = relayError != null, supportingText = { Text(relayError ?: "기본값 ${AgySummaryDefaults.RELAY_BASE_URL}") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 modifier = Modifier.fillMaxWidth(),
             )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(enabled = enabled, onClick = {
                     scope.launch {
-                        try { store.setRelayBaseUrl(relayText); relayError = null } catch (e: CancellationException) { throw e }
+                        try { store.setRelayBaseUrl(relayText); relayText = store.relayBaseUrl(); relayError = null } catch (e: CancellationException) { throw e }
                         catch (e: SummaryException) { relayError = errorText(e.code.name.lowercase(), "relay") }
                     }
                 }) { Text("주소 저장") }
                 OutlinedButton(enabled = enabled, onClick = {
                     scope.launch {
-                        try { store.setRelayBaseUrl(SummaryDefaults.RELAY_BASE_URL); relayError = null } catch (e: CancellationException) { throw e }
+                        try { store.setRelayBaseUrl(AgySummaryDefaults.RELAY_BASE_URL); relayText = store.relayBaseUrl(); relayError = null } catch (e: CancellationException) { throw e }
                         catch (e: SummaryException) { relayError = errorText(e.code.name.lowercase(), "relay") }
                     }
                 }) { Text("기본값으로") }

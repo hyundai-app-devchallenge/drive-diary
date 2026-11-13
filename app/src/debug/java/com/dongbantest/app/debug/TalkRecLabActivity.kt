@@ -426,11 +426,11 @@ private fun LabScreen(
             OutlinedButton(onClick = ui::clear) { Text("지우기") }
         }
         val provider = when (settings.provider) {
-            SummaryProviderType.GEMINI -> "Gemini"
+            SummaryProviderType.CLOUDFLARE -> "Cloudflare"
             SummaryProviderType.AGY -> "agy 중계"
             SummaryProviderType.FAKE -> "Fake (로컬)"
         }
-        Text("제목 시험 제공자: $provider  ·  현재 모델: ${settings.modelName}", style = MaterialTheme.typography.titleMedium)
+        Text("제목·이야기 시험 제공자: $provider  ·  현재 모델: ${settings.modelName}", style = MaterialTheme.typography.titleMedium)
         Text("블록의 ‘제목 만들어 보기’를 누르면 위 제공자에게 해당 대화가 전달돼요. 실험 녹음은 여행에 저장되지 않아요.", style = MaterialTheme.typography.bodyMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             FilterChip(ui.mode == LabMode.MIC, { ui.mode = LabMode.MIC }, label = { Text("PC 마이크") }, enabled = controlsEnabled)

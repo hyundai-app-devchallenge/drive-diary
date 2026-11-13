@@ -2,7 +2,6 @@ package com.drivediary.talkrec.summary
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.content.pm.ApplicationInfo
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -23,7 +22,7 @@ import kotlinx.coroutines.withContext
 data class SummarySettings(
     val provider: SummaryProviderType,
     val modelName: String,
-    val relayBaseUrl: String = SummaryDefaults.RELAY_BASE_URL,
+    val cloudflareAccountId: String = "",
     val showTitlesWhileDriving: Boolean = true,
 ) {
     override fun toString(): String = "SummarySettings(redacted)"
@@ -33,18 +32,24 @@ data class SummarySettings(
  * Application-scoped store. UI must use the app's existing parked-only gate for edits/tests.
  * No logging, plaintext preference, plaintext key accessor, or key in the settings Flow.
  */
-class SummarySettingsStore(
-    context: Context,
-    private val debugBuild: Boolean = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,
+class SummarySettingsStore internal constructor(
+    internal val prefs: SharedPreferences,
+    private val loadPrompt: (String) -> SummaryPrompt,
 ) {
-    private val prefs = context.getSharedPreferences("talkrec_summary", Context.MODE_PRIVATE)
-    private val prompt by lazy {
-        SummaryPrompt(context.applicationContext.assets.open("prompts/summary.md").bufferedReader(Charsets.UTF_8).use { it.readText() })
+    constructor(context: Context) : this(
+        context.getSharedPreferences("talkrec_summary", Context.MODE_PRIVATE),
+        { name -> SummaryPrompt(context.applicationContext.assets.open("prompts/$name.md")
+            .bufferedReader(Charsets.UTF_8).use { it.readText() }) },
+    ) {
+        // The old wrapping key contains no API credential; remove it as well when accessible.
+        try { KeyStore.getInstance("AndroidKeyStore").apply { load(null); deleteEntry("talkrec.summary.api-key.v1") } }
+        catch (_: Exception) { /* Old ciphertext has already been removed; never reuse it. */ }
     }
+
+    init { migrateSummarySettings(prefs) }
+    private val prompt by lazy { loadPrompt("summary") }
+    private val storyPrompt by lazy { loadPrompt("story_split") }
     private val mutex = Mutex()
-    private val storyPrompt by lazy {
-        SummaryPrompt(context.applicationContext.assets.open("prompts/story_split.md").bufferedReader(Charsets.UTF_8).use { it.readText() })
-    }
     private val state = MutableStateFlow(readSettings())
     val settings: StateFlow<SummarySettings> = state.asStateFlow()
     // Hold a strong reference: SharedPreferences keeps its listeners weakly.
@@ -53,7 +58,6 @@ class SummarySettingsStore(
     init { prefs.registerOnSharedPreferenceChangeListener(listener) }
 
     suspend fun setProvider(provider: SummaryProviderType) {
-        if (!debugBuild && provider == SummaryProviderType.AGY) throw SummaryException(SummaryErrorCode.INVALID_SETTINGS)
         edit { putString("provider", provider.name) }
     }
 
@@ -67,9 +71,10 @@ class SummarySettingsStore(
         }
     }
 
-    suspend fun setRelayBaseUrl(relayBaseUrl: String) {
-        val value = checkedRelayBase(relayBaseUrl.trim())
-        edit { putString("relay_base", value) }
+    suspend fun setCloudflareAccountId(accountId: String) {
+        val value = accountId.trim()
+        if (value.isNotEmpty()) checkedCloudflareAccountId(value)
+        edit { putString("cf_account_id", value) }
     }
 
     suspend fun setShowTitlesWhileDriving(show: Boolean) {
@@ -77,20 +82,20 @@ class SummarySettingsStore(
     }
 
     /** Empty input removes the encrypted key. Encryption always uses a fresh GCM IV. */
-    suspend fun setApiKey(apiKey: String) = withContext(Dispatchers.IO) {
+    suspend fun setCloudflareToken(apiToken: String) = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val value = apiKey.trim()
+            val value = apiToken.trim()
             if (value.any { it <= ' ' || it >= '\u007f' }) throw SummaryException(SummaryErrorCode.INVALID_SETTINGS)
             try {
                 val editor = prefs.edit()
                 if (value.isEmpty()) {
-                    editor.remove("api_ciphertext").remove("api_iv")
+                    editor.remove("cf_token_ciphertext").remove("cf_token_iv")
                 } else {
                     val cipher = Cipher.getInstance("AES/GCM/NoPadding")
                     cipher.init(Cipher.ENCRYPT_MODE, secretKey())
                     cipher.updateAAD(AAD)
-                    editor.putString("api_ciphertext", Base64.encodeToString(cipher.doFinal(value.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP))
-                    editor.putString("api_iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+                    editor.putString("cf_token_ciphertext", Base64.encodeToString(cipher.doFinal(value.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP))
+                    editor.putString("cf_token_iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
                 }
                 if (!editor.commit()) throw SummaryException(SummaryErrorCode.STORAGE)
             } catch (safe: SummaryException) {
@@ -101,8 +106,8 @@ class SummarySettingsStore(
         }
     }
 
-    suspend fun apiKeyLast4(): String? = withContext(Dispatchers.IO) {
-        mutex.withLock { readApiKey()?.takeLast(4) }
+    suspend fun cloudflareTokenLast4(): String? = withContext(Dispatchers.IO) {
+        mutex.withLock { readCloudflareToken()?.takeLast(4) }
     }
 
     /** Uses only this fixed invented dialogue, never a saved clip. */
@@ -124,31 +129,29 @@ class SummarySettingsStore(
         mutex.withLock {
             val current = readSettings()
             when (current.provider) {
-                SummaryProviderType.GEMINI -> GeminiSummaryProvider(prompt,
-                    readApiKey() ?: throw SummaryException(SummaryErrorCode.KEY_UNAVAILABLE), current.modelName, storyPrompt = storyPrompt)
-                SummaryProviderType.AGY -> {
-                    if (!debugBuild) throw SummaryException(SummaryErrorCode.INVALID_SETTINGS)
-                    AgyBridgeSummaryProvider(SummaryValidator(prompt.tags), current.relayBaseUrl, current.modelName)
+                SummaryProviderType.CLOUDFLARE -> {
+                    if (current.cloudflareAccountId.isBlank()) throw SummaryException(SummaryErrorCode.KEY_UNAVAILABLE)
+                    CloudflareSummaryProvider(prompt, current.cloudflareAccountId,
+                        readCloudflareToken() ?: throw SummaryException(SummaryErrorCode.KEY_UNAVAILABLE),
+                        current.modelName, storyPrompt = storyPrompt)
                 }
                 SummaryProviderType.FAKE -> FakeSummaryProvider(SummaryValidator(prompt.tags), current.modelName)
+                else -> SummaryBuildProviders.createExtra(current.provider, current.modelName, SummaryValidator(prompt.tags), prefs)
             }
         }
     }
 
     private fun readSettings(): SummarySettings {
-        val default = if (debugBuild) SummaryProviderType.AGY else SummaryProviderType.GEMINI
-        val provider = try { SummaryProviderType.valueOf(prefs.getString("provider", null).orEmpty()) }
-            catch (_: IllegalArgumentException) { default }
-        val selected = if (!debugBuild && provider == SummaryProviderType.AGY) SummaryProviderType.GEMINI else provider
+        val selected = storedSummaryProvider(prefs.getString("provider", null))
         return SummarySettings(
             selected,
             prefs.getString("model_${selected.name}", null) ?: SummaryDefaults.modelName(selected),
-            prefs.getString("relay_base", null) ?: SummaryDefaults.RELAY_BASE_URL,
+            prefs.getString("cf_account_id", null).orEmpty(),
             prefs.getBoolean("show_titles_driving", true),
         )
     }
 
-    private suspend fun edit(change: SharedPreferences.Editor.() -> Unit): Unit = withContext(Dispatchers.IO) {
+    internal suspend fun edit(change: SharedPreferences.Editor.() -> Unit): Unit = withContext(Dispatchers.IO) {
         mutex.withLock {
             try {
                 if (!prefs.edit().apply(change).commit()) throw SummaryException(SummaryErrorCode.STORAGE)
@@ -162,9 +165,9 @@ class SummarySettingsStore(
         }
     }
 
-    private fun readApiKey(): String? {
-        val ciphertext = prefs.getString("api_ciphertext", null) ?: return null
-        val iv = prefs.getString("api_iv", null) ?: throw SummaryException(SummaryErrorCode.KEY_UNAVAILABLE)
+    private fun readCloudflareToken(): String? {
+        val ciphertext = prefs.getString("cf_token_ciphertext", null) ?: return null
+        val iv = prefs.getString("cf_token_iv", null) ?: throw SummaryException(SummaryErrorCode.KEY_UNAVAILABLE)
         try {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, secretKey(create = false), GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)))
@@ -191,8 +194,8 @@ class SummarySettingsStore(
     }
 
     private companion object {
-        const val KEY_ALIAS = "talkrec.summary.api-key.v1"
-        val AAD = "talkrec_summary/api_key/v1".toByteArray(Charsets.UTF_8)
+        const val KEY_ALIAS = "talkrec.summary.cloudflare-token.v1"
+        val AAD = "talkrec_summary/cloudflare_token/v1".toByteArray(Charsets.UTF_8)
         const val TEST_DIALOGUE = "오늘 학교 화단에서 달팽이를 봤어\n비가 와서 나왔나 봐"
     }
 }

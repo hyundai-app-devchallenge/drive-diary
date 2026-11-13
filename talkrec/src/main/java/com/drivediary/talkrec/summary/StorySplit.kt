@@ -92,12 +92,12 @@ internal suspend fun validatedStorySplit(validator: StorySplitValidator, count: 
 
 internal fun storySchema(categories: List<String>): JSONObject {
     val properties = JSONObject()
-        .put("segments", JSONObject().put("type", "array").put("minItems", 1)
-            .put("items", JSONObject().put("type", "integer").put("minimum", 1).put("maximum", 12)))
-        .put("title", JSONObject().put("type", "string").put("maxLength", 25))
+        // Workers AI(xgrammar) rejects pattern/length constraints; StorySplitValidator checks them.
+        .put("segments", JSONObject().put("type", "array").put("items", JSONObject().put("type", "integer")))
+        .put("title", JSONObject().put("type", "string"))
         .put("category", JSONObject().put("type", "string").put("enum", JSONArray(categories + "")))
         .put("keywords", JSONObject().put("type", "array").put("maxItems", 2)
-            .put("items", JSONObject().put("type", "string").put("pattern", "^[가-힣A-Za-z0-9·]{1,6}$")))
+            .put("items", JSONObject().put("type", "string")))
         .put("kind", JSONObject().put("type", "string").put("enum", JSONArray(listOf("story", "moment", "none"))))
         .put("keep", JSONObject().put("type", "boolean"))
         .put("reason", JSONObject().put("type", "string").put("enum", JSONArray(StorySplitValidator.REASONS)))
@@ -106,5 +106,5 @@ internal fun storySchema(categories: List<String>): JSONObject {
         .put("additionalProperties", false)
     return JSONObject().put("type", "object").put("additionalProperties", false)
         .put("required", JSONArray(listOf("stories"))).put("properties", JSONObject().put("stories",
-            JSONObject().put("type", "array").put("minItems", 1).put("items", item)))
+            JSONObject().put("type", "array").put("items", item)))
 }

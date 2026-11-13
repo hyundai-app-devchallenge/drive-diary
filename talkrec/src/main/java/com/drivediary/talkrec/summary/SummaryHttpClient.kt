@@ -74,14 +74,14 @@ class UrlConnectionSummaryHttpClient : SummaryHttpClient {
     }
 }
 
-internal fun checkSummaryHttp(response: SummaryHttpResponse) {
+internal fun checkSummaryHttp(response: SummaryHttpResponse, cloudflare: Boolean = false) {
     if (response.status in 200..299) return
     throw SummaryException(when (response.status) {
         401, 403 -> SummaryErrorCode.AUTH
-        408 -> SummaryErrorCode.TIMEOUT
+        408 -> if (cloudflare) SummaryErrorCode.NETWORK else SummaryErrorCode.TIMEOUT
         413 -> SummaryErrorCode.REQUEST_TOO_LARGE
         429 -> SummaryErrorCode.RATE_LIMIT
-        in 500..599 -> SummaryErrorCode.SERVER_ERROR
+        in 500..599 -> if (cloudflare) SummaryErrorCode.NETWORK else SummaryErrorCode.SERVER_ERROR
         else -> SummaryErrorCode.HTTP_ERROR
     })
 }

@@ -36,26 +36,9 @@ class StorySplitTest {
         assertTrue(units[2].ready); assertFalse(units[3].ready); assertFalse(units[4].ready)
     }
 
-    @Test fun providersMapNumberedSegmentsSchemaRelayEnvelopeAndFake() = runBlocking {
-        val requests = mutableListOf<SummaryHttpRequest>()
-        val http = SummaryHttpClient { request -> requests += request
-            SummaryHttpResponse(200, JSONObject().put("candidates", org.json.JSONArray().put(JSONObject()
-                .put("content", JSONObject().put("parts", org.json.JSONArray().put(JSONObject().put("text", json())))))).toString()) }
-        val gemini = GeminiSummaryProvider(prompt, "key", http = http, storyPrompt = prompt)
-        assertEquals(2, gemini.storySplit(listOf("first", "second")).stories.single().segments.size)
-        val body = JSONObject(requests.single().body)
-        assertTrue(body.getJSONArray("contents").toString().contains("[2]"))
-        assertTrue(body.getJSONObject("generationConfig").getJSONObject("responseJsonSchema").getJSONObject("properties").has("stories"))
-        val relay = AgyBridgeSummaryProvider(SummaryValidator(prompt.categories), http = SummaryHttpClient { request ->
-            assertTrue(request.url.endsWith("/story-split"))
-            assertEquals("first", JSONObject(request.body).getJSONArray("segments").getString(0))
-            SummaryHttpResponse(200, JSONObject(json()).put("model", "relay-model").put("elapsed_ms", 1).apply {
-                getJSONArray("stories").getJSONObject(0).put("tags", org.json.JSONArray().put("ignored"))
-            }.toString())
-        })
-        assertEquals("종이배 이야기", relay.storySplit(listOf("first", "second")).stories.single().title)
-        assertEquals("relay-model", relay.modelName)
-        assertTrue(FakeSummaryProvider(SummaryValidator(prompt.categories)).storySplit(listOf("a", "b")).stories.single().keep)
+    @Test fun fakeMapsAllSegments() = runBlocking {
+        assertEquals(listOf(1, 2), FakeSummaryProvider(SummaryValidator(prompt.categories))
+            .storySplit(listOf("first", "second")).stories.single().segments)
     }
 
     @Test fun processorUsesOneRunCallHonorsCeilingConsentAndInvalidRetry() = runBlocking {
