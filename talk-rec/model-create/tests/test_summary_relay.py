@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 import json
 import logging
+import re
 import socket
 import threading
 from types import SimpleNamespace
@@ -40,7 +41,7 @@ def relay():
 
 
 def answer(relay, **changes):
-    data = dict(title='가족과 나눈 이야기', tags=[relay.tags[0]], kind='story')
+    data = dict(title='함께 나눈 이야기', category=relay.categories[0], keywords=[], kind='story')
     data.update(changes)
     return json.dumps(data, ensure_ascii=False)
 
@@ -87,55 +88,106 @@ def http(relay, *, method='POST', path='/summarize', data=None, raw=None, header
     return status, json.loads(raw_body), head.decode()
 
 
-def test_tags_come_only_from_prompt_tag_section(tmp_path):
-    prompt = '## 제목\n미끼, 목록\n## 태그\n설명입니다.\n\n새 태그, 다른 태그\n## 종류\nstory, moment\n'
+@pytest.mark.parametrize('newline', ['\n', '\r\n'])
+def test_categories_come_only_from_prompt_category_section(tmp_path, newline):
+    prompt = ('## 제목\n미끼, 목록\n## 분류\n설명입니다.\n\n새 분류, 다른 분류\n'
+              '## 키워드\n사물, 활동\n## 종류\nstory, moment\n').replace('\n', newline)
     path = tmp_path / 'summary.md'
-    path.write_text(prompt, encoding='utf-8')
+    path.write_text(prompt, encoding='utf-8', newline='')
     service = r.SummaryRelay(fake=True, prompt_path=path)
-    assert service.system == prompt
-    assert service.tags == ('새 태그', '다른 태그')
-    assert service.summarize({'transcript': '테스트'})[1]['tags'] == ['새 태그']
+    assert service.system == prompt.replace('\r\n', '\n')
+    assert r.prompt_categories(prompt) == service.categories == ('새 분류', '다른 분류')
+    result = service.summarize({'transcript': '테스트'})[1]
+    assert result['category'] == '새 분류'
+    assert result['keywords'] == []
+    assert result['tags'] == ['새 분류']
 
 
-@pytest.mark.parametrize('prompt', ['', '## 태그\n목록 없음', '## 태그\n가, 나\n다, 라',
-                                    '## 태그\n가, 가', '## 태그\n가, '])
+@pytest.mark.parametrize('prompt', ['', '## 분류\n목록 없음', '## 분류\n가, 나\n다, 라',
+                                    '## 분류\n가, 가', '## 분류\n가, ', '## 태그\n가, 나'])
 def test_bad_prompt_fails_closed(prompt):
     with pytest.raises(ValueError):
-        r.prompt_tags(prompt)
+        r.prompt_categories(prompt)
+
+
+def test_prompt_has_13_categories_and_three_valid_invented_examples(relay):
+    assert relay.categories == ('추억', '아이의 하루', '학교', '놀이', '음식', '자연·풍경',
+                                '여행 계획', '가족 이야기', '친구 이야기', '운전·길',
+                                '노래·웃음', '동물', '계절')
+    raw = r.PROMPT_PATH.read_bytes()
+    assert not raw.startswith(b'\xef\xbb\xbf') and b'\r' not in raw
+    examples = re.findall(r'→ `([^`]+)`', raw.decode('utf-8'))
+    assert len(examples) == 3
+    results = [r.validate_output(example, relay.categories) for example in examples]
+    assert any(result['keywords'] == [] for result in results)
+    assert any(result['category'] in ('친구 이야기', '운전·길') for result in results)
 
 
 @pytest.mark.parametrize('title', ['가', '가' * 25])
 @pytest.mark.parametrize('kind', ['story', 'moment'])
 def test_valid_output_and_fences(relay, title, kind):
-    expected = dict(title=title, tags=list(relay.tags[:3]), kind=kind)
+    expected = dict(title=title, category=relay.categories[0], keywords=['만두', 'RC카'], kind=kind)
     raw = json.dumps(expected, ensure_ascii=False)
     for wrapped in (raw, f'```json\n{raw}\n```', f'```\n{raw}\n```'):
-        assert r.validate_output(wrapped, relay.tags) == expected
+        assert r.validate_output(wrapped, relay.categories) == expected
+
+
+def test_every_prompt_category_is_valid(relay):
+    for category in relay.categories:
+        assert r.validate_output(answer(relay, category=category), relay.categories)['category'] == category
+
+
+@pytest.mark.parametrize('keywords,expected', [
+    ([], []), (['가'], ['가']), (['가나다라마바'], ['가나다라마바']),
+    (['ABC123', '봄·비'], ['ABC123', '봄·비']),
+    ([' 만두 ', '\tRC카\n'], ['만두', 'RC카']),
+])
+def test_valid_keywords_and_trim(relay, keywords, expected):
+    assert r.validate_output(answer(relay, keywords=keywords), relay.categories)['keywords'] == expected
+
+
+@pytest.mark.parametrize('keywords', [
+    ['가나다라마바사'], ['abcdefg'], ['두 단어'], ['두\t단어'], ['두\n단어'], ['두\u00a0단어'],
+    ['123'], [' 123 '], [''], ['   '], ['만두', '만두'], ['ABC', 'abc'], [' ABC ', 'abc'],
+    ['만두', '신발', '우산'], ['고양이!'], ['a_b'], ['a-b'], ['a/b'], ['😀'], ['漢字'],
+    ['café'], ['а'], ['\ud800'], [1], [None], [True], [[]], [{}], '만두', None, {},
+])
+def test_invalid_keywords(relay, keywords):
+    with pytest.raises(ValueError, match='^invalid output$'):
+        r.validate_output(answer(relay, keywords=keywords), relay.categories)
+
+
+def test_keywords_cannot_equal_any_category_after_trim(relay):
+    for category in relay.categories:
+        with pytest.raises(ValueError, match='^invalid output$'):
+            r.validate_output(answer(relay, keywords=[f' {category} ']), relay.categories)
 
 
 @pytest.mark.parametrize('change', [
     {'title': ''}, {'title': '가' * 26}, {'title': '   '}, {'title': 1},
     {'title': None}, {'title': '두\n줄'}, {'title': '\ud800'},
-    {'tags': []}, {'tags': ['없는 태그']}, {'tags': [1]}, {'tags': [None]},
-    {'tags': [[1]]}, {'tags': '추억'}, {'tags': None},
+    {'category': ''}, {'category': '없는 분류'}, {'category': ' 추억 '},
+    {'category': ['추억']}, {'category': 1}, {'category': None},
     {'kind': 'none'}, {'kind': None}, {'kind': ['story']},
 ])
 def test_invalid_schema(relay, change):
     with pytest.raises(ValueError, match='^invalid output$'):
-        r.validate_output(answer(relay, **change), relay.tags)
+        r.validate_output(answer(relay, **change), relay.categories)
 
 
-def test_too_many_tags_and_missing_fields(relay):
-    for raw in (answer(relay, tags=list(relay.tags[:4])), '{}', '{"title":"가"}'):
+def test_missing_fields_and_old_contract_rejected(relay):
+    data = json.loads(answer(relay))
+    missing = [json.dumps({k: v for k, v in data.items() if k != field}) for field in data]
+    for raw in missing + ['{}', '{"title":"가","tags":["추억"],"kind":"story"}']:
         with pytest.raises(ValueError):
-            r.validate_output(raw, relay.tags)
+            r.validate_output(raw, relay.categories)
 
 
 @pytest.mark.parametrize('raw', ['private invalid JSON', '[]', 'null', '1', '', None,
                                   '```json\n{}', 'explanation\n{}', '[' * 1200])
 def test_invalid_json_sanitized(relay, raw):
     with pytest.raises(ValueError, match='^invalid output$'):
-        r.validate_output(raw, relay.tags)
+        r.validate_output(raw, relay.categories)
 
 
 @pytest.mark.parametrize('model,base,effort', [
@@ -152,7 +204,9 @@ def test_success_system_transcript_and_model(relay, model, base, effort):
         payload['model'] = model
     status, result, headers = http(relay, data=payload)
     assert status == 200
-    assert set(result) == {'title', 'tags', 'kind', 'model', 'elapsed_ms'}
+    assert set(result) == {'title', 'category', 'keywords', 'tags', 'kind', 'model', 'elapsed_ms'}
+    assert result['category'] == relay.categories[0] and result['keywords'] == []
+    assert result['tags'] == [result['category']]
     assert result['model'] == f'{base}-{effort}'
     assert type(result['elapsed_ms']) is int and result['elapsed_ms'] >= 0
     assert backend.calls == [(r.PROMPT_PATH.read_text(encoding='utf-8'), payload['transcript'])]
@@ -172,17 +226,31 @@ def test_default_backend_is_agy(relay, monkeypatch):
     assert created == [dict(model='gemini-3.8-flash', effort='medium')]
 
 
-def test_retry_once_then_success(relay):
-    backend, created = with_backend(relay, ['private bad output', answer(relay)])
+@pytest.mark.parametrize('bad', ['private bad output', '{"category":"없는 분류"}',
+                                 '{"title":"가","category":"추억","keywords":["123"],"kind":"story"}'])
+def test_retry_once_then_success(relay, bad):
+    backend, created = with_backend(relay, [bad, answer(relay)])
     assert http(relay)[0] == 200
     assert len(created) == 1 and len(backend.calls) == 2
     assert backend.calls[0] == backend.calls[1]
 
 
 def test_invalid_output_stops_after_second_attempt(relay):
-    backend, _ = with_backend(relay, ['bad', answer(relay, tags=[]), answer(relay)])
+    backend, _ = with_backend(relay, ['bad', answer(relay, keywords=['가', '나', '다']), answer(relay)])
     assert http(relay)[:2] == (502, {'error': 'invalid_output'})
     assert len(backend.calls) == 2
+
+
+@pytest.mark.parametrize('keywords', [[], ['만두'], ['만두', 'RC카']])
+def test_response_tags_combine_category_and_trimmed_keywords(relay, keywords):
+    with_backend(relay, [answer(relay, category='친구 이야기',
+                                keywords=[f' {keyword} ' for keyword in keywords],
+                                tags=['ignored legacy tags'])])
+    status, result, _ = http(relay)
+    assert status == 200
+    assert result['category'] == '친구 이야기'
+    assert result['keywords'] == keywords
+    assert result['tags'] == ['친구 이야기'] + keywords
 
 
 @pytest.mark.parametrize('error,status,code', [
@@ -267,7 +335,7 @@ def test_health_fake_and_routes(relay):
     second = http(relay, data={'transcript': '두 번째 가상 대화'})[1]
     assert {k: v for k, v in first.items() if k != 'elapsed_ms'} == {
         k: v for k, v in second.items() if k != 'elapsed_ms'}
-    r.validate_output(json.dumps(first), relay.tags)
+    r.validate_output(json.dumps(first), relay.categories)
     assert not backend.calls
     for method, path in [('GET', '/summarize'), ('POST', '/health'), ('GET', '/health?x=1')]:
         assert http(relay, method=method, path=path)[:2] == (404, {'error': 'not_found'})
@@ -338,8 +406,9 @@ def test_logs_never_contain_transcript_title_or_backend_details(relay, caplog, c
     private_transcript = 'PRIVATE_TRANSCRIPT_SENTINEL'
     private_title = 'PRIVATE_TITLE_SENTINEL'
     private_error = 'PRIVATE_ERROR_SENTINEL'
+    private_keyword = 'Secret'
     caplog.set_level(logging.INFO, logger=r.LOGGER.name)
-    with_backend(relay, [answer(relay, title=private_title), r.BackendError(private_error),
+    with_backend(relay, [answer(relay, title=private_title, keywords=[private_keyword]), r.BackendError(private_error),
                          r.UsageLimit(private_error), private_title, private_transcript])
     for expected in (200, 502, 429, 502):
         assert http(relay, data={'transcript': private_transcript})[0] == expected
@@ -348,7 +417,7 @@ def test_logs_never_contain_transcript_title_or_backend_details(relay, caplog, c
     assert http(relay, method=private_transcript)[0] == 405
     assert http(relay, raw=private_transcript.encode())[0] == 400
     logs = caplog.text + ''.join(capsys.readouterr())
-    for private in (private_transcript, private_title, private_error):
+    for private in (private_transcript, private_title, private_keyword, private_error):
         assert private not in logs
     assert 'method=POST path=/summarize status=200' in logs
     for field in ('request_bytes=', 'transcript_chars=', 'response_bytes=', 'elapsed_ms='):
@@ -364,3 +433,41 @@ def test_server_suppresses_tracebacks(relay, monkeypatch, capsys):
     except RuntimeError:
         server.handle_error(None, ('127.0.0.1', 1))
     assert capsys.readouterr() == ('', '')
+
+
+def test_story_split_fake_route(relay):
+    status, data, head = http(relay, path='/story-split', data={'segments': ['지어낸 첫 대화', '지어낸 다음 대화']})
+    assert status == 200 and 'Connection: close' in head
+    assert data['stories'][0]['segments'] == [1, 2]
+    assert data['stories'][0]['tags'] == [relay.categories[0]]
+    assert data['model'] == r.DEFAULT_MODEL and data['elapsed_ms'] >= 0
+    assert http(relay)[0] == 200
+
+
+@pytest.mark.parametrize('data', [None, [], {}, {'segments': []}, {'segments': ['']},
+    {'segments': [' \n']}, {'segments': [1]}, {'segments': ['\ud800']},
+    {'segments': ['invented'] * 13}, {'segments': ['invented'], 'model': '--bad'}])
+def test_story_split_invalid_request_never_calls_backend(relay, data):
+    backend, _ = with_backend(relay, [])
+    assert http(relay, path='/story-split', raw=json.dumps(data).encode())[:2] == (
+        400, {'error': 'invalid_request'})
+    assert not backend.calls
+
+
+def test_story_split_backend_retry_validation_and_private_logs(relay, caplog):
+    caplog.set_level(logging.INFO, logger=r.LOGGER.name)
+    group = dict(segments=[1, 2], title='PRIVATE_TITLE', category=relay.categories[0], keywords=[], kind='story')
+    backend, created = with_backend(relay, ['{"stories":[]}', json.dumps(dict(stories=[group]))])
+    payload = dict(segments=['PRIVATE_TRANSCRIPT_1', 'PRIVATE_TRANSCRIPT_2'], model='gemini-3.8-flash-high')
+    status, data, _ = http(relay, path='/story-split', data=payload)
+    assert status == 200 and len(backend.calls) == 2
+    assert created == [dict(model='gemini-3.8-flash', effort='high')]
+    assert backend.calls[0][0] == r.STORY_PROMPT_PATH.read_text(encoding='utf-8')
+    assert backend.calls[0][1] == '[1]\nPRIVATE_TRANSCRIPT_1\n\n[2]\nPRIVATE_TRANSCRIPT_2'
+    assert data['stories'][0]['title'] == 'PRIVATE_TITLE'
+    assert 'PRIVATE' not in caplog.text and 'path=/story-split status=200' in caplog.text
+    with_backend(relay, ['{}', '{}'])
+    assert http(relay, path='/story-split', data=payload)[:2] == (502, {'error': 'invalid_output'})
+    with_backend(relay, [r.BackendError('PRIVATE_ERROR')])
+    assert http(relay, path='/story-split', data=payload)[:2] == (502, {'error': 'backend_error'})
+    assert 'PRIVATE' not in caplog.text

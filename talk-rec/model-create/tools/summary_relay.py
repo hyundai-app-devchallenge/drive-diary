@@ -1,4 +1,4 @@
-"""Debug-only, loopback HTTP relay for agy conversation titles and tags.
+"""Debug-only, loopback HTTP relay for agy titles, categories and keywords.
 
 Run from model-create: python -m tools.summary_relay --port 8771
 The Android emulator uses http://10.0.2.2:8771.
@@ -20,23 +20,26 @@ DEFAULT_MODEL = 'gemini-3.8-flash-medium'
 DEFAULT_PORT = 8771
 MAX_REQUEST_BYTES = 32 * 1024
 PROMPT_PATH = Path(__file__).resolve().parents[1] / 'prompts/summary.md'
+STORY_PROMPT_PATH = PROMPT_PATH.with_name('story_split.md')
+MAX_SEGMENTS = 12
+MAX_SPLIT_REQUEST_BYTES = 256 * 1024
 LOGGER = logging.getLogger(__name__)
 
 
-def prompt_tags(system):
-    """Read the comma-separated vocabulary only from the prompt's 태그 section."""
-    section = re.search(r'^##[ \t]+태그[ \t]*\r?\n(.*?)(?=^##[ \t]+|\Z)',
+def prompt_categories(system):
+    """Read the comma-separated vocabulary only from the prompt's 분류 section."""
+    section = re.search(r'^##[ \t]+분류[ \t]*\r?\n(.*?)(?=^##[ \t]+|\Z)',
                         system, re.M | re.S)
     lines = [line.strip() for line in section[1].splitlines() if ',' in line] if section else []
     if len(lines) != 1:
-        raise ValueError('summary prompt tag list missing or ambiguous')
-    tags = tuple(tag.strip() for tag in lines[0].split(','))
-    if not all(tags) or len(set(tags)) != len(tags):
-        raise ValueError('summary prompt tag list invalid')
-    return tags
+        raise ValueError('summary prompt category list missing or ambiguous')
+    categories = tuple(category.strip() for category in lines[0].split(','))
+    if not all(categories) or len(set(categories)) != len(categories):
+        raise ValueError('summary prompt category list invalid')
+    return categories
 
 
-def validate_output(answer, allowed_tags):
+def output_json(answer):
     if not isinstance(answer, str):
         raise ValueError('invalid output')
     answer = answer.strip()
@@ -44,31 +47,131 @@ def validate_output(answer, allowed_tags):
     if fence:
         answer = fence[1]
     try:
-        data = json.loads(answer)
+        return json.loads(answer)
+    except (ValueError, TypeError, RecursionError):
+        raise ValueError('invalid output') from None
+
+
+def validate_fields(data, allowed_categories, *, allow_empty=False):
+    """Shared title/category/keyword rules for summary and story split."""
+    try:
         if not isinstance(data, dict):
             raise ValueError('invalid output')
-        title, tags, kind = data.get('title'), data.get('tags'), data.get('kind')
-        if (not isinstance(title, str) or not 1 <= len(title) <= 25 or not title.strip()
+        title, kind = data.get('title'), data.get('kind')
+        category, keywords = data.get('category'), data.get('keywords')
+        if (not isinstance(title, str) or (not (allow_empty and title == '') and
+                (not 1 <= len(title) <= 25 or not title.strip()))
                 or '\n' in title or '\r' in title):
             raise ValueError('invalid output')
         title.encode('utf-8')
-        if (not isinstance(tags, list) or not 1 <= len(tags) <= 3
-                or any(not isinstance(tag, str) or tag not in allowed_tags for tag in tags)
-                or kind not in ('story', 'moment')):
+        if (not isinstance(category, str) or (category not in allowed_categories and
+                not (allow_empty and category == ''))
+                or not isinstance(keywords, list) or len(keywords) > 2
+                or kind not in (('story', 'moment', 'none') if allow_empty else ('story', 'moment'))):
             raise ValueError('invalid output')
+        normalized_keywords = []
+        seen = set()
+        for keyword in keywords:
+            if not isinstance(keyword, str):
+                raise ValueError('invalid output')
+            keyword = keyword.strip()
+            if (not re.fullmatch(r'[가-힣A-Za-z0-9·]{1,6}', keyword)
+                    or keyword.isdigit() or keyword in allowed_categories
+                    or keyword.casefold() in seen):
+                raise ValueError('invalid output')
+            seen.add(keyword.casefold())
+            normalized_keywords.append(keyword)
     except (ValueError, TypeError, RecursionError):
         # JSONDecodeError contains the original response; never propagate it.
         raise ValueError('invalid output') from None
-    return dict(title=title, tags=tags, kind=kind)
+    return dict(title=title, category=category, keywords=normalized_keywords, kind=kind)
+
+
+def validate_output(answer, allowed_categories):
+    return validate_fields(output_json(answer), allowed_categories)
+
+
+def validate_split_output(answer, allowed_categories, segment_count):
+    """Strict ordered partition; bool/float indices are never segment numbers."""
+    try:
+        data = output_json(answer)
+        if (type(segment_count) is not int or not 1 <= segment_count <= MAX_SEGMENTS
+                or not isinstance(data, dict) or set(data) != {'stories'}
+                or not isinstance(data['stories'], list) or not data['stories']):
+            raise ValueError('invalid output')
+        stories, covered = [], []
+        for group in data['stories']:
+            if (not isinstance(group, dict) or set(group) !=
+                    {'segments', 'title', 'category', 'keywords', 'kind'}
+                    or not isinstance(group['segments'], list) or not group['segments']
+                    or any(type(index) is not int for index in group['segments'])):
+                raise ValueError('invalid output')
+            fields = validate_fields(group, allowed_categories, allow_empty=group['kind'] == 'none')
+            covered.extend(group['segments'])
+            stories.append(dict(segments=group['segments'], **fields))
+        if covered != list(range(1, segment_count + 1)):
+            raise ValueError('invalid output')
+        return dict(stories=stories)
+    except (ValueError, TypeError, RecursionError):
+        raise ValueError('invalid output') from None
 
 
 class SummaryRelay:
     def __init__(self, *, fake=False, backend_factory=None, prompt_path=PROMPT_PATH):
         self.system = Path(prompt_path).read_text(encoding='utf-8')
-        self.tags = prompt_tags(self.system)
+        self.categories = prompt_categories(self.system)
         self.fake = fake
         self.backend_factory = backend_factory or AgyBackend
         self.lock = threading.Lock()
+
+    def complete(self, model, system, transcript, validate, fake_result):
+        """One backend/agy path, with the same lock and invalid-output retry."""
+        base, effort = agy_model(model, 'medium')
+        with self.lock:
+            try:
+                if self.fake:
+                    return 200, fake_result, f'{base}-{effort}'
+                backend = self.backend_factory(model=base, effort=effort)
+                for attempt in range(2):
+                    answer = backend.complete(system, transcript)
+                    try:
+                        return 200, validate(answer), f'{base}-{effort}'
+                    except ValueError:
+                        if attempt == 1:
+                            return 502, {'error': 'invalid_output'}, None
+            except UsageLimit:
+                return 429, {'error': 'usage_limit'}, None
+            except Exception:
+                # Includes BackendError; never disclose private backend details.
+                return 502, {'error': 'backend_error'}, None
+
+    def story_split(self, data):
+        start = time.monotonic()
+        if not isinstance(data, dict):
+            return 400, {'error': 'invalid_request'}
+        segments, model = data.get('segments'), data.get('model', DEFAULT_MODEL)
+        if (not isinstance(segments, list) or not 1 <= len(segments) <= MAX_SEGMENTS
+                or any(not isinstance(s, str) or not s.strip() for s in segments)
+                or not isinstance(model, str)
+                or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}', model)):
+            return 400, {'error': 'invalid_request'}
+        transcript = '\n\n'.join(f'[{i}]\n{text}' for i, text in enumerate(segments, 1))
+        try:
+            transcript.encode('utf-8')
+            system = STORY_PROMPT_PATH.read_text(encoding='utf-8')
+            categories = prompt_categories(system)
+        except (UnicodeError, OSError, ValueError):
+            return 400, {'error': 'invalid_request'}
+        fake = dict(stories=[dict(segments=list(range(1, len(segments) + 1)),
+                                 title='테스트 이야기', category=categories[0], keywords=[], kind='story')])
+        status, result, effective_model = self.complete(
+            model, system, transcript, lambda answer: validate_split_output(answer, categories, len(segments)), fake)
+        if status != 200:
+            return status, result
+        stories = [dict(s, tags=([s['category']] if s['category'] else []) + s['keywords'])
+                   for s in result['stories']]
+        return 200, dict(stories=stories, model=effective_model,
+                         elapsed_ms=round((time.monotonic() - start) * 1000))
 
     def summarize(self, data):
         start = time.monotonic()
@@ -84,31 +187,13 @@ class SummaryRelay:
             transcript.encode('utf-8')
         except UnicodeError:
             return 400, {'error': 'invalid_request'}
-        base, effort = agy_model(model, 'medium')
-        effective_model = f'{base}-{effort}'
-        # Hold the lock across both attempts, including backend construction.
-        with self.lock:
-            try:
-                if self.fake:
-                    result = dict(title='테스트 대화', tags=[self.tags[0]], kind='story')
-                else:
-                    backend = self.backend_factory(model=base, effort=effort)
-                    for attempt in range(2):
-                        answer = backend.complete(self.system, transcript)
-                        try:
-                            result = validate_output(answer, self.tags)
-                            break
-                        except ValueError:
-                            if attempt == 1:
-                                return 502, {'error': 'invalid_output'}
-            except UsageLimit:
-                return 429, {'error': 'usage_limit'}
-            except BackendError:
-                return 502, {'error': 'backend_error'}
-            except Exception:
-                # Do not expose exception messages or transcript-bearing tracebacks.
-                return 502, {'error': 'backend_error'}
-        return 200, dict(result, model=effective_model,
+        status, result, effective_model = self.complete(
+            model, self.system, transcript, lambda answer: validate_output(answer, self.categories),
+            dict(title='테스트 대화', category=self.categories[0], keywords=[], kind='story'))
+        if status != 200:
+            return status, result
+        return 200, dict(result, tags=[result['category']] + result['keywords'],
+                         model=effective_model,
                          elapsed_ms=round((time.monotonic() - start) * 1000))
 
 
@@ -127,7 +212,7 @@ class SummaryHandler(BaseHTTPRequestHandler):
         self.close_connection = True
         # Unknown URLs, query strings, and methods can themselves contain private text.
         path = getattr(self, 'path', '').partition('?')[0]
-        path = path if path in ('/health', '/summarize') else '/<unknown>'
+        path = path if path in ('/health', '/summarize', '/story-split') else '/<unknown>'
         method = getattr(self, 'command', '')
         method = method if method in ('GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'OPTIONS', 'PATCH') else 'OTHER'
         LOGGER.info('method=%s path=%s status=%d request_bytes=%d transcript_chars=%d '
@@ -155,7 +240,7 @@ class SummaryHandler(BaseHTTPRequestHandler):
         self.send_json(200, {'ok': True, 'model': DEFAULT_MODEL})
 
     def do_POST(self):
-        if self.path != '/summarize':
+        if self.path not in ('/summarize', '/story-split'):
             self.send_json(404, {'error': 'not_found'})
             return
         lengths = self.headers.get_all('Content-Length', [])
@@ -164,7 +249,8 @@ class SummaryHandler(BaseHTTPRequestHandler):
             self.send_json(400, {'error': 'invalid_request'})
             return
         size = int(lengths[0])
-        if size > MAX_REQUEST_BYTES:
+        limit = MAX_SPLIT_REQUEST_BYTES if self.path == '/story-split' else MAX_REQUEST_BYTES
+        if size > limit:
             self.send_json(413, {'error': 'request_too_large'})
             return
         if self.headers.get('Content-Type', '').partition(';')[0].strip().lower() != 'application/json':
@@ -184,7 +270,12 @@ class SummaryHandler(BaseHTTPRequestHandler):
             return
         if isinstance(data, dict) and isinstance(data.get('transcript'), str):
             self.transcript_chars = len(data['transcript'])
-        status, result = self.server.relay.summarize(data)
+        if self.path == '/story-split':
+            if isinstance(data, dict) and isinstance(data.get('segments'), list):
+                self.transcript_chars = sum(len(s) for s in data['segments'] if isinstance(s, str))
+            status, result = self.server.relay.story_split(data)
+        else:
+            status, result = self.server.relay.summarize(data)
         self.send_json(status, result)
 
 
