@@ -75,8 +75,9 @@ used in the labeler and output name: `llm:agy:gemini-3.8-flash:medium` and
 `.local/labels/agy-gemini-3.8-flash-medium[-TAG]/`.
 
 `--agy-path` overrides the executable. Its default is
-`%LOCALAPPDATA%\Packages\OpenAI.Codex_2p2nqsd0c76g0\LocalCache\Local\agy\bin\agy.exe`
-when that file exists, otherwise PATH lookup for `agy.exe`/`agy`.
+`%LOCALAPPDATA%\agy\bin\agy.exe` when that file exists, otherwise PATH lookup
+for `agy.exe`/`agy`. (An install run from inside the Codex app lands in the
+Codex package's `LocalCache` instead; copy it to the path above.)
 Installed agy 1.5.4's `--help` was inspected locally. The exact subprocess argv
 for the configuration above is this list (the first element is the resolved
 executable and the last element contains the entire multiline prompt):

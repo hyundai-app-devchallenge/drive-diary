@@ -322,7 +322,7 @@ AGY_LIMIT_PATTERN = re.compile(
 def default_agy_path():
     local = os.environ.get('LOCALAPPDATA')
     if local:
-        installed = Path(local) / 'Packages/OpenAI.Codex_2p2nqsd0c76g0/LocalCache/Local/agy/bin/agy.exe'
+        installed = Path(local) / 'agy/bin/agy.exe'
         if installed.is_file():
             return str(installed)
     return shutil.which('agy.exe') or shutil.which('agy')

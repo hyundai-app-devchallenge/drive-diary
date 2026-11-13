@@ -163,7 +163,7 @@ def test_path_resolution_installed_then_path(tmp_path, monkeypatch):
     monkeypatch.setenv('LOCALAPPDATA', str(tmp_path))
     monkeypatch.setattr(l.shutil, 'which', lambda name: 'PATH-agy' if name == 'agy' else None)
     assert l.default_agy_path() == 'PATH-agy'
-    installed = tmp_path / 'Packages/OpenAI.Codex_2p2nqsd0c76g0/LocalCache/Local/agy/bin/agy.exe'
+    installed = tmp_path / 'agy/bin/agy.exe'
     installed.parent.mkdir(parents=True)
     installed.touch()
     assert l.default_agy_path() == str(installed)

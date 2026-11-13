@@ -10,6 +10,7 @@ import json
 import logging
 from pathlib import Path
 import re
+import socket
 import threading
 import time
 
@@ -195,6 +196,19 @@ class SummaryServer(ThreadingHTTPServer):
 
     def handle_error(self, request, client_address):
         pass  # Never emit a request/response-bearing traceback.
+
+    def shutdown_request(self, request):
+        # On this Windows host, loopback connections are sometimes reset right after
+        # the response is sent (also with a bare http.server). Half-closing and draining
+        # until the client closes first lowered resets from ~20% to ~3% in tests.
+        try:
+            request.shutdown(socket.SHUT_WR)
+            request.settimeout(2)
+            while request.recv(4096):
+                pass
+        except OSError:
+            pass
+        super().shutdown_request(request)
 
 
 def parser():
