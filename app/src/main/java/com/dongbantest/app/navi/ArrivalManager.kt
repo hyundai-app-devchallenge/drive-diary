@@ -63,6 +63,7 @@ class ArrivalManager(
 
     /** "아직 여행 중이에요": 여행을 다시 연다. 기록은 여행 화면에 들어가면 다시 시작된다. */
     fun keepTraveling(tripId: Long) = scope.launch {
+        if (!tripRepository.tripExists(tripId)) return@launch
         gate.keepTraveling(tripId)
         tripRepository.reopenTrip(tripId)
         Log.i(TAG, "여행 다시 열기: tripId=$tripId")
@@ -73,11 +74,19 @@ class ArrivalManager(
         _arrival.value = null
     }
 
+    /** The repository fence also suppresses arrival jobs already suspended in a DB call. */
+    fun discardTrip(tripId: Long) {
+        if (_arrival.value?.tripId == tripId) _arrival.value = null
+        notifier.cancel(tripId)
+    }
+
     private suspend fun finish(tripId: Long, destinationName: String) {
+        if (!tripRepository.isTripOngoing(tripId)) return
         Log.i(TAG, "목적지 도착 → 여행 자동 종료: tripId=$tripId, 목적지=$destinationName")
         locationTracker.stop(tripId)
         vehicleSignalTracker.stop(tripId)
-        tripRepository.endTrip(tripId, vehicleRepository.state.value.odometer)
+        if (!tripRepository.endTrip(tripId, vehicleRepository.state.value.odometer)) return
+        if (!tripRepository.tripExists(tripId) || tripRepository.observeOngoingTrip().first() != null) return
         placeRecorder.recordEnd(tripId, destinationName)
         _arrival.value = ArrivalEvent(tripId, destinationName)
         if (!isAppVisible) notifier.show(tripId, destinationName)

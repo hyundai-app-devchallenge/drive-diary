@@ -50,7 +50,11 @@ class AppContainer(context: Context) : SummaryWorkerDependencies {
             onPendingSaved = { id -> SummaryWorkScheduler.enqueue(context, id) })
     }
     val talkRecording by lazy {
-        TalkRecordingController(context, tripRepository, recordingConsentStore, talkSink, recordingSettingsStore)
+        TalkRecordingController(
+            context, tripRepository, recordingConsentStore, talkSink, recordingSettingsStore, appScope,
+            speakPause = { questionCoordinator.speakRecordingPaused(it) },
+            stopPauseSpeech = { questionCoordinator.stopRecordingPauseSpeech() },
+        )
     }
     val vehicleRepository by lazy { VehicleRepository(context, appScope) }
     val drivingSafetyMonitor by lazy { DrivingSafetyMonitor(context) }
@@ -84,18 +88,29 @@ class AppContainer(context: Context) : SummaryWorkerDependencies {
 
     /** 내비 연결 + 도착 자동 종료 연결: 내비 도착 신호, 내비 목적지, 주차 신호를 ArrivalManager 로 보낸다. */
     fun startNavi() {
-        tripRepository.onTripEnding = { talkRecording.stopForTrip(it) }
-        talkRecording.observeStops(appScope)
-        talkRecording.onQuestionCommand = { command ->
-            when (command) {
-                QuestionCommand.ASK_NEXT -> questionCoordinator.requestQuestion("voice")
-                QuestionCommand.STOP_ASKING -> questionCoordinator.stopAsking("voice")
-            }
+        tripRepository.onTripEnding = {
+            locationTracker.stop(it)
+            vehicleSignalTracker.stop(it)
+            arrivalManager.discardTrip(it)
+            questionCoordinator.cancelForTrip(it)
+            // Drains queued clips and closes their run through TalkSinkImpl (including summary work).
+            talkRecording.finishTrip(it)
         }
-        naviMonitor.onArrived = { arrivalManager.onNaviArrived(it) }
-        naviMonitor.onDestination = { arrivalManager.destination = it }
-        vehicleSignalTracker.onParked = { arrivalManager.onParked(it) }
-        naviMonitor.start()
+        appScope.launch {
+            tripRepository.reconcileOngoingTrips()
+            talkRecording.observeStops(appScope)
+            talkRecording.onQuestionCommand = { command ->
+                when (command) {
+                    QuestionCommand.ASK_NEXT -> questionCoordinator.requestQuestion("voice")
+                    QuestionCommand.STOP_ASKING -> questionCoordinator.stopAsking("voice")
+                }
+            }
+            naviMonitor.onArrived = { arrivalManager.onNaviArrived(it) }
+            naviMonitor.onDestination = { arrivalManager.destination = it }
+            vehicleSignalTracker.onParked = { arrivalManager.onParked(it) }
+            naviMonitor.start()
+            questionCoordinator.start()
+        }
     }
 }
 
@@ -111,6 +126,5 @@ class DongbanApplication : Application(), SummaryWorkerOwner {
         container.mapboxTokenStore // 첫 MapView 보다 먼저 Mapbox 토큰을 적용한다
         container.startNavi()
         container.startSummaries(this)
-        container.questionCoordinator.start()
     }
 }

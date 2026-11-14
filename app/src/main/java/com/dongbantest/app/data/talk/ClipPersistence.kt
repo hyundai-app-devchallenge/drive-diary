@@ -39,8 +39,8 @@ internal class ClipPersistence(private val journalDir: File) {
         file: File,
         existing: suspend () -> Long?,
         write: suspend () -> Long,
-        insert: suspend (Long) -> Long,
-    ): Long {
+        insert: suspend (Long) -> Long?,
+    ): Long? {
         requireOwned(file)
         existing()?.let { return it }
         // An unreferenced final file can remain after process death between rename and DB commit.
@@ -50,7 +50,7 @@ internal class ClipPersistence(private val journalDir: File) {
             val duration = write()
             currentCoroutineContext().ensureActive()
             return withContext(NonCancellable) {
-                insert(duration).also { committed = true }
+                insert(duration).also { committed = it != null }
             }
         } finally {
             if (!committed) remove(file)
@@ -64,7 +64,9 @@ internal class ClipPersistence(private val journalDir: File) {
         delete: suspend (Long) -> Unit,
     ): Boolean = locked {
         require(refusalId.isNotBlank())
-        val receipt = File(journalDir, clipKey("$tripId:$refusalId") + ".receipt")
+        val key = clipKey("$tripId:$refusalId")
+        val legacy = File(journalDir, "$key.receipt")
+        val receipt = legacy.takeIf { it.exists() } ?: File(journalDir, "$tripId-$key.receipt")
         val target = if (receipt.exists()) read(receipt) else latest().also { pin(receipt, it) }
         currentCoroutineContext().ensureActive()
         withContext(NonCancellable) { finishDelete(target, find, delete) }
@@ -76,6 +78,13 @@ internal class ClipPersistence(private val journalDir: File) {
             withContext(NonCancellable) { finishDelete(read(it), find, delete) }
         }
         journalDir.listFiles { file -> file.extension == "part" }?.forEach(::remove)
+    }
+
+    /** Caller holds the lock and has removed this trip's media and rows. */
+    fun forgetTrip(tripId: Long, knownPaths: List<String>) {
+        journalDir.listFiles { file -> file.extension == "receipt" }?.forEach { receipt ->
+            if (receipt.name.startsWith("$tripId-") || read(receipt)?.path in knownPaths) remove(receipt)
+        }
     }
 
     private suspend fun finishDelete(

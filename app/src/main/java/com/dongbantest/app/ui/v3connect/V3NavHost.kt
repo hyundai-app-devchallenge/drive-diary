@@ -68,8 +68,6 @@ import com.dongbantest.app.ui.v3.screens.RecordMapScreen
 import com.dongbantest.app.ui.v3.screens.QuietCheckScreen
 import com.dongbantest.app.ui.v3.screens.QuietCheckUiState
 import com.dongbantest.app.ui.v3.screens.SettingsScreen
-import com.dongbantest.app.ui.v3.screens.SilenceQuestionScreen
-import com.dongbantest.app.ui.v3.screens.SilenceQuestionUiState
 import com.dongbantest.app.data.ask.QuestionOverlay
 import com.dongbantest.app.ui.v3.screens.StopNoticeScreen
 import com.dongbantest.app.ui.v3.screens.StopNoticeUiState
@@ -171,10 +169,14 @@ fun V3NavHost(
         onArrivalHandled()
     }
 
+    // 방금 끝내거나 버린 여행. 목록이 갱신되기 전 잠깐 "진행 중"으로 남아 있어도 그 여행으로 다시 들어가지 않게 한다.
+    var closedTripIds by remember { mutableStateOf(emptySet<Long>()) }
+    val liveTrip = home.ongoingTrip?.takeIf { it.id !in closedTripIds }
+
     val onTab: (DbTab) -> Unit = { tab ->
         when (tab) {
             DbTab.Home -> navController.navigate(V3Routes.HOME) { popUpTo(V3Routes.HOME) { inclusive = true } }
-            DbTab.Trip -> navController.go(home.ongoingTrip?.let { V3Routes.trip(it.id) } ?: V3Routes.TRIP_EMPTY)
+            DbTab.Trip -> navController.go(liveTrip?.let { V3Routes.trip(it.id) } ?: V3Routes.TRIP_EMPTY)
             DbTab.Record -> navController.go(if (restricted) V3Routes.stop(V3Routes.RECORDS) else V3Routes.RECORDS)
         }
     }
@@ -191,7 +193,7 @@ fun V3NavHost(
                 onTab = onTab,
                 onStartTrip = { navController.navigate(V3Routes.SETUP) },
                 onOpenPastTrip = { id -> id.toLongOrNull()?.let(openDiary) },
-                onOpenLiveTrip = { home.ongoingTrip?.let { navController.go(V3Routes.trip(it.id)) } },
+                onOpenLiveTrip = { liveTrip?.let { navController.go(V3Routes.trip(it.id)) } },
                 onPastLocked = { navController.go(V3Routes.stop(V3Routes.RECORDS)) },
                 onSettings = if (restricted) null else { { navController.go(V3Routes.SETTINGS) } },
             )
@@ -280,6 +282,15 @@ fun V3NavHost(
             val capture by TalkRec.state.collectAsStateWithLifecycle() // talk-rec: 상시 캡처 상태(녹음 칩)
             var showGuide by rememberSaveable { mutableStateOf(entry.arguments?.getBoolean("guide") == true) }
             var confirmEnd by rememberSaveable { mutableStateOf(false) }
+            // "버리기"를 고르면 되돌릴 수 없으니 한 번 더 묻는다.
+            var confirmDiscard by rememberSaveable { mutableStateOf(false) }
+            // 창이 떠 있는 동안 출발하면(주행 중) 창을 닫는다. 정차 중에만 끝낼 수 있다.
+            LaunchedEffect(restricted) {
+                if (restricted) {
+                    confirmEnd = false
+                    confirmDiscard = false
+                }
+            }
 
             // 여행 화면에 들어오면 위치·마이크 권한을 확인하고, GPS 기록과 차량 신호 기록, 녹음을 시작한다.
             val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -367,6 +378,7 @@ fun V3NavHost(
                 onToastSay = vm::onVoiceExampleTapped,
                 // 진행 알약을 누르면 여행을 직접 끝낼 수 있다(정차 중일 때만). 도착 자동 종료가 안 될 때를 위한 길.
                 onTripPill = { if (!restricted) confirmEnd = true },
+                onEndTrip = { if (!restricted) confirmEnd = true },
             )
             WithMessages(state.message, vm::consumeMessage) {
                 when {
@@ -375,7 +387,6 @@ fun V3NavHost(
                         events = events,
                         onStart = {
                             showGuide = false
-                            vm.askCurrentQuestion()
                             vm.onScreenShown(context.hasMic())
                         },
                     )
@@ -383,24 +394,34 @@ fun V3NavHost(
                         state = QuietCheckUiState(background = driving),
                         events = events,
                     )
-                    question?.overlay is QuestionOverlay.Asking -> {
-                        val asking = question.overlay as QuestionOverlay.Asking
-                        SilenceQuestionScreen(
-                            state = SilenceQuestionUiState(
-                                tag = "가족", question = asking.question, hint = asking.hint,
-                                // 녹음 중이 아니면 글레오를 거치므로 "다른 질문"만, 글레오 안내와 함께
-                                say = questionSay(driving.recording), sayLabel = questionSayLabel(driving.recording),
-                                background = driving,
-                            ),
-                            events = events,
+                    // Q02 동반이의 질문은 창을 띄우지 않고 "우리의 여행" 질문 카드에만 보인다(withQuestion).
+                    confirmDiscard -> DrivingLayout(driving, events, overlay = {
+                        DiscardTripDialog(
+                            onDiscard = {
+                                confirmDiscard = false
+                                closedTripIds = closedTripIds + tripId
+                                // 버린 뒤에는 홈으로: 새 여행을 시작하거나 지난 여행을 볼 수 있다.
+                                vm.discardTrip {
+                                    navController.navigate(V3Routes.HOME) { popUpTo(V3Routes.HOME) { inclusive = true } }
+                                }
+                            },
+                            onCancel = {
+                                confirmDiscard = false
+                                confirmEnd = true
+                            },
                         )
-                    }
+                    })
                     confirmEnd -> DrivingLayout(driving, events, overlay = {
                         EndTripDialog(
-                            onEnd = {
+                            onSave = {
                                 confirmEnd = false
+                                closedTripIds = closedTripIds + tripId
                                 val name = state.ribbon?.destinationName ?: state.data?.trip?.destination.orEmpty()
                                 vm.endTrip { navController.go(V3Routes.arrival(tripId, name)) }
+                            },
+                            onDiscard = {
+                                confirmEnd = false
+                                confirmDiscard = true
                             },
                             onCancel = { confirmEnd = false },
                         )
@@ -413,8 +434,8 @@ fun V3NavHost(
         /* T01 진행 중인 여행 없음 */
         composable(V3Routes.TRIP_EMPTY) {
             // 여행이 시작되면(다른 화면에서) 바로 여행 화면으로 넘어간다.
-            LaunchedEffect(home.ongoingTrip?.id) {
-                home.ongoingTrip?.let { navController.go(V3Routes.trip(it.id)) }
+            LaunchedEffect(liveTrip?.id) {
+                liveTrip?.let { navController.go(V3Routes.trip(it.id)) }
             }
             TripEmptyScreen(onTab = onTab, onStartTrip = { navController.navigate(V3Routes.SETUP) })
         }
@@ -583,17 +604,33 @@ fun V3NavHost(
     }
 }
 
-/** 여행을 직접 끝낼 때 묻는 창 (v3 대화상자 모양). */
+/** 여행을 직접 끝낼 때 묻는 창: 저장하고 끝내기 / 저장하지 않고 버리기 / 계속 여행하기. */
 @Composable
-private fun EndTripDialog(onEnd: () -> Unit, onCancel: () -> Unit) {
+private fun EndTripDialog(onSave: () -> Unit, onDiscard: () -> Unit, onCancel: () -> Unit) {
     val c = DbTheme.colors
     val t = DbTheme.type
-    DbDialog("여행을 마칠까요?") {
-        Text("여행을 마칠까요?", style = t.titleLg, color = c.ink)
-        Text("지금까지의 대화와 달린 길이 한 권의 다이어리로 정리돼요.", style = t.body, color = c.ink2)
+    DbDialog("여행을 끝낼까요?") {
+        Text("여행을 끝낼까요?", style = t.titleLg, color = c.ink)
+        Text("저장하면 지금까지의 대화와 달린 길이 한 권의 다이어리로 정리돼요.", style = t.body, color = c.ink2)
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            PrimaryButton("여행 마치기", onEnd, capWide = false)
+            PrimaryButton("저장하고 끝내기", onSave, capWide = false)
+            OutlineButton("저장하지 않고 버리기", onDiscard, capWide = false)
             DbTextButton("계속 여행하기", onCancel)
+        }
+    }
+}
+
+/** 여행을 버리기 전에 한 번 더 묻는다. 버리면 되돌릴 수 없다. */
+@Composable
+private fun DiscardTripDialog(onDiscard: () -> Unit, onCancel: () -> Unit) {
+    val c = DbTheme.colors
+    val t = DbTheme.type
+    DbDialog("이 여행을 버릴까요?", alert = true) {
+        Text("이 여행을 버릴까요?", style = t.titleLg, color = c.ink)
+        Text("이번 여행의 경로, 대화 녹음, 사진이 모두 지워지고 되돌릴 수 없어요.", style = t.body, color = c.ink2)
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            PrimaryButton("버리기", onDiscard, capWide = false)
+            DbTextButton("돌아가기", onCancel)
         }
     }
 }

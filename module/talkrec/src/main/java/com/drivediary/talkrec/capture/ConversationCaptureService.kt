@@ -100,7 +100,7 @@ class ConversationCaptureService : Service() {
                 if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
                 else startForeground(NOTIFICATION, notification)
             } catch (_: RuntimeException) {
-                error(); TalkRec.finished(); stopSelf(); return START_NOT_STICKY
+                error(); TalkRec.finished(next); TalkRec.stopped(next); stopSelf(); return START_NOT_STICKY
             }
             dispatch(Event.Start(next))
         } else if (action in setOf(STOP, PAUSE, RESUME, MARK)) dispatch(Event.Control(action!!))
@@ -117,6 +117,7 @@ class ConversationCaptureService : Service() {
         when (event) {
             is Event.Start -> {
                 endInput()
+                TalkRec.stopped(request)
                 request = event.request; factory = event.request.options.audioSource; stoppedEvent = false
                 temporarySource = false
                 assembler = BlockAssembler(silenceRms = event.request.options.silenceRms)
@@ -124,9 +125,12 @@ class ConversationCaptureService : Service() {
                 startInput()
             }
             is Event.Control -> when (event.action) {
-                STOP -> { endInput(); debugStopped(); state(CaptureStatus.Off); TalkRec.finished(); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
+                STOP -> { endInput(); debugStopped(); state(CaptureStatus.Off); TalkRec.finished(request); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
                 PAUSE -> pauseCapture()
-                RESUME -> if (request != null && TalkRec.state.value.status == CaptureStatus.Paused) startInput()
+                RESUME -> if (request != null && TalkRec.state.value.status == CaptureStatus.Paused) {
+                    request?.options?.beforeResume?.invoke()
+                    startInput()
+                }
                 MARK -> if (TalkRec.state.value.status == CaptureStatus.On) {
                     assembler.forceClose(System.currentTimeMillis())?.let { closed(it) }
                     flushCandidates(lastEnd ?: 0)
@@ -337,14 +341,14 @@ class ConversationCaptureService : Service() {
         while (iterator.hasNext()) {
             val closed = iterator.next()
             val block = closed.block
-            if (audioUntil < block.endMs + 2000) continue
+            if (audioUntil < block.endMs + NoRecordWindows.CLIP_TAIL_MS) continue
             if (TalkRec.inNoRecord(block.startMs, block.endMs)) {
-                // Question check, question audio or its answer window (question-suggest DESIGN §6).
+                // Question/notice audio and grace windows, including the clip's PCM padding.
                 closed.trace?.finish(); iterator.remove()
                 Log.i(TAG, "block skipped reason=question_window")
                 continue
             }
-            val audio = ring.slice(block.startMs - 3000, block.endMs + 2000)
+            val audio = ring.slice(block.startMs - NoRecordWindows.CLIP_LEAD_MS, block.endMs + NoRecordWindows.CLIP_TAIL_MS)
             if (candidates?.trySend(Candidate(closed, audio))?.isSuccess != true) {
                 audio.erase(); closed.trace?.finish(); dispatch(Event.Failed(session))
             }
@@ -431,7 +435,7 @@ class ConversationCaptureService : Service() {
         debugTraces.forEach { it.finish() }; debugTraces.clear()
         debugStopped()
         wake?.let { if (it.isHeld) it.release() }; wake = null
-        state(CaptureStatus.Off); TalkRec.finished()
+        state(CaptureStatus.Off); TalkRec.finished(request); TalkRec.stopped(request)
         super.onDestroy()
     }
 

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.util.Log
 import com.dongbantest.app.AppContainer
 import com.dongbantest.app.DongbanApplication
+import com.dongbantest.app.data.talk.RecordingPauseSource
 import com.drivediary.talkrec.TalkRec
 import com.drivediary.talkrec.capture.CaptureStatus
 import kotlinx.coroutines.CancellationException
@@ -105,7 +106,7 @@ private suspend fun executeRecordingAction(container: AppContainer, action: Gleo
     val hasSession = capture.tripId == tripId && capture.status in setOf(CaptureStatus.On, CaptureStatus.Paused)
     when (action) {
         GleoRecordingAction.PAUSE -> {
-            container.talkRecording.pause(tripId)
+            container.talkRecording.pause(tripId, RecordingPauseSource.GLEO)
             // Latch the pause even when the trip's microphone session has not started.
             if (!hasSession) return GleoRecordingResult(true, action.successMessage)
         }

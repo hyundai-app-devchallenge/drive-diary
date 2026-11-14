@@ -17,7 +17,7 @@ import kotlinx.coroutines.launch
  * adb shell am broadcast --user 10 -a com.dongbantest.app.debug.ASK_FORCE_QUIET -n com.dongbantest.app/.debug.DebugQuestionReceiver
  * adb shell am broadcast --user 10 -a com.dongbantest.app.debug.ASK_REACTION -n com.dongbantest.app/.debug.DebugQuestionReceiver --es kind accept
  * adb shell am broadcast --user 10 -a com.dongbantest.app.debug.ASK_SHORT_POLICY -n com.dongbantest.app/.debug.DebugQuestionReceiver --ez on true
- * adb shell am broadcast --user 10 -a com.dongbantest.app.debug.ASK_VOICE -n com.dongbantest.app/.debug.DebugQuestionReceiver --es cmd next   (or stop)
+ * adb shell am broadcast --user 10 -a com.dongbantest.app.debug.ASK_VOICE -n com.dongbantest.app/.debug.DebugQuestionReceiver --es cmd next   (or stop / pause)
  * adb shell am broadcast --user 10 -a com.dongbantest.app.debug.ASK_GLEO -n com.dongbantest.app/.debug.DebugQuestionReceiver
  */
 class DebugQuestionReceiver : BroadcastReceiver() {
@@ -35,12 +35,13 @@ class DebugQuestionReceiver : BroadcastReceiver() {
                 "other" -> Reaction.OTHER
                 else -> null
             }?.let { coordinator.debugReaction(it) }
-            // Same dispatch as a command recognized by our own STT while recording (--es cmd next|stop).
+            // Same app STT dispatch/feedback; never invokes Gleo or logs command text.
             "com.dongbantest.app.debug.ASK_VOICE" -> when (intent.getStringExtra("cmd")) {
-                "next" -> QuestionCommand.ASK_NEXT
-                "stop" -> QuestionCommand.STOP_ASKING
-                else -> null
-            }?.let { container.talkRecording.dispatchQuestionCommand(it) }
+                "next" -> container.talkRecording.dispatchQuestionCommand(QuestionCommand.ASK_NEXT)
+                "stop" -> container.talkRecording.dispatchQuestionCommand(QuestionCommand.STOP_ASKING)
+                "pause" -> container.talkRecording.dispatchVoicePauseCommand()
+                else -> Unit
+            }
             // Same code path as the Gleo ASK_NEW_QUESTION receiver, without the APP_ACTION_RESPONSE callback.
             "com.dongbantest.app.debug.ASK_GLEO" -> {
                 val pending = goAsync()

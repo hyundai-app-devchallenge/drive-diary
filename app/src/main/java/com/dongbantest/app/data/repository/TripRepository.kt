@@ -16,8 +16,10 @@ import com.dongbantest.app.domain.model.SummaryStatus
 import com.drivediary.talkrec.sink.KeptBlock
 import java.io.File
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONArray
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import com.dongbantest.app.data.local.TripDao
 import com.dongbantest.app.data.local.TripEntity
@@ -33,8 +35,13 @@ import com.dongbantest.app.domain.model.TripWithMemories
 import com.dongbantest.app.domain.model.VehicleSignal
 import com.dongbantest.app.domain.model.VehicleSignalType
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** 여행 기록 저장/조회. 서버 없이 Room 에만 저장한다. */
 class TripRepository(
@@ -43,8 +50,15 @@ class TripRepository(
 ) {
     private val clips = ClipPersistence(files.talkJournalDir)
     private var recoveredClips = false
-    /** AppContainer binds this to capture stop; covers manual end, arrival and trip deletion. */
-    var onTripEnding: (Long) -> Unit = {}
+    private val deletingTrips = ConcurrentHashMap.newKeySet<Long>()
+    private val lifecycle = Mutex()
+    private val endingTrips = MutableStateFlow<Set<Long>>(emptySet())
+    /** Fence writers synchronously, before any coroutine involved in discard can suspend. */
+    fun beginDiscardTrip(tripId: Long) { deletingTrips += tripId }
+    fun isTripBeingDeleted(tripId: Long): Boolean = tripId in deletingTrips
+    fun isTripEnding(tripId: Long): Boolean = tripId in endingTrips.value
+    /** Stop producers and drain saved capture work before committing an end. Also used by deletion. */
+    var onTripEnding: suspend (Long) -> Unit = {}
 
     fun observeTrips(): Flow<List<Trip>> =
         combine(dao.observeTrips(), dao.observePhotoMemories()) { trips, photos ->
@@ -60,7 +74,11 @@ class TripRepository(
                 .filterValues { it.isNotEmpty() }
         }
 
-    fun observeOngoingTrip(): Flow<Trip?> = dao.observeOngoingTrip().map { it?.toDomain() }
+    fun observeOngoingTrip(): Flow<Trip?> =
+        combine(dao.observeOngoingTrip(), endingTrips) { trip, _ ->
+            // Recheck Room snapshots: an invalidation can still be queued when a batch finishes.
+            trip?.takeIf { isTripOngoing(it.id) }?.toDomain()
+        }.distinctUntilChanged()
 
     fun observeTripWithMemories(tripId: Long): Flow<TripWithMemories?> =
         combine(
@@ -83,7 +101,15 @@ class TripRepository(
             }
         }
 
-    suspend fun isTripOngoing(tripId: Long): Boolean = dao.getTrip(tripId)?.let { it.endedAt == null } == true
+    suspend fun isTripOngoing(tripId: Long): Boolean = !isTripEnding(tripId) &&
+        canSaveOngoingTrip(tripId) && !isTripEnding(tripId)
+
+    // Already queued audio may finish saving while onTripEnding drains the capture service.
+    private suspend fun canSaveOngoingTrip(tripId: Long): Boolean = !isTripBeingDeleted(tripId) &&
+        dao.getTrip(tripId)?.let { it.endedAt == null && !it.isSample } == true && !isTripBeingDeleted(tripId)
+
+    suspend fun tripExists(tripId: Long): Boolean = !isTripBeingDeleted(tripId) &&
+        dao.getTrip(tripId) != null && !isTripBeingDeleted(tripId)
 
     /** One ownership boundary for encoding + atomic Room insert; no asynchronous PCM retention. */
     suspend fun saveTalkClip(
@@ -94,14 +120,15 @@ class TripRepository(
     ): Long? = withContext(Dispatchers.IO) {
         clips.locked {
             recoverTalkClipsLocked()
-            if (!canSave() || !isTripOngoing(block.tripId)) return@locked null
+            if (!canSave() || !canSaveOngoingTrip(block.tripId)) return@locked null
             val file = files.talkVoiceFile(block.tripId, block.id)
             if (clips.wasDeleted(file)) return@locked null
             clips.save(file,
                 existing = { dao.getMemoryByPath(file.absolutePath)?.id },
                 write = { writeAudio(file) },
                 insert = { duration ->
-                    check(canSave() && isTripOngoing(block.tripId)) { "Capture no longer authorized" }
+                    // Discard/stop during encoding is a normal rejection, not a capture failure.
+                    if (!canSave() || !canSaveOngoingTrip(block.tripId)) return@save null
                     val ai = sendToAi()
                     dao.insertTalkMemory(
                         MemoryEntity(tripId = block.tripId, type = MemoryType.VOICE.name,
@@ -134,6 +161,7 @@ class TripRepository(
     suspend fun getPendingTalkSummary(memoryId: Long): Memory? = dao.pendingTalkMemory(memoryId)?.toDomain()
 
     suspend fun closeTalkRun(tripId: Long, runId: String): Long? = clips.locked {
+        if (!tripExists(tripId)) return@locked null
         dao.closeTalkRun(tripId, runId)
         dao.pendingRunCeiling(runId)
     }
@@ -169,23 +197,29 @@ class TripRepository(
         recoveredClips = true
     }
 
-    suspend fun addLocationPoint(point: LocationPoint): Long = dao.insertLocationPoint(
-        LocationPointEntity(
-            tripId = point.tripId,
-            recordedAt = point.recordedAt,
-            latitude = point.latitude,
-            longitude = point.longitude,
-            accuracyMeters = point.accuracyMeters,
+    suspend fun addLocationPoint(point: LocationPoint): Long = clips.locked {
+        if (!isTripOngoing(point.tripId)) return@locked 0L
+        dao.insertLocationPoint(
+            LocationPointEntity(
+                tripId = point.tripId,
+                recordedAt = point.recordedAt,
+                latitude = point.latitude,
+                longitude = point.longitude,
+                accuracyMeters = point.accuracyMeters,
+            )
         )
-    )
+    }
 
-    suspend fun addVehicleSignal(signal: VehicleSignal): Long = dao.insertVehicleSignal(
-        VehicleSignalEntity(
-            tripId = signal.tripId,
-            recordedAt = signal.recordedAt,
-            type = signal.type.name,
+    suspend fun addVehicleSignal(signal: VehicleSignal): Long = clips.locked {
+        if (!isTripOngoing(signal.tripId)) return@locked 0L
+        dao.insertVehicleSignal(
+            VehicleSignalEntity(
+                tripId = signal.tripId,
+                recordedAt = signal.recordedAt,
+                type = signal.type.name,
+            )
         )
-    )
+    }
 
     suspend fun startTrip(
         title: String,
@@ -194,8 +228,9 @@ class TripRepository(
         odometer: Float?,
         odometerSource: DataSourceType?,
         now: Long = System.currentTimeMillis(),
-    ): Long = dao.insertTrip(
-        TripEntity(
+    ): Long = lifecycle.withLock {
+        closeOngoingTrips(dao.getOngoingTrips())
+        dao.insertTrip(TripEntity(
             title = title.trim(),
             destination = destination.trim(),
             companions = companions.joinToString(",") { it.trim() },
@@ -205,33 +240,69 @@ class TripRepository(
             endOdometer = null,
             odometerSource = odometerSource?.name,
             isSample = false,
-        )
-    )
+        ))
+    }
 
-    suspend fun endTrip(tripId: Long, odometer: Float?, now: Long = System.currentTimeMillis()) {
+    /** Called once at application startup, before arrival/question observers are started. */
+    suspend fun reconcileOngoingTrips() = lifecycle.withLock {
+        closeOngoingTrips(dao.getOngoingTrips().drop(1))
+    }
+
+    private suspend fun closeOngoingTrips(trips: List<TripEntity>) = withTripsEnding(trips.map { it.id }.toSet()) {
+        // Keep the latest row selected until every older row has been saved and closed.
+        trips.asReversed().forEach { endTripLocked(it.id, odometer = null, now = null) }
+    }
+
+    suspend fun endTrip(tripId: Long, odometer: Float?, now: Long = System.currentTimeMillis()): Boolean =
+        lifecycle.withLock {
+            withTripsEnding(setOf(tripId)) { endTripLocked(tripId, odometer, now) }
+        }
+
+    private suspend fun <T> withTripsEnding(ids: Set<Long>, block: suspend () -> T): T {
+        endingTrips.update { it + ids }
+        try { return block() }
+        finally { endingTrips.update { it - ids } }
+    }
+
+    /** null now uses the last persisted record, after capture has drained, for abandoned trips. */
+    private suspend fun endTripLocked(tripId: Long, odometer: Float?, now: Long?): Boolean {
+        if (isTripBeingDeleted(tripId)) return false
+        val current = dao.getTrip(tripId) ?: return false
+        if (current.endedAt != null) return false
         onTripEnding(tripId)
-        clips.locked {
-            val trip = dao.getTrip(tripId) ?: return@locked
-            dao.updateTrip(trip.copy(endedAt = now, endOdometer = odometer ?: trip.endOdometer))
+        return clips.locked {
+            if (isTripBeingDeleted(tripId)) return@locked false
+            val trip = dao.getTrip(tripId) ?: return@locked false
+            if (trip.endedAt != null) return@locked false
+            val endedAt = now ?: maxOf(trip.startedAt, dao.getLastRecordAt(tripId) ?: trip.startedAt)
+            dao.updateTrip(trip.copy(endedAt = endedAt, endOdometer = odometer ?: trip.endOdometer))
+            true
         }
     }
 
-    suspend fun setStartPlace(tripId: Long, place: String) {
-        val trip = dao.getTrip(tripId) ?: return
+    suspend fun setStartPlace(tripId: Long, place: String) = clips.locked {
+        if (isTripBeingDeleted(tripId)) return@locked
+        val trip = dao.getTrip(tripId) ?: return@locked
         dao.updateTrip(trip.copy(startPlace = place))
     }
 
-    suspend fun setEndPlace(tripId: Long, place: String) {
-        val trip = dao.getTrip(tripId) ?: return
+    suspend fun setEndPlace(tripId: Long, place: String) = clips.locked {
+        if (isTripBeingDeleted(tripId)) return@locked
+        val trip = dao.getTrip(tripId) ?: return@locked
         dao.updateTrip(trip.copy(endPlace = place))
     }
 
     suspend fun startPlaceOf(tripId: Long): String? = dao.getTrip(tripId)?.startPlace
 
     /** 자동 종료를 되돌린다 ("아직 여행 중이에요"). */
-    suspend fun reopenTrip(tripId: Long) {
-        val trip = dao.getTrip(tripId) ?: return
-        dao.updateTrip(trip.copy(endedAt = null, endPlace = null))
+    suspend fun reopenTrip(tripId: Long) = lifecycle.withLock {
+        clips.locked {
+            if (isTripBeingDeleted(tripId)) return@locked
+            val trip = dao.getTrip(tripId) ?: return@locked
+            // An old arrival notification must not resurrect a trip after another has started.
+            if (dao.getOngoingTrips().any { it.id != tripId }) return@locked
+            dao.updateTrip(trip.copy(endedAt = null, endPlace = null))
+        }
     }
 
     suspend fun lastLocation(tripId: Long): LocationPoint? = dao.getLastLocationPoint(tripId)?.toDomain()
@@ -259,10 +330,17 @@ class TripRepository(
 
     /** 기록 삭제 시 관련 음성/사진 파일도 함께 정리한다. */
     suspend fun deleteTrip(tripId: Long) {
+        beginDiscardTrip(tripId)
         onTripEnding(tripId)
-        clips.locked {
-            dao.getMemories(tripId).forEach { files.delete(it.filePath) }
-            dao.deleteTrip(tripId)
+        withContext(NonCancellable + Dispatchers.IO) {
+            clips.locked {
+                val paths = dao.getMemories(tripId).mapNotNull { it.filePath }
+                paths.forEach { files.delete(it) }
+                files.deleteTalkFiles(tripId, paths)
+                // FK cascades: memories, talk_meta, location_points and vehicle_signals.
+                dao.deleteTrip(tripId)
+                clips.forgetTrip(tripId, paths)
+            }
         }
     }
 
@@ -280,8 +358,9 @@ class TripRepository(
     }
 
     /** 예시 여행으로 표시한다. "예시 지우기"([clearSampleTrips])로 한 번에 지울 수 있다. */
-    suspend fun markSample(tripId: Long) {
-        val trip = dao.getTrip(tripId) ?: return
+    suspend fun markSample(tripId: Long) = clips.locked {
+        if (isTripBeingDeleted(tripId)) return@locked
+        val trip = dao.getTrip(tripId) ?: return@locked
         dao.updateTrip(trip.copy(isSample = true))
     }
 
@@ -294,17 +373,23 @@ class TripRepository(
         text: String? = null,
         filePath: String? = null,
         durationMs: Long? = null,
-    ): Long = dao.insertMemory(
-        MemoryEntity(
-            tripId = tripId,
-            type = type.name,
-            createdAt = System.currentTimeMillis(),
-            text = text,
-            filePath = filePath,
-            transcript = null, // 수동 메모 등 기존 경로는 전사 없이 저장한다.
-            durationMs = durationMs,
+    ): Long = clips.locked {
+        if (!tripExists(tripId)) {
+            files.delete(filePath)
+            return@locked 0L
+        }
+        dao.insertMemory(
+            MemoryEntity(
+                tripId = tripId,
+                type = type.name,
+                createdAt = System.currentTimeMillis(),
+                text = text,
+                filePath = filePath,
+                transcript = null, // 수동 메모 등 기존 경로는 전사 없이 저장한다.
+                durationMs = durationMs,
+            )
         )
-    )
+    }
 }
 
 private fun TripEntity.toDomain(coverPhotoPath: String? = null) = Trip(

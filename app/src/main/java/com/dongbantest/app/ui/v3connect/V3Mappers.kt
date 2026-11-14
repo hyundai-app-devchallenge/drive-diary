@@ -69,9 +69,12 @@ fun percentOf(progress: Float?): Int = ((progress ?: 0f) * 100).roundToInt().coe
 /** 내비 길 안내 정보 → 진행률 0–100 */
 fun percentOf(route: NaviRoute?): Int = percentOf(RouteRibbon.progressOf(route?.totalMeters, route?.remainMeters))
 
-/** 녹음 중: 우리 앱이 직접 알아듣는다. 녹음 중이 아니면 글레오를 거치므로 글레오 기능이 있는 "다른 질문"만 보인다. */
+/**
+ * 질문 카드의 음성 예시. 질문은 조용할 때 저절로 나오므로 "질문 해줘"는 보이지 않는다(명령은 그대로 알아듣는다).
+ * 녹음 중에만 "질문 그만해줘"를 보인다. 녹음 중이 아니면 Gleo 에 그 기능이 없어 예시를 비운다.
+ */
 internal fun questionSay(rec: RecordingState): List<String> =
-    if (rec == RecordingState.On) listOf(VoiceCommands.ASK_NEXT, VoiceCommands.STOP_ASKING) else listOf(VoiceCommands.ASK_NEXT)
+    if (rec == RecordingState.On) listOf(VoiceCommands.STOP_ASKING) else emptyList()
 
 internal fun questionSayLabel(rec: RecordingState): String =
     if (rec == RecordingState.On) "이렇게 말해 보세요" else "글레오를 부른 뒤 이렇게 말해 보세요"
@@ -80,6 +83,14 @@ internal fun questionSayLabel(rec: RecordingState): String =
 internal fun quietAskBody(rec: RecordingState): String =
     if (rec == RecordingState.On) "이야기가 필요하면 ‘${VoiceCommands.ASK_NEXT}’라고 말해 주세요."
     else "이야기가 필요하면 글레오를 부른 뒤 ‘${VoiceCommands.ASK_NEXT}’라고 말해 주세요."
+
+/** 질문을 건넨 뒤 질문 카드로 보이는 시간. 지나면 조용히 듣는 카드로 돌아간다. */
+internal const val QUESTION_ACTIVE_MS = 5 * 60_000L
+internal const val MUTED_TITLE = "이번 여행에서는 먼저 묻지 않을게요"
+internal const val IDLE_TITLE = "대화가 이어지는 동안은 조용히 들을게요"
+
+/** 질문이 없을 때 카드: 따로 말할 필요 없이 조용해지면 동반이가 먼저 말을 건다는 것만 알린다. */
+internal const val IDLE_BODY = "한동안 대화가 없으면 동반이가 먼저 말을 걸어요. 따로 부르지 않아도 돼요."
 
 /* ───────── 녹음 칩 ───────── */
 
@@ -165,10 +176,14 @@ fun TripUiState.toDriving(
         row.startMs to AskedItem(row.talk.time, row.drivingTitle,
             id = row.talk.id, audio = row.talk.audio, clipCount = row.talk.clipCount)
     }
-    val questionItems = data.memories.filter { it.type == MemoryType.QUESTION && !it.text.isNullOrBlank() }
-        .map { it.createdAt to AskedItem(hhmm(it.createdAt), it.text.orEmpty()) }
+    val questionMemories = data.memories.filter { it.type == MemoryType.QUESTION && !it.text.isNullOrBlank() }
+    val questionItems = questionMemories.map { it.createdAt to AskedItem(hhmm(it.createdAt), it.text.orEmpty()) }
+    // 질문은 건넨 뒤 잠깐만 "지금 질문"이다. 그 밖에는 질문 카드 대신 조용히 듣는 카드를 보인다
+    // (여행 내내 질문이 떠 있으면 지금 대답해야 하는지 헷갈린다).
+    val activeQuestion = questionMemories.maxByOrNull { it.createdAt }
+        ?.takeIf { now - it.createdAt in 0 until QUESTION_ACTIVE_MS }
     val asked = (storyItems + questionItems).sortedByDescending { it.first }.mapIndexed { i, pair ->
-        pair.second.copy(now = i == 0 && !quiet && pair.second.id.isEmpty())
+        pair.second.copy(now = i == 0 && !quiet && activeQuestion != null && pair.second.id.isEmpty())
     }
     val recordingHint = when (rec) {
         RecordingState.On -> GleoRecordingAction.PAUSE.example
@@ -194,16 +209,16 @@ fun TripUiState.toDriving(
         from = from,
         to = to,
         bubble = bubble,
-        card = if (quiet) {
-            DrivingCard.Quiet("이번 여행에서는 먼저 묻지 않을게요", quietAskBody(rec), recordingHint)
-        } else {
-            DrivingCard.Question(
-                question = question,
+        card = when {
+            quiet -> DrivingCard.Quiet(MUTED_TITLE, quietAskBody(rec), recordingHint)
+            activeQuestion != null -> DrivingCard.Question(
+                question = activeQuestion.text.orEmpty(),
                 say = questionSay(rec),
                 sayLabel = questionSayLabel(rec),
                 tag = "동반이 질문",
                 pauseCaption = recordingHint,
             )
+            else -> DrivingCard.Quiet(IDLE_TITLE, IDLE_BODY, recordingHint)
         },
         asked = asked,
         nowText = if (quiet) "조용히 듣는 중" else null,

@@ -7,12 +7,14 @@ import com.drivediary.talkrec.capture.CaptureBudget
 import com.drivediary.talkrec.capture.CaptureState
 import com.drivediary.talkrec.capture.ConversationCaptureService
 import com.drivediary.talkrec.capture.MicAudioSource
+import com.drivediary.talkrec.capture.NoRecordWindows
 import com.drivediary.talkrec.capture.SpeechActivity
 import com.drivediary.talkrec.policy.AppSignals
 import com.drivediary.talkrec.sink.TalkSink
 import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +30,8 @@ class CaptureOptions(
     val voiceCommand: (text: String) -> Boolean = { false },
     /** Runs after [voiceCommand]. Return true to consume that line (not stored, no reaction tap) without pausing. */
     val consumeCommand: (text: String) -> Boolean = { false },
+    /** Main: stop optional app speech before reopening paused input, including notification resumes. */
+    val beforeResume: () -> Unit = {},
 ) {
     init { require(silenceRms.isFinite() && silenceRms >= 0) }
     internal var budgetOverride: CaptureBudget? = null
@@ -36,11 +40,13 @@ class CaptureOptions(
 
 /** Call start after consent + runtime RECORD_AUDIO permission, from a visible Activity. No auto restore. */
 object TalkRec {
-    internal data class Request(val id: String, val tripId: Long, val options: CaptureOptions)
+    internal data class Request(val id: String, val tripId: Long, val options: CaptureOptions,
+        val stopped: CompletableDeferred<Unit> = CompletableDeferred())
     private var application: Context? = null
     private var requested = false
     private var pending: Request? = null
     private var activeOptions: CaptureOptions? = null
+    private var activeRequest: Request? = null
     internal val mutableState = MutableStateFlow(CaptureState())
     val state: StateFlow<CaptureState> = mutableState.asStateFlow()
     internal val budget = CaptureBudget()
@@ -52,17 +58,28 @@ object TalkRec {
         val request = Request(UUID.randomUUID().toString(), tripId, options)
         activeOptions?.onReplaced?.invoke()
         activeOptions = options
+        activeRequest = request
         application = app; pending = request; requested = true
         try {
             app.startForegroundService(Intent(app, ConversationCaptureService::class.java)
                 .setAction(ConversationCaptureService.START).putExtra("request", request.id))
-        } catch (error: RuntimeException) { pending = null; requested = false; activeOptions = null; throw error }
+        } catch (error: RuntimeException) { finished(request); stopped(request); throw error }
     }
 
     @Synchronized internal fun takeRequest(id: String?): Request? = pending?.takeIf { it.id == id }?.also { pending = null }
-    @Synchronized internal fun finished() {
+    @Synchronized internal fun finished(request: Request?) {
+        if (request == null || activeRequest !== request) return
         requested = false; pending = null
         activeOptions?.onReplaced?.invoke(); activeOptions = null
+        activeRequest = null
+    }
+    internal fun stopped(request: Request?) { request?.stopped?.complete(Unit) }
+
+    /** Includes a pending start-service handoff. Completion means the service released this session. */
+    @Synchronized fun stopForTrip(tripId: Long): Deferred<Unit>? {
+        val request = activeRequest?.takeIf { it.tripId == tripId } ?: return null
+        control(ConversationCaptureService.STOP)
+        return request.stopped
     }
     /** Includes the start-service handoff and paused captures, which state alone cannot detect. */
     @Synchronized internal fun isIdle(): Boolean = !requested && state.value.status !in setOf(
@@ -90,22 +107,19 @@ object TalkRec {
      */
     @Volatile var reactionTap: ((text: String) -> Unit)? = null
 
-    private val noRecordWindows = mutableListOf<LongRange>()
+    private val noRecordWindows = NoRecordWindows()
 
     /** Blocks overlapping [fromMs, untilMs] (epoch ms) are dropped: not judged, saved or summarized. */
     fun markNoRecord(fromMs: Long, untilMs: Long) {
-        require(untilMs >= fromMs)
-        synchronized(noRecordWindows) {
-            noRecordWindows.removeAll { it.last < fromMs - WINDOW_KEEP_MS }
-            noRecordWindows += fromMs..untilMs
-        }
+        noRecordWindows.mark(fromMs, untilMs)
     }
 
-    internal fun inNoRecord(startMs: Long, endMs: Long): Boolean = synchronized(noRecordWindows) {
-        noRecordWindows.any { startMs <= it.last && endMs >= it.first }
-    }
+    /** Open protection before TTS starts; the returned callback closes it at the actual end plus grace. */
+    fun beginNoRecord(fromMs: Long): (untilMs: Long) -> Unit = noRecordWindows.begin(fromMs)
 
-    private const val WINDOW_KEEP_MS = 30 * 60_000L
+    /** Includes the saved PCM's leading/trailing padding, before judging or sending to the sink. */
+    internal fun inNoRecord(startMs: Long, endMs: Long): Boolean =
+        noRecordWindows.overlapsCapture(startMs, endMs)
 
     /** Debug receiver's in-process seam. It cannot be invoked through a release exported component. */
     internal var switchSource: ((factory: (() -> AudioSource)?, tripId: Long?, commandResult: CompletableDeferred<Boolean>?) -> Unit)? = null

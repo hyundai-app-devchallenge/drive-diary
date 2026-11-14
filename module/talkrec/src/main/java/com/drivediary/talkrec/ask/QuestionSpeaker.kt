@@ -11,6 +11,8 @@ import android.util.Log
 import java.util.Locale
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -49,8 +51,7 @@ class PleosQuestionSpeaker(
     private val mutex = Mutex()
     private var tts: TextToSpeech? = null
     private var ready: CompletableDeferred<Boolean>? = null
-    @Volatile private var current: CompletableDeferred<String>? = null
-    @Volatile private var firstSoundAt: Long? = null
+    @Volatile private var current: TtsPlayback? = null
 
     private fun emit(name: String) {
         Log.i(TAG, "tts $name mode=$mode")
@@ -59,11 +60,15 @@ class PleosQuestionSpeaker(
 
     private val listener = object : EventListener {
         override fun onReady() = emit("ready")
-        override fun onStart() { if (firstSoundAt == null) firstSoundAt = SystemClock.elapsedRealtime(); emit("start") }
+        override fun onStart() { current?.started(SystemClock.elapsedRealtime()); emit("start") }
         override fun onUpdatedRms(rms: Double) = Unit
-        override fun onDone() { emit("done"); current?.complete(DONE) }
-        override fun onStop() { emit("stop"); current?.complete("STOPPED") }
-        override fun onError(errorType: ErrorType) { emit("error:${errorType.name}"); current?.complete(errorType.name) }
+        override fun onDone() { emit("done"); current?.finish(DONE) }
+        override fun onStop() {
+            val playback = current
+            emit(if (playback != null && playback.firstSoundAtMs == null) "stop_ignored_before_start" else "stop")
+            playback?.engineStopped()
+        }
+        override fun onError(errorType: ErrorType) { emit("error:${errorType.name}"); current?.finish(errorType.name) }
     }
 
     /** Call on Main. Creates and initializes the SDK once; a failed init is retried on the next speak. */
@@ -77,16 +82,26 @@ class PleosQuestionSpeaker(
             emit("init")
             engine.initialize(object : OnInitializeListener {
                 override fun onSuccess() {
+                    // A question may have been cancelled during init to make room for pause feedback.
+                    if (ready !== done || tts !== engine) return
                     try {
                         engine.addEventListener(listener)
                         engine.setLocale(Locale.KOREA)
                         emit("init_ok"); done.complete(true)
                     } catch (_: RuntimeException) { emit("init_error:setup"); done.complete(false) }
                 }
-                override fun onFailure(errorType: ErrorType) { emit("init_error:${errorType.name}"); done.complete(false) }
+                override fun onFailure(errorType: ErrorType) {
+                    if (ready !== done || tts !== engine) return
+                    emit("init_error:${errorType.name}"); done.complete(false)
+                }
             })
         } catch (_: RuntimeException) { emit("init_error:exception"); done.complete(false) }
-        val ok = withTimeoutOrNull(INIT_TIMEOUT_MS) { done.await() } ?: false.also { emit("init_error:TIMEOUT") }
+        val ok = try {
+            withTimeoutOrNull(INIT_TIMEOUT_MS) { done.await() } ?: false.also { emit("init_error:TIMEOUT") }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            releaseEngine(); ready = null
+            throw cancelled
+        }
         if (!ok) { releaseEngine(); ready = null }
         return ok
     }
@@ -96,30 +111,37 @@ class PleosQuestionSpeaker(
             val begin = SystemClock.elapsedRealtime()
             if (!ensureReady()) return@withContext SpeakResult("INIT_FAILED", null, SystemClock.elapsedRealtime() - begin)
             val engine = tts ?: return@withContext SpeakResult("INIT_FAILED", null, 0)
-            val finished = CompletableDeferred<String>()
-            current = finished
-            firstSoundAt = null
+            val playback = TtsPlayback()
+            current = playback
             val error = try {
+                currentCoroutineContext().ensureActive()
                 engine.speak(text, true)
-                val outcome = withTimeoutOrNull(SPEAK_TIMEOUT_MS) { finished.await() }
+                val outcome = withTimeoutOrNull(SPEAK_TIMEOUT_MS) { playback.finished.await() }
                 when (outcome) {
                     null -> "TIMEOUT".also { runCatching { engine.stop() } }
                     DONE -> null
                     else -> outcome
                 }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (_: RuntimeException) { "SPEAK_EXCEPTION" }
-            current = null
+            finally {
+                // Cancellation must release actual device TTS, including while stop callbacks lag.
+                if (!playback.finished.isCompleted) runCatching { engine.stop() }
+                current = null
+            }
             val end = SystemClock.elapsedRealtime()
-            SpeakResult(error, firstSoundAt?.let { it - begin }, end - begin)
+            SpeakResult(error, playback.firstSoundAtMs?.let { it - begin }, end - begin)
         }
     }
 
     override fun stop() {
+        current?.finish("STOPPED")
         runCatching { tts?.stop() }
     }
 
     override fun release() {
-        current?.complete("RELEASED")
+        current?.finish("RELEASED")
         releaseEngine()
         ready = null
     }
