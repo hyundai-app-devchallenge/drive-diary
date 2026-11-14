@@ -12,6 +12,11 @@
     </queries>
 
     <application>
+        <activity
+            android:name=".debug.DebugGleoVoiceActivity"
+            android:exported="false"
+            android:theme="@style/Theme.DebugVoiceSession" />
+
         <!-- 에뮬레이터에서 내비 도착을 흉내 내는 테스트용 수신기 -->
         <receiver
             android:name=".navi.DebugArrivalReceiver"

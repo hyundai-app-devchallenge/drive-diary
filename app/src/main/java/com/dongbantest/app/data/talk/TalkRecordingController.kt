@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.util.Log
 import com.dongbantest.app.data.repository.RecordingConsentStore
 import com.dongbantest.app.data.repository.TripRepository
+import com.dongbantest.app.gleo.isPauseRecordingCommand
 import com.drivediary.talkrec.CaptureOptions
 import com.drivediary.talkrec.TalkRec
 import com.drivediary.talkrec.capture.CaptureStatus
@@ -69,6 +70,11 @@ class TalkRecordingController(
         return try {
             TalkRec.start(context, tripId, CaptureOptions(sink, audioSource = {
                 MicAudioSource { recordingSettings.micBoostEnabled.value }
+            }, voiceCommand = { text ->
+                // Latch the trip's pause before the service closes this input on its own event loop.
+                val handled = activeTripId == tripId && consent.get(tripId) == true && isPauseRecordingCommand(text)
+                if (handled) requestedPause.value = tripId
+                handled
             }))
             activeTripId = tripId
             true

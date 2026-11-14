@@ -11,5 +11,5 @@ fun groupSummaryClips(clips: List<SummaryClip>, nowMs: Long, captureActive: (Lon
         val closed = rows.any { it.runClosed } ||
             (nowMs - rows.maxOf { it.savedAt } > 180_000 && !captureActive(first.tripId))
         PendingSummary(first.id, first.transcript, ordered.map { it.id }, ordered.map { it.transcript },
-            first.runId, first.runId == null || closed)
+            first.runId, first.runId == null || closed, first.tripId)
     }

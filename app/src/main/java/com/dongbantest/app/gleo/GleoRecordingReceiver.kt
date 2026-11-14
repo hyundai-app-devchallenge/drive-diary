@@ -20,14 +20,18 @@ internal enum class GleoRecordingAction(
     val captureStatus: CaptureStatus,
     val successMessage: String,
 ) {
-    PAUSE("PAUSE_TRIP_RECORDING", "글레오, 녹음 꺼줘", CaptureStatus.Paused, "Dongbancha trip recording is paused."),
-    RESUME("RESUME_TRIP_RECORDING", "글레오, 녹음 다시 시작해", CaptureStatus.On, "Dongbancha trip recording has resumed."),
+    PAUSE("PAUSE_TRIP_RECORDING", "동반차 녹음 멈춰", CaptureStatus.Paused, "Dongbancha trip recording is paused."),
+    RESUME("RESUME_TRIP_RECORDING", "글레오, 동반차 녹음 다시 시작해", CaptureStatus.On, "Dongbancha trip recording has resumed."),
 }
 
 /** Receives package-targeted Gleo service actions. The manifest verifies the sender's permission. */
 class GleoRecordingReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val action = GleoRecordingAction.entries.firstOrNull { it.functionName == intent.action } ?: return
+        // Gleo 4.2 sends the tool name with the package prefix ("com.dongbantest.app.PAUSE_TRIP_RECORDING").
+        // The bare schema name is kept for the form shown in the Pleos examples.
+        val action = GleoRecordingAction.entries.firstOrNull {
+            intent.action == it.functionName || intent.action == "${context.packageName}.${it.functionName}"
+        } ?: return
         val app = context.applicationContext as DongbanApplication
         val pending = goAsync()
         app.container.appScope.launch {

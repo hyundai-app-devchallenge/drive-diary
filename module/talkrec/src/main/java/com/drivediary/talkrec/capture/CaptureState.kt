@@ -2,6 +2,8 @@ package com.drivediary.talkrec.capture
 
 enum class CaptureStatus { Ready, On, Paused, Off }
 
+enum class SttStatus { Idle, Connecting, Ready, Reconnecting, Failed }
+
 data class CaptureState(
     val status: CaptureStatus = CaptureStatus.Ready,
     val accumulatedCaptureMs: Long = 0,
@@ -13,4 +15,6 @@ data class CaptureState(
     val unavailableFrameCount: Long = 0,
     val discontinuityCount: Long = 0,
     val tripId: Long? = null,
+    val sttStatus: SttStatus = SttStatus.Idle,
+    val usingTestAudio: Boolean = false,
 )

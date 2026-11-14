@@ -73,7 +73,7 @@ sealed interface DrivingCard {
         val tag: String = Sample.RELATION,
         val hint: String = Sample.HINT,
         val sayLabel: String = Sample.SAY_LABEL,
-        /** 현재 녹음 상태에 맞는 Gleo 명령 안내. */
+        /** 현재 녹음 상태에 맞는 음성 명령 안내. */
         val pauseCaption: String? = null,
     ) : DrivingCard
 
@@ -329,7 +329,7 @@ data class VoiceCommandUi(val say: String, val desc: String)
 
 data class VoiceGuideUiState(
     val title: String = "주행 중에는 말로 불러 주세요",
-    val body: String = "글레오를 부르면 화면을 누르지 않고 녹음을 제어할 수 있어요.",
+    val body: String = "녹음을 멈출 때는 동반차에 말하고, 다시 시작할 때는 글레오를 불러 주세요.",
     val commands: List<VoiceCommandUi> = listOf(
         VoiceCommandUi(GleoRecordingAction.PAUSE.example, "여행 녹음을 잠깐 멈춰요"),
         VoiceCommandUi(GleoRecordingAction.RESUME.example, "멈춘 여행 녹음을 이어가요"),

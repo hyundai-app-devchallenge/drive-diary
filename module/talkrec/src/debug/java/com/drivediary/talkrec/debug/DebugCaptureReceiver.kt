@@ -23,9 +23,9 @@ class DebugCaptureReceiver : BroadcastReceiver() {
                 "com.drivediary.talkrec.DEBUG_START" -> startDebug(context, intent)
                 "com.drivediary.talkrec.DEBUG_INJECT" -> {
                     check(TalkRec.switchSource != null) { "Capture is not running" }
-                    TalkRec.switchSource?.invoke(fileSource(intent))
+                    TalkRec.switchSource?.invoke(fileSource(intent), null, null)
                 }
-                "com.drivediary.talkrec.DEBUG_MIC" -> TalkRec.switchSource?.invoke { MicAudioSource() }
+                "com.drivediary.talkrec.DEBUG_MIC" -> TalkRec.switchSource?.invoke({ MicAudioSource() }, null, null)
                 "com.drivediary.talkrec.DEBUG_PAUSE" -> TalkRec.pause()
                 "com.drivediary.talkrec.DEBUG_RESUME" -> TalkRec.resume()
                 "com.drivediary.talkrec.DEBUG_MARK" -> TalkRec.markMoment()

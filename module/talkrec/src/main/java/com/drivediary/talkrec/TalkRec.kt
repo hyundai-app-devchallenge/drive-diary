@@ -11,6 +11,7 @@ import com.drivediary.talkrec.policy.AppSignals
 import com.drivediary.talkrec.sink.TalkSink
 import java.util.Locale
 import java.util.UUID
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,6 +23,8 @@ class CaptureOptions(
     val audioSource: () -> AudioSource = { MicAudioSource() },
     /** Evidence must describe the entire block. Playback alone is insufficient. */
     val signals: (startMs: Long, endMs: Long) -> AppSignals? = { _, _ -> null },
+    /** Runs on the capture service's main coroutine. Return true to pause capture and consume that line. */
+    val voiceCommand: (text: String) -> Boolean = { false },
 ) {
     init { require(silenceRms.isFinite() && silenceRms >= 0) }
     internal var budgetOverride: CaptureBudget? = null
@@ -75,5 +78,5 @@ object TalkRec {
     }
 
     /** Debug receiver's in-process seam. It cannot be invoked through a release exported component. */
-    internal var switchSource: ((() -> AudioSource) -> Unit)? = null
+    internal var switchSource: ((factory: (() -> AudioSource)?, tripId: Long?, commandResult: CompletableDeferred<Boolean>?) -> Unit)? = null
 }

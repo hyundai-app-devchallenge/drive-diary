@@ -378,6 +378,7 @@ private class LabScreenState {
                     runs += LabRun(event.runId, members.map { it.closed!!.lines.joinToString("\n") })
                 }
             }
+            TalkDebugEvent.VoicePaused, is TalkDebugEvent.AiRequest, is TalkDebugEvent.AiResponse -> Unit
             TalkDebugEvent.SourceEnded -> { rms = 0.0; partial = ""; banner = "파일 끝" }
             TalkDebugEvent.Stopped -> { rms = 0.0; partial = "" }
             is TalkDebugEvent.SttError -> banner = when (event.code) {
@@ -590,7 +591,7 @@ private fun BlockCard(block: LabBlock, restricted: Boolean, onSummary: (LabBlock
 }
 
 private fun decimal(value: Double): String = String.format(Locale.ROOT, "%.2f", value)
-private fun outcomeLabel(outcome: DebugOutcome): String = when (outcome) {
+internal fun outcomeLabel(outcome: DebugOutcome): String = when (outcome) {
     DebugOutcome.SAVED -> "저장"
     DebugOutcome.JUDGE_DROP -> "판정 탈락"
     DebugOutcome.POLICY_BLOCK -> "기록 거부 규칙"
