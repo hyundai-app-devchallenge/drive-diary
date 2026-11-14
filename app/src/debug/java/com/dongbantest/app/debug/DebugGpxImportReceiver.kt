@@ -15,7 +15,7 @@ import java.io.File
  * 디버그 빌드 전용: 터미널(adb)에서 GPX 경로를 끝난 여행으로 넣는다. 실제 저장은 [DebugGpxImporter] 가 한다.
  * 앱이 꺼져 있으면 방송이 무시되므로, 앱을 한 번 켠 뒤에 보낸다.
  *
- * ■ 디버그 앱에 들어 있는 예시 경로 13개 넣기 (화면에서는 "동반차 디버그" → "예시 여행 넣기"와 같다)
+ * ■ 번들 데모 여행 3개 넣기 (이미 있으면 건너뜀) (화면에서는 "동반차 디버그" → "예시 여행 넣기"와 같다)
  *    adb shell am broadcast --user 10 -a com.dongbantest.app.DEBUG_IMPORT_GPX -p com.dongbantest.app --ez samples true
  *
  * ■ 내 GPX 파일 넣기
@@ -35,7 +35,7 @@ class DebugGpxImportReceiver : BroadcastReceiver() {
         scope.launch {
             try {
                 if (intent.getBooleanExtra("samples", false)) {
-                    Log.i(TAG, "예시 여행 ${importer.importSampleRoutes()}개를 넣었어요")
+                    Log.i(TAG, "예시 여행 ${app.container.demoSeeder.seed()}개를 넣었어요")
                     return@launch
                 }
                 val fileName = intent.getStringExtra("file") ?: return@launch
