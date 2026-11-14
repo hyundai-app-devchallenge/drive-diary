@@ -167,12 +167,8 @@ private fun DiarySummary(state: DiaryUiState) {
     val c = DbTheme.colors
     val t = DbTheme.type
     val r = state.record
+    // 날짜·제목은 맨 위 줄(DiaryTopBar)에 있다.
     Column(Modifier.padding(top = Spacing.xs)) {
-        Text(r.dateLabel, style = t.bodySm.copy(fontWeight = FontWeight.Medium), color = c.muted)
-        Text(
-            r.title, style = t.display, color = c.ink, maxLines = 2, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = Spacing.s2xs, bottom = Spacing.sm).semantics { heading() },
-        )
         val span = "${r.startTime}–${r.arriveTime}"
         Row(
             Modifier.fillMaxWidth().height(IntrinsicSize.Min).clip(DbShapes.card).background(c.paper2)

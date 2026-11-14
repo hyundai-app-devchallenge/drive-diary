@@ -273,9 +273,20 @@ fun DiaryScreen(
 @Composable
 internal fun DiaryTopBar(state: DiaryUiState, onBack: () -> Unit, onNextPage: () -> Unit, onEdit: (() -> Unit)? = null) {
     val c = DbTheme.colors
+    val t = DbTheme.type
+    val r = state.record
     TopBarFrame {
-        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        // 날짜·제목을 맨 위 줄로 올려 아래 칸(사진·이야기) 자리를 넓힌다.
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             CircleIconButton(DbIcons.ArrowLeft, "뒤로", onBack)
+            Column(Modifier.weight(1f)) {
+                Text(r.dateLabel, style = t.caption, color = c.muted, maxLines = 1)
+                Text(
+                    r.title, style = t.titleLg, color = c.ink, maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.semantics { heading() },
+                )
+            }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (state.live) Spacing.xs else Spacing.s2xs)) {
             if (state.live) {

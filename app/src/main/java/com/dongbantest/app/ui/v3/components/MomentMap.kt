@@ -49,6 +49,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.dongbantest.app.ui.v3.theme.DbColors
 import com.dongbantest.app.ui.v3.theme.DbIcons
 import com.dongbantest.app.ui.v3.theme.DbShapes
@@ -158,7 +159,67 @@ internal class MomentPaint(
     val noteIcon: VectorPainter,
     val measurer: TextMeasurer,
     val bubbleStyle: TextStyle,
+    /** 묶음 핀의 "+N" 배지 글자 */
+    val badgeStyle: TextStyle = bubbleStyle,
 )
+
+/**
+ * 화면에서 서로 겹치는 핀 묶음. [pins] 가 하나면 보통 핀, 둘 이상이면 대표 핀 하나에 "+N" 배지를 단다.
+ * 자리는 묶인 핀들의 가운데. 대표는 이야기 핀이 있으면 그중 가장 이른 것.
+ */
+internal class PinCluster(val pins: List<Pair<MomentPin, Offset>>) {
+    val at: Offset = Offset(pins.map { it.second.x }.average().toFloat(), pins.map { it.second.y }.average().toFloat())
+    val lead: MomentPin = pins.firstOrNull { it.first.kind == MomentKind.Talk }?.first ?: pins.first().first
+    val size get() = pins.size
+}
+
+/**
+ * 시간 순서대로 핀을 훑으며 [radiusPx] 안에 있는 묶음에 넣는다(없으면 새 묶음).
+ * 고른 핀은 묶지 않는다: 목록·시간 띠에서 고른 이야기가 늘 지도에 따로 보이게 하기 위해서다.
+ */
+internal fun clusterPins(placed: List<Pair<MomentPin, Offset>>, selected: String?, radiusPx: Float): List<PinCluster> {
+    val groups = mutableListOf<MutableList<Pair<MomentPin, Offset>>>()
+    placed.sortedBy { it.first.start }.forEach { item ->
+        if (item.first.id == selected) {
+            groups += mutableListOf(item)
+            return@forEach
+        }
+        val home = groups.firstOrNull { g ->
+            g.none { it.first.id == selected } && g.any { (it.second - item.second).getDistance() < radiusPx }
+        }
+        if (home != null) home += item else groups += mutableListOf(item)
+    }
+    return groups.map { PinCluster(it) }
+}
+
+/** 묶음 단위로 핀을 그린다. 묶음은 대표 핀 + 오른쪽 위 "+N" 배지, 고른 핀은 맨 위에 말풍선과 함께. */
+internal fun DrawScope.drawMomentClusters(clusters: List<PinCluster>, selected: String?, p: MomentPaint) {
+    val singles = clusters.filter { it.size == 1 }.map { it.pins.first() }
+    // 노래 낱개 → 묶음 → 이야기 낱개·고른 핀 순으로 쌓는다.
+    drawMomentPins(singles.filter { it.first.kind == MomentKind.Song && it.first.id != selected }, null, p)
+    clusters.filter { it.size > 1 }.forEach { cl ->
+        val c = p.c
+        when (cl.lead.kind) {
+            MomentKind.Talk -> talkPin(cl.at, false, p.tone, c.paper, c.shadow, p.talkIcon)
+            MomentKind.Song -> songPin(cl.at, false, c.music, c.musicInk, c.paper, c.shadow, p.noteIcon)
+        }
+        val r = if (cl.lead.kind == MomentKind.Talk) 15.dp.toPx() else 11.dp.toPx()
+        clusterBadge(p, "+${cl.size - 1}", cl.at + Offset(r * 0.8f, -r * 0.8f))
+    }
+    drawMomentPins(singles.filter { it.first.kind == MomentKind.Talk || it.first.id == selected }, selected, p)
+}
+
+/** 묶음 핀 오른쪽 위의 작은 "+N" 알약(진한 바탕, 흰 글자, 종이색 테두리) */
+private fun DrawScope.clusterBadge(p: MomentPaint, text: String, center: Offset) {
+    val m = p.measurer.measure(text, p.badgeStyle, maxLines = 1)
+    val h = 18.dp.toPx()
+    val w = maxOf(h, m.size.width + 10.dp.toPx())
+    val ring = 2.dp.toPx()
+    val topLeft = Offset(center.x - w / 2, center.y - h / 2)
+    drawRoundRect(p.c.paper, topLeft - Offset(ring, ring), Size(w + ring * 2, h + ring * 2), CornerRadius(h / 2 + ring))
+    drawRoundRect(p.c.ink, topLeft, Size(w, h), CornerRadius(h / 2))
+    drawText(m, topLeft = Offset(center.x - m.size.width / 2f, center.y - m.size.height / 2f))
+}
 
 @Composable
 internal fun rememberMomentPaint(tone: Color): MomentPaint {
@@ -167,7 +228,8 @@ internal fun rememberMomentPaint(tone: Color): MomentPaint {
     val talkIcon = rememberVectorPainter(DbIcons.MessageCircle)
     val noteIcon = rememberVectorPainter(MomentIcons.Music)
     val bubbleStyle = DbTheme.type.label.copy(color = c.ink, fontWeight = FontWeight.SemiBold)
-    return MomentPaint(tone, c, talkIcon, noteIcon, measurer, bubbleStyle)
+    val badgeStyle = DbTheme.type.label.copy(color = c.paper, fontWeight = FontWeight.Bold, fontSize = 11.sp, lineHeight = 13.sp)
+    return MomentPaint(tone, c, talkIcon, noteIcon, measurer, bubbleStyle, badgeStyle)
 }
 
 /**

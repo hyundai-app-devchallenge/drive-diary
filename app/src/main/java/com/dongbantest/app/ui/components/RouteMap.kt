@@ -48,7 +48,8 @@ import com.dongbantest.app.domain.model.TimelineType
 import com.dongbantest.app.ui.v3.components.DbIcon
 import com.dongbantest.app.ui.v3.components.MomentKind
 import com.dongbantest.app.ui.v3.components.MomentPin
-import com.dongbantest.app.ui.v3.components.drawMomentPins
+import com.dongbantest.app.ui.v3.components.clusterPins
+import com.dongbantest.app.ui.v3.components.drawMomentClusters
 import com.dongbantest.app.ui.v3.components.rememberMomentPaint
 import com.dongbantest.app.ui.v3.theme.DbColors
 import com.dongbantest.app.ui.v3.theme.DbIcons
@@ -269,6 +270,7 @@ private fun MapboxRouteMap(
     val blankHandler by rememberUpdatedState(onBlankClick)
     val momentHandler by rememberUpdatedState(onMomentClick)
     val momentsNow by rememberUpdatedState(moments)
+    val selectedMomentNow by rememberUpdatedState(selectedMoment)
     // 누를 수 있는 지도는 두 번 눌러 확대를 끈다: Mapbox 는 두 번 누르기인지 가리느라 한 번 누르기를
     // 0.3초 늦게 알리는데, 그동안 경로·핀이 반응하지 않아 느리게 느껴진다. 확대는 버튼과 두 손가락으로 한다.
     val tappable = onRouteClick != null || onBlankClick != null || onMomentClick != null
@@ -281,12 +283,24 @@ private fun MapboxRouteMap(
         fun onTap(x: Double, y: Double) {
             momentHandler?.let { pick ->
                 val density = mapView.uiDensity
-                // 이야기 핀이 노래 핀 위에 그려지므로, 거리가 비슷하면 이야기를 먼저 고른다.
-                val hit = momentsNow.map { m ->
+                // 그림과 같은 방법으로 묶는다. 묶음을 누르면 그 핀들이 다 보이게 확대하고, 낱개 핀은 고른다.
+                val placed = momentsNow.map { m ->
                     val p = map.pixelForCoordinate(Point.fromLngLat(m.longitude, m.latitude))
-                    m to kotlin.math.hypot(p.x - x, p.y - y)
-                }.minByOrNull { (m, d) -> d - if (m.pin.kind == MomentKind.Talk) 6 * density else 0f }
-                pick(hit?.takeIf { it.second < MOMENT_TOUCH_DP * density }?.first?.pin?.id)
+                    m.pin to Offset(p.x.toFloat(), p.y.toFloat())
+                }
+                val clusters = clusterPins(placed, selectedMomentNow, CLUSTER_DP * density)
+                // 이야기 핀이 노래 핀 위에 그려지므로, 거리가 비슷하면 이야기를 먼저 고른다.
+                val hit = clusters.map { cl -> cl to kotlin.math.hypot(cl.at.x - x, cl.at.y - y) }
+                    .minByOrNull { (cl, d) -> d - if (cl.lead.kind == MomentKind.Talk) 6 * density else 0f }
+                    ?.takeIf { it.second < MOMENT_TOUCH_DP * density }?.first
+                if (hit != null && hit.size > 1) {
+                    val ids = hit.pins.map { it.first.id }.toSet()
+                    val members = momentsNow.filter { it.pin.id in ids }
+                    // 지도는 이 손가락 이벤트를 받은 뒤 진행 중인 카메라 움직임을 멈춘다. 다음 차례로 미뤄 확대가 끊기지 않게 한다.
+                    mapView.post { zoomToMoments(mapView, members) }
+                } else {
+                    pick(hit?.lead?.id)
+                }
                 return
             }
             if (clickHandler == null && blankHandler == null) return
@@ -332,7 +346,7 @@ private fun MapboxRouteMap(
                     val p = map.pixelForCoordinate(Point.fromLngLat(m.longitude, m.latitude))
                     m.pin to Offset(p.x.toFloat(), p.y.toFloat())
                 }
-                drawMomentPins(placed, selectedMoment, paint)
+                drawMomentClusters(clusterPins(placed, selectedMoment, CLUSTER_DP.dp.toPx()), selectedMoment, paint)
             }
         }
         if (showZoomButtons(zoomControls, maxHeight.value)) {
@@ -380,6 +394,30 @@ private fun zoomBy(view: MapView, delta: Double) {
         CameraOptions.Builder().zoom(target).build(),
         MapAnimationOptions.Builder().duration(250L).build(),
     )
+}
+
+/**
+ * 묶인 핀을 눌렀을 때: 그 핀들이 다 들어오게 확대한다. 핀이 거의 한 점에 모여 있으면(같은 정차 자리 등)
+ * 맞춘 배율이 지금과 별 차이가 없으므로, 적어도 두 단계는 확대해 펼쳐 보이게 한다.
+ */
+private fun zoomToMoments(view: MapView, moments: List<MapMoment>) {
+    if (moments.isEmpty()) return
+    val map = view.mapboxMap
+    val points = moments.map { Point.fromLngLat(it.longitude, it.latitude) }
+    val current = map.cameraState.zoom
+    val pad = (64 * view.uiDensity).toDouble()
+    val center = Point.fromLngLat(points.map { it.longitude() }.average(), points.map { it.latitude() }.average())
+    val ease = { camera: CameraOptions -> view.camera.easeTo(camera, MapAnimationOptions.Builder().duration(450L).build()) }
+    if (points.distinct().size == 1) {
+        ease(CameraOptions.Builder().center(center).zoom((current + 2).coerceAtMost(MAX_ZOOM)).build())
+        return
+    }
+    map.cameraForCoordinates(points, CameraOptions.Builder().build(), EdgeInsets(pad, pad, pad, pad), MAX_ZOOM, null) { fit ->
+        // 다 들어오는 배율이 지금보다 한 단계 이상 크면 그대로, 아니면(거의 한 점) 두 단계 확대해 펼친다.
+        val fitted = fit.zoom ?: current
+        val z = (if (fitted >= current + 1) fitted else current + 2).coerceAtMost(MAX_ZOOM)
+        ease(CameraOptions.Builder().center(fit.center ?: center).zoom(z).build())
+    }
 }
 
 /** 화면 스레드 밖에서 미리 만든 지도 데이터. 경로가 바뀔 때만 새로 만든다. */
@@ -747,6 +785,8 @@ private const val PROP_SONG_WIDTH = "songWidth"
 private const val PROP_SONG_OPACITY = "songOpacity"
 /** 핀을 누른 것으로 보는 거리 */
 private const val MOMENT_TOUCH_DP = 28f
+/** 이보다 가까운 핀(화면 거리)은 하나로 묶어 "+N" 을 단다. 이야기 핀 지름(30dp)보다 조금 넓게. */
+private const val CLUSTER_DP = 32f
 private const val TOUCH_PX = 24.0
 /** 이보다 낮은 지도(다이어리 한 장의 200dp 지도 등)에는 확대·축소 버튼을 띄우지 않는다 */
 private const val SMALL_MAP_HEIGHT_DP = 280f
