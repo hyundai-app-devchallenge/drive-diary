@@ -67,8 +67,16 @@ drive-diary/
 | `clip/` | 남길 묶음을 음성 조각(.m4a)으로 저장 |
 | `sink/` | 저장한 조각을 앱에 넘기는 `TalkSink` 인터페이스 |
 | `summary/` | 외부 LLM으로 제목·태그를 붙이고 이어지는 조각을 이야기로 묶음, `SummaryWorker`, 요약 설정 저장소 |
+| `ask/` | 조용할 때 건네는 질문: 조용함 상태기, 반응 분류, 맥락·날씨(Open-Meteo), 질문 생성·검증, Pleos TTS |
 
-앱 쪽 연결 지점은 `app/.../data/talk/`(`TalkSinkImpl`, `TalkRecordingController`, `RepositorySummaryTarget`, `ClipPersistence`), `DongbanApplication`, `ui/v3connect`이고, 디버그 전용 화면 `app/src/debug/.../debug/`(`SummarySettingsActivity`, `TalkRecLabActivity`)가 있습니다.
+앱 쪽 연결 지점은 다음과 같습니다.
+- `app/.../data/talk/`: `TalkSinkImpl`, `TalkRecordingController`, `RepositorySummaryTarget`, `ClipPersistence`
+- `app/.../data/ask/`: `QuestionCoordinator`, 질문 설정
+- `app/.../gleo/`: Gleo 기능 수신기, 음성 명령 문장
+- `app/.../data/map/`: Mapbox 토큰 저장소
+- `DongbanApplication`, `ui/v3connect`
+
+디버그 전용 화면과 수신기는 `app/src/debug/`에 있습니다(아래 "디버그 앱 사용법").
 
 ## 현재 Android MVP 구현
 
@@ -81,7 +89,9 @@ drive-diary/
 - 다이어리와 기록 지도는 Mapbox 지도(Light 스타일, 한국어 지명)에 실제 주행 경로를 여행별 색으로 그립니다. Mapbox 공개 토큰이 필요합니다(아래 "Mapbox 토큰 넣기").
 - AAOS 주행 제한 API로 주행 중 글쓰기·사진 조작과 기록 열람을 제한합니다.
 - **여행 중 대화 기록**(`:talkrec` 모듈): 녹음 동의를 받은 여행에서 대화를 Pleos STT(기기 안)로 글로 옮기고, 기기 안 판정 모델로 남길 만한 대화만 음성 조각으로 저장합니다. 외부 AI 전송에도 동의하면 저장한 조각의 전사 글을 Cloudflare Workers AI(Gemma 4)로 보내 한 줄 제목·태그를 붙이고, 이어지는 조각을 하나의 이야기로 묶습니다. 키가 필요합니다(아래 "Cloudflare 키 넣기").
-- TTS, 음성 명령 인식, 침묵 감지 질문, 여행 전체 다이어리 문장 정리는 구현되지 않았습니다. 화면의 음성 명령 예시는 누르면 그 말을 한 것으로 처리하는 시연용입니다. 기획 단계 제안과 실제 구현을 구분해 주세요.
+- **조용할 때 건네는 질문**(`:talkrec` `ask/`): 대화가 한동안 끊기면 소리 없이 화면으로만 "혹시 다들 자고 있나요?"를 묻습니다. 누군가 말로 반응하면 질문을 Pleos 기기 안 TTS로 읽어 줍니다. 질문 뒤 대답은 녹음하지 않습니다.
+- **음성 명령**: 녹음 중에는 앱이 직접 "동반차 녹음 멈춰", "동반차 다른 질문 해줘", "동반차 질문 그만해줘"를 알아듣습니다. 녹음 중이 아닐 때는 Gleo를 부른 뒤 "동반차 녹음 다시 시작해", "동반차 다른 질문 해줘"라고 말합니다. 화면의 음성 예시를 정차 중에 누르면 그 말을 한 것으로 처리합니다.
+- 여행 전체 다이어리 문장 정리는 구현되지 않았습니다. 기획 단계 제안과 실제 구현을 구분해 주세요.
 
 ### Android에서 실행
 
@@ -95,16 +105,26 @@ POSIX 환경에서 실행 권한 오류가 나면 `sh ./gradlew installDebug`를
 
 #### Mapbox 토큰 넣기
 
-지도는 Mapbox를 사용하므로 빌드 전에 각자 Mapbox **공개 토큰**을 넣어야 합니다. 토큰이 없어도 빌드는 되지만 지도 자리에 토큰을 넣으라는 안내 문구만 나옵니다.
+지도는 Mapbox를 사용하므로 Mapbox **공개 토큰**(`pk.`으로 시작)이 필요합니다. 토큰이 없어도 빌드는 되지만 지도 자리에 토큰을 넣으라는 안내 문구만 나옵니다. [account.mapbox.com](https://account.mapbox.com/)에 로그인해 **Tokens** 페이지에서 공개 토큰(Default public token)을 복사한 뒤, 아래 두 방법 중 하나로 넣습니다.
 
-1. [account.mapbox.com](https://account.mapbox.com/)에 로그인해 **Tokens** 페이지에서 `pk.`으로 시작하는 공개 토큰(Default public token)을 복사합니다.
-2. 프로젝트 맨 위의 `local.properties` 파일 맨 아래에 다음 한 줄을 추가합니다. `=` 앞뒤에 띄어쓰기와 따옴표를 넣지 않습니다.
+**방법 A: debug 앱에서 직접 넣기 (빌드 필요 없음)**
+
+1. **동반차 디버그 → 지도 설정 열기**에서 토큰을 붙여 넣고 **토큰 저장**을 누릅니다.
+2. 저장하면 앱을 다시 켜지 않아도 지도에 바로 적용됩니다. 화면에 "직접 넣은 토큰을 쓰는 중 (끝 4자리 ••••)"이 보이면 됩니다.
+
+- 직접 넣은 토큰이 `local.properties` 토큰보다 앞섭니다. **직접 넣은 토큰 지우기**를 누르면 `local.properties` 토큰으로 돌아갑니다.
+- 저장 방식은 Cloudflare 토큰과 같습니다. Android Keystore로 암호화해 기기 안에만 둡니다.
+- `sk.` 비밀 토큰은 받지 않습니다. 정차 중에만 바꿀 수 있습니다.
+
+**방법 B: `local.properties`에 넣고 빌드하기 (release 빌드도 이 방법)**
+
+1. 프로젝트 맨 위의 `local.properties` 파일 맨 아래에 다음 한 줄을 추가합니다. `=` 앞뒤에 띄어쓰기와 따옴표를 넣지 않습니다.
 
    ```properties
    MAPBOX_ACCESS_TOKEN=pk.복사한토큰
    ```
 
-3. 다시 빌드합니다. `app/build.gradle.kts`가 이 값을 `mapbox_access_token` 문자열 리소스로 넣고, Mapbox SDK가 자동으로 읽습니다.
+2. 다시 빌드합니다. `app/build.gradle.kts`가 이 값을 `mapbox_access_token` 문자열 리소스로 넣고, Mapbox SDK가 자동으로 읽습니다.
 
 - `local.properties`는 `.gitignore`에 들어 있어 Git에 올라가지 않습니다. 토큰을 코드나 채팅, 이슈에 붙여 넣지 마세요.
 - Android Studio의 "Android" 보기에서는 **Gradle Scripts → local.properties**에 있습니다.
@@ -124,6 +144,96 @@ POSIX 환경에서 실행 권한 오류가 나면 `sh ./gradlew installDebug`를
 - Pleos AVD에서 PC 클립보드 붙여넣기가 안 되면 입력칸을 누른 뒤 PC에서 `adb shell input text <값>`으로 넣습니다.
 - 대화 요약 설정 화면은 **debug 빌드에만** 있습니다. release 빌드는 기본 제공자가 Cloudflare지만 키를 넣을 화면이 없어 지금은 요약이 동작하지 않습니다.
 - 정차 중에만 설정을 바꿀 수 있습니다.
+- 같은 키로 조용할 때 건네는 질문도 만듭니다. 키가 없거나 외부 AI 전송에 동의하지 않은 여행에서는 앱 안 질문 목록에서 고릅니다.
+
+### 실제 앱에서 대화 기록·질문 쓰기
+
+Pleos Connect 에뮬레이터(AVD, 사용자 10) 또는 차량에서 앱의 **동반차** 아이콘으로 시작하는 순서입니다. 처음 한 번은 위의 Mapbox 토큰과 Cloudflare 키를 넣어 둡니다.
+
+1. **여행 시작**: 홈의 **여행 시작하기**를 누르고, 여행 제목·함께 가는 사람(가족·연인·친구)·인원을 정한 뒤 **출발! 여행 시작**을 누릅니다. 목적지는 차량 내비에서 찍으면 자동으로 들어옵니다.
+2. **녹음 동의**에서 하나를 고릅니다.
+   - **여행 중 대화 기록**: 상시로 듣고 남길 만한 대화만 저장합니다. 그 아래 **AI로 이야기 제목과 질문 만들기**를 켜야 제목·태그와 AI 질문이 만들어집니다. 기기 안 모델이 먼저 고른 이야기의 글만 밖으로 나갑니다.
+   - **녹음 없이 출발**: 녹음 없이 질문만 함께합니다.
+   - 처음 녹음 마이크 권한을 물으면 허용합니다.
+3. **음성 안내**: 첫 여행에서 쓸 수 있는 음성 명령이 나옵니다. **알겠어요, 출발**을 누르면 여행 화면으로 갑니다.
+4. **여행 중 화면**
+   - 화면 위쪽 녹음 칩에 녹음 상태와 누적 시간이 항상 보입니다.
+   - 남길 대화로 판정된 조각은 오른쪽 **지금까지 나눈 대화**에 쌓입니다. 외부 AI 동의가 있으면 30초~2분 뒤 제목·태그가 붙습니다.
+   - 정차 중에는 **녹음 멈추기 / 다시 녹음하기**와 **이 순간 담기** 버튼이 보입니다. 이 순간 담기는 지금 대화를 판정과 상관없이 저장합니다.
+   - 주행 중에는 조작이 줄고, 제목은 한 줄·최근 3개만 보입니다(설정 "주행 중 제목 보이기").
+5. **조용할 때 질문**
+   - 대화가 약 8분 끊기면 화면에만 "혹시 다들 자고 있나요?"가 10초 뜹니다. 소리는 나지 않습니다.
+   - "아니, 안 자"처럼 말로 반응하면 질문을 소리로 읽어 줍니다. 반응이 없으면 그 여행에서는 먼저 묻지 않습니다.
+   - 질문 뒤 대답은 설정한 시간(기본 90초) 동안 녹음하지 않습니다.
+   - 조건은 여행 10분 뒤부터, 질문 사이 20분, 여행당 3번, 목적지까지 15분 이상 남았을 때입니다. 설정 화면에서 끄거나 녹음하지 않는 시간을 바꿀 수 있습니다.
+6. **음성 명령**은 녹음 상태에 따라 말하는 법이 다릅니다.
+
+   | 상태 | 말하는 법 |
+   |---|---|
+   | 녹음 중 | 앱이 바로 듣습니다: "동반차 녹음 멈춰", "동반차 다른 질문 해줘", "동반차 질문 그만해줘" |
+   | 녹음 멈춤·녹음 없는 여행 | 운전대 음성 버튼이나 "글레오"로 Gleo를 부른 뒤: "동반차 녹음 다시 시작해", "동반차 다른 질문 해줘" |
+
+   동반차가 마이크를 쓰는 동안에는 Gleo가 열리지 않습니다. 그래서 녹음 중의 명령은 앱이 직접 처리합니다.
+7. **도착**: 내비 도착 신호나 목적지 근처 기어 P에서 도착 화면이 뜹니다. 정차 중 여행 화면의 진행 알약을 눌러 직접 마칠 수도 있습니다. 이후 다이어리에서 저장된 이야기의 제목·태그를 보고 음성을 다시 듣습니다.
+
+대화 기록이 어떻게 동작하는지(판정 모델, 요약, 질문 생성)는 [talk-rec/README.md](talk-rec/README.md)에 정리돼 있습니다.
+
+### 디버그 앱(동반차 디버그) 사용법
+
+debug 빌드(`./gradlew installDebug`)를 설치하면 런처에 **동반차 디버그** 아이콘이 따로 생깁니다. 본 앱과 다른 작업으로 열리므로 오가며 쓸 수 있습니다. release 빌드에는 들어가지 않습니다.
+
+**위쪽 고정 줄** (모든 디버그 화면 공통)
+
+| 버튼 | 하는 일 |
+|---|---|
+| 상태 표시 | 주행 중/정차 중과 여행 녹음 상태(녹음 중·멈춤·대기, 진행 중인 여행 없음) |
+| 주행 D / 정차 P / 시뮬레이션 해제 | 에뮬레이터에서 기어를 흉내 냅니다. Virtual Console의 기어 변경은 앱까지 오지 않습니다. D면 주행 중 제한이 걸리고, P를 2분 넘게 두면 정차입니다 |
+| Gleo 차량 음성 버튼 | 운전대의 짧은 음성 버튼 입력을 보냅니다. PC에서 `python module/talkrec/tools/gleo-voice-button.py --serial emulator-5554`가 실행 중이어야 합니다 |
+| 정지 음성 STT 테스트 | "녹음 정지" 음성을 STT로 보내 녹음 중 정지 명령을 시험합니다 |
+| Gleo 재개 모의 호출 | Gleo가 보내는 녹음 재개 동작을 앱 안에서 흉내 냅니다 |
+
+**아래쪽 녹음 진단** (펼치기): STT 연결 상태, 확정 줄·묶음·판정 기록을 봅니다. **음성 파일 입력**으로 마이크 대신 PC에서 넣은 음성 파일을 여행 녹음에 흘려보내고, **마이크로 복귀**로 되돌립니다.
+
+**카탈로그 화면**
+
+| 항목 | 하는 일 |
+|---|---|
+| 대화 요약 설정 | 제공자(Cloudflare / agy 중계 / Fake), 모델, Cloudflare 계정 ID·토큰, 주행 중 제목 보이기, **연결 시험** |
+| 지도 설정 | Mapbox 공개 토큰 넣기·지우기, 지금 쓰는 토큰 출처 확인 |
+| 인식 실험실 | PC 마이크·음성 파일로 인식, 묶음 판정, 제목 만들기를 여행 없이 시험합니다 |
+| 질문 실험실 | 지금 위치(또는 미리 정한 장소·위도경도)로 질문 만들기와 보낸 맥락 확인, Pleos TTS로 문장 읽기, 시험용 짧은 시간, 조용함 흉내(Q01)·바로 질문(Q02)·반응 넣기, 먼저 묻기 다시 켜기 |
+| 예시 여행 | 실제 도로 경로로 만든 지난 여행 13개를 기록에 넣거나 지웁니다(지도·다이어리 확인용) |
+
+**adb 명령** (에뮬레이터 앱은 사용자 10에서 돕니다)
+
+```bash
+# 기어 D / P / off
+adb shell am broadcast --user 10 -a com.dongbantest.app.DEBUG_GEAR -n com.dongbantest.app/.vehicle.DebugGearReceiver --es gear D
+# 길 리본 진행률 (100이면 도착 화면까지), percent 없이 보내면 흉내 끄기
+adb shell am broadcast --user 10 -a com.dongbantest.app.DEBUG_PROGRESS -n com.dongbantest.app/.navi.DebugProgressReceiver --ei percent 50
+# 내비 도착 흉내
+adb shell am broadcast --user 10 -a com.dongbantest.app.DEBUG_ARRIVAL -n com.dongbantest.app/.navi.DebugArrivalReceiver --es name "판교테크노밸리"
+# 예시 여행 넣기 (GPX 파일로 넣는 법은 DebugGpxImportReceiver.kt 주석)
+adb shell am broadcast --user 10 -a com.dongbantest.app.DEBUG_IMPORT_GPX -p com.dongbantest.app --ez samples true
+```
+
+질문 흐름은 아래 명령으로 흉내 냅니다. 녹음 중인 여행이 있어야 합니다. 받는 곳은 모두 `-n com.dongbantest.app/.debug.DebugQuestionReceiver`이고, 동작 이름 앞에 `com.dongbantest.app.debug.`를 붙입니다.
+
+| 동작 | 추가 값 | 하는 일 |
+|---|---|---|
+| `ASK_FORCE_QUIET` | | 조용함 조건을 건너뛰고 Q01 확인을 띄웁니다 |
+| `ASK_REACTION` | `--es kind accept\|decline\|other` | Q01에 대한 반응을 넣습니다 |
+| `ASK_FORCE_QUESTION` | | 확인 없이 바로 질문합니다 |
+| `ASK_SHORT_POLICY` | `--ez on true\|false` | 시간 조건을 짧게 합니다(조용함 30초, 여행 시작 직후부터) |
+| `ASK_VOICE` | `--es cmd next\|stop` | 녹음 중 "동반차 다른 질문 해줘" / "질문 그만해줘"를 말한 것으로 처리합니다 |
+| `ASK_GLEO` | | Gleo의 `ASK_NEW_QUESTION` 호출을 흉내 냅니다(녹음 멈춤·녹음 없는 여행에서) |
+
+```bash
+adb shell am broadcast --user 10 -a com.dongbantest.app.debug.ASK_FORCE_QUIET -n com.dongbantest.app/.debug.DebugQuestionReceiver
+```
+
+- 질문 흐름의 기록은 Logcat 태그 `QuestionCoordinator`, 대화 기록은 `TalkRec`에서 봅니다. 대화 글은 로그에 남기지 않습니다.
+- AVD는 마이크 입력이 작아 실제 목소리로 하는 반응·명령 시험은 Devbox나 실차에서 확인합니다.
 
 ### 위치·정차·도착 기준
 
