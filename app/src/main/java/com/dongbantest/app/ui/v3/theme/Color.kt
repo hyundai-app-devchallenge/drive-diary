@@ -33,6 +33,10 @@ data class DbColors(
     val tripGangneung: Color = Color(0xFF002C5F),
     val tripJeju: Color = Color(0xFF0A8F7A),
     val tripYangpyeong: Color = Color(0xFFC26A00),
+    /** 들은 노래(노래 핀·노래가 흐른 길·타임라인 노래 막대). 여행 색 세 가지(남색·청록·주황) 어느 것과도 헷갈리지 않는 베리색 */
+    val music: Color = Color(0xFFC2387F),
+    val musicSoft: Color = Color(0xFFF3C7DC),
+    val musicInk: Color = Color(0xFF8A1F55),
     /** 예시 지도 (.map-land, .map-sea, .map-road) */
     val mapLand: Color = Color(0xFFEEF2F6),
     val mapSea: Color = Color(0xFFD9E6F3),

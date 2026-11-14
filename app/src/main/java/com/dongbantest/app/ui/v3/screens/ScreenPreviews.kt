@@ -37,6 +37,7 @@ private fun P(content: @Composable () -> Unit) = DongbanchaV3Theme { content() }
 @V3SizePreviews @Composable private fun Preview_S13() = P { DiaryReadyScreen() }
 @V3SizePreviews @Composable private fun Preview_S14() = P { DiaryScreen() }
 @V3SizePreviews @Composable private fun Preview_S14_live() = P { DiaryScreen(DiaryUiState(record = Sample.JEJU, live = true)) }
+@V3SizePreviews @Composable private fun Preview_S14_no_talks() = P { DiaryScreen(DiaryUiState(record = Sample.GANGNEUNG.copy(talks = emptyList()))) }
 @V3SizePreviews @Composable private fun Preview_R01() = P { RecordMapScreen() }
 @V3SizePreviews @Composable private fun Preview_R01_live() = P { RecordMapScreen(RecordMapUiState(live = true)) }
 @V3SizePreviews @Composable private fun Preview_P01() = P { StopNoticeScreen() }

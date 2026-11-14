@@ -14,6 +14,10 @@ import com.drivediary.talkrec.capture.CaptureStatus
 import com.dongbantest.app.domain.model.RouteRibbon
 import com.dongbantest.app.domain.model.Trip
 import com.dongbantest.app.domain.model.TripWithMemories
+import com.dongbantest.app.domain.model.LocationPoint
+import com.dongbantest.app.ui.components.MapMoment
+import com.dongbantest.app.ui.v3.components.MomentPin
+import kotlin.math.abs
 import com.dongbantest.app.navi.NaviRoute
 import com.dongbantest.app.ui.components.RouteColors
 import com.dongbantest.app.ui.components.formatDuration
@@ -255,7 +259,7 @@ private const val TALK_SAVED_LABEL = "대화 저장됨"
 
 /** 이야기 한 줄과 그 음성 파일 경로 (재생할 때 쓴다) */
 data class TalkWithPath(val talk: TalkUi, val paths: List<String>, val startMs: Long,
-    val drivingTitle: String = talk.title) {
+    val drivingTitle: String = talk.title, val durationMs: Long = 0L) {
     val path: String? get() = paths.firstOrNull()
 }
 
@@ -288,6 +292,7 @@ fun TripWithMemories.talks(): List<TalkWithPath> {
                 ),
                 ordered.mapNotNull { it.filePath }, clipStart,
                 if (pendingRun) "이야기 정리 중" else m.talk?.title?.takeIf { it.isNotBlank() } ?: TALK_SAVED_LABEL,
+                clips.sumOf { it.durationMs ?: 0L },
             )
         }.sortedBy { it.startMs }
 }
@@ -297,9 +302,43 @@ fun VoicePlayback.toUi(talks: List<TalkWithPath>): PlaybackUi? {
     return PlaybackUi(id, isPlaying, positionMs, durationMs)
 }
 
+/** 여행 시간 창(출발 → 도착, 진행 중이면 지금). 지도·타임라인 띠의 0–1 비율 기준. */
+private fun TripWithMemories.window(): LongRange {
+    val a = trip.startedAt
+    return a..maxOf(trip.endedAt ?: System.currentTimeMillis(), a + 1)
+}
+
+private fun LongRange.frac(t: Long): Float = ((t - first).toFloat() / (last - first)).coerceIn(0f, 1f)
+
+private fun LongRange.span(a: Long, b: Long): ClosedFloatingPointRange<Float> = frac(a)..maxOf(frac(a), frac(b))
+
+/**
+ * 핀(0–1 비율)을 실제 지도 위 자리로 옮긴다: 그 시각에 가장 가까운 위치 기록.
+ * 2분 안에 위치 기록이 없으면(터널, GPS 끊김) 지도에는 놓지 않고 시간 띠·목록에만 남는다.
+ */
+fun TripWithMemories.mapMoments(pins: List<MomentPin>): List<MapMoment> {
+    val points = drive.path.flatten().sortedBy { it.recordedAt }
+    if (points.isEmpty()) return emptyList()
+    val w = window()
+    return pins.mapNotNull { pin ->
+        val at = w.first + ((w.last - w.first) * pin.start).toLong()
+        nearestPoint(points, at)?.let { MapMoment(pin, it.latitude, it.longitude) }
+    }
+}
+
+private fun nearestPoint(sorted: List<LocationPoint>, at: Long): LocationPoint? {
+    val i = sorted.binarySearch { it.recordedAt.compareTo(at) }.let { if (it >= 0) it else -it - 1 }
+    return listOfNotNull(sorted.getOrNull(i - 1), sorted.getOrNull(i))
+        .minByOrNull { abs(it.recordedAt - at) }
+        ?.takeIf { abs(it.recordedAt - at) <= NEAREST_POINT_MS }
+}
+
+private const val NEAREST_POINT_MS = 2 * 60_000L
+
 fun TripWithMemories.toRecord(talks: List<TalkWithPath> = talks()): TripRecordUi {
     val t = trip
     val end = t.endedAt
+    val w = window()
     return TripRecordUi(
         id = t.id.toString(),
         title = t.title,
@@ -314,7 +353,7 @@ fun TripWithMemories.toRecord(talks: List<TalkWithPath> = talks()): TripRecordUi
         arriveTime = end?.let { hhmm(it) } ?: "진행 중",
         duration = formatElapsed((end ?: System.currentTimeMillis()) - t.startedAt),
         photos = memories.filter { it.type == MemoryType.PHOTO }.map { hhmm(it.createdAt) },
-        talks = talks.map { it.talk },
+        talks = talks.map { it.talk.copy(span = w.span(it.startMs, it.startMs + it.durationMs)) },
     )
 }
 

@@ -507,11 +507,14 @@ fun V3NavHost(
                 // 기록 지도에서 연 다이어리는 뒤로 가기로 기록 지도에 돌아온다.
                 onOpenRecord = { id -> id.toLongOrNull()?.let { navController.navigate(V3Routes.diary(it)) { launchSingleTop = true } } },
                 onOpenLiveTrip = { state.ongoingTrip?.let { navController.go(V3Routes.trip(it.id)) } },
-                realMap = { m ->
+                // 경로를 누르면 바로 열지 않고 고른다(그 경로만 진하게, 목록 카드 아래 "기록 보기").
+                realMap = { m, selected, onSelect ->
                     RouteMap(
                         routes = state.routes.map { (id, segments) -> RealMapRoute(id, RouteColors.forTrip(id), segments) },
                         modifier = m,
-                        onRouteClick = { navController.navigate(V3Routes.diary(it)) { launchSingleTop = true } },
+                        onRouteClick = { onSelect(it.toString()) },
+                        selectedRoute = selected?.toLongOrNull(),
+                        onBlankClick = { onSelect(null) },
                     )
                 },
             )
@@ -541,6 +544,17 @@ fun V3NavHost(
                     playbackEnabled = !restricted,
                     recordingText = "여행 기록 중",
                 ),
+                momentMap = { m, pins, selected, onSelect ->
+                    val moments = remember(data, pins) { data.mapMoments(pins) }
+                    RouteMap(
+                        routes = listOf(RealMapRoute(tripId, RouteColors.forTrip(tripId), data.drive.path, data.drive.timeline)),
+                        modifier = m,
+                        moments = moments,
+                        selectedMoment = selected,
+                        onMomentClick = onSelect,
+                        momentTone = record.tone.color,
+                    )
+                },
                 onTab = onTab,
                 onBack = { if (!navController.popBackStack()) onTab(DbTab.Record) },
                 onNextPage = {
@@ -554,12 +568,6 @@ fun V3NavHost(
                 onPlay = { talk -> talks.firstOrNull { it.talk.id == talk.id }?.paths?.let(vm::toggleStory) },
                 onSeek = { talk, position ->
                     talks.firstOrNull { it.talk.id == talk.id }?.let { vm.seekStory(it.paths, position) }
-                },
-                map = { m ->
-                    RouteMap(
-                        routes = listOf(RealMapRoute(tripId, RouteColors.forTrip(tripId), data.drive.path, data.drive.timeline)),
-                        modifier = m,
-                    )
                 },
                 // 끝난 여행만 편집할 수 있다. 진행 중인 여행은 편집 버튼 자리에 녹음 칩이 나온다.
                 onEdit = if (data.trip.isOngoing) null else { { editStep = 1 } },
