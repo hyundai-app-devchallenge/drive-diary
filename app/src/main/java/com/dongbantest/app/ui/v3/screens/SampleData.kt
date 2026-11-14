@@ -109,8 +109,8 @@ object Sample {
     val SAY_OFF = listOf(VoiceCommands.ASK_NEXT)
 
     const val BUBBLE_DRIVING = "강릉 가는 길, 모두의 이야기를 담고 있어요."
-    const val BUBBLE_PAUSED = "녹음을 잠시 멈췄어요. 질문은 계속할 수 있어요."
-    const val BUBBLE_OFF = "이번 여행은 녹음 없이 질문만 함께해요."
+    const val BUBBLE_PAUSED = "녹음을 잠시 멈췄어요. 다시 켜면 질문도 이어갈게요."
+    const val BUBBLE_OFF = "이번 여행은 녹음 없이 조용히 함께해요."
     const val BUBBLE_READY = "출발하면 모두의 이야기를 담기 시작할게요."
 
     val ASKED_BASE = listOf(

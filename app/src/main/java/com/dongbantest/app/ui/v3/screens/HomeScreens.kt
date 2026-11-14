@@ -19,6 +19,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.ui.text.input.ImeAction
+import com.dongbantest.app.ui.v3.components.ButtonKind
+import com.dongbantest.app.ui.v3.components.DbButton
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
@@ -227,13 +234,15 @@ data class TripSetupUiState(
     /** 내비에 찍힌 목적지 이름. 아직 없으면 null. */
     val naviDestination: String? = "강릉 경포해변",
     val noDestination: String = "내비에서 목적지를 찍으면 여기에 나와요",
-    val withLabel: String = "누구와 가요?",
-    val companions: List<String> = listOf("가족", "연인", "친구"),
-    val selectedCompanion: String = "친구",
-    val headcountLabel: String = "인원",
-    val headcount: Int = 4,
-    val headcountMin: Int = 1,
-    val headcountMax: Int = 9,
+    val withLabel: String = "누구와 함께 가요?",
+    /** 함께 가는 사람 이름. 처음에는 엄마·아빠가 들어 있다. 기록 탭 "함께한 사람"에 그대로 보인다. */
+    val people: List<String> = listOf("엄마", "아빠"),
+    val peopleMax: Int = 9,
+    /** 이름 입력 칸에 쓰는 중인 글 */
+    val newName: String = "",
+    val newNamePlaceholder: String = "이름 (예: 엄마, 지우)",
+    /** 눌러서 바로 넣는 이름. 같은 이름을 또 누르면 "친구1, 친구2"처럼 번호가 붙는다. */
+    val suggestions: List<String> = listOf("엄마", "아빠", "아들", "딸", "친구"),
     val primary: String = "출발! 여행 시작",
     val secondary: String = "나중에",
     val home: HomeUiState = HomeUiState(),
@@ -244,8 +253,9 @@ fun TripSetupScreen(
     state: TripSetupUiState = TripSetupUiState(),
     onTab: (DbTab) -> Unit = {},
     onTripTitleChange: (String) -> Unit = {},
-    onCompanionSelect: (String) -> Unit = {},
-    onHeadcountChange: (Int) -> Unit = {},
+    onNewNameChange: (String) -> Unit = {},
+    onAddPerson: (String) -> Unit = {},
+    onRemovePerson: (Int) -> Unit = {},
     onStart: () -> Unit = {},
     onLater: () -> Unit = {},
 ) {
@@ -291,42 +301,134 @@ fun TripSetupScreen(
                             color = if (state.naviDestination != null) c.ink else c.muted,
                         )
                     }
-                    Column(Modifier.fillMaxWidth()) {
-                        Text(state.withLabel, style = t.title, color = c.ink, modifier = Modifier.padding(bottom = Spacing.sm))
-                        Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                            state.companions.forEach { o ->
-                                val on = o == state.selectedCompanion
-                                Box(
-                                    Modifier.heightIn(min = 48.dp).clip(DbShapes.pill)
-                                        .background(if (on) c.ink else c.paper)
-                                        .border(1.dp, if (on) c.ink else c.rule, DbShapes.pill)
-                                        .selectable(on, role = Role.RadioButton) { onCompanionSelect(o) }
-                                        .padding(horizontal = Spacing.lg),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(o, style = t.body.copy(fontWeight = FontWeight.Medium), color = if (on) c.paper else c.ink)
-                                }
-                            }
-                        }
-                    }
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(state.headcountLabel, style = t.title, color = c.ink, modifier = Modifier.weight(1f))
-                        CircleIconButton(DbIcons.Minus, "인원 줄이기", { onHeadcountChange(state.headcount - 1) }, enabled = state.headcount > state.headcountMin)
-                        Text(
-                            "${state.headcount}명", style = t.title, color = c.ink,
-                            modifier = Modifier.widthIn(min = 48.dp).semantics { liveRegion = LiveRegionMode.Polite },
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        )
-                        CircleIconButton(DbIcons.Plus, "인원 늘리기", { onHeadcountChange(state.headcount + 1) }, enabled = state.headcount < state.headcountMax)
-                    }
+                    TripPeopleInput(state, onNewNameChange, onAddPerson, onRemovePerson)
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                        PrimaryButton(state.primary, onStart)
+                        PrimaryButton(state.primary, onStart, capWide = false) // 위 입력 칸들과 같은 폭
                         DbTextButton(state.secondary, onLater)
                     }
                 }
             },
         ) {
             HomeBody(state.home)
+        }
+    }
+}
+
+/**
+ * 함께 가는 사람: 기록 탭 "함께한 사람"과 같은 모양(머리글자 동그라미 + 이름 알약)으로 이름을 모은다.
+ * 이름을 쓰거나 아래 빠른 이름을 눌러 넣고, 알약의 ×로 뺀다. 한 명은 늘 남는다.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TripPeopleInput(
+    state: TripSetupUiState,
+    onNewNameChange: (String) -> Unit,
+    onAddPerson: (String) -> Unit,
+    onRemovePerson: (Int) -> Unit,
+) {
+    val c = DbTheme.colors
+    val t = DbTheme.type
+    val full = state.people.size >= state.peopleMax
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+            Text(state.withLabel, style = t.title, color = c.ink, modifier = Modifier.weight(1f))
+            Text(
+                "함께 ${state.people.size}명", style = t.bodySm.copy(fontWeight = FontWeight.Bold), color = c.ink,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            state.people.forEachIndexed { i, p ->
+                PersonChip(p, onRemove = if (state.people.size <= 1) null else ({ onRemovePerson(i) }))
+            }
+        }
+        if (!full) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.xs), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.weight(1f).height(48.dp).border(1.dp, c.rule, DbShapes.button).clip(DbShapes.button).background(c.paper),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    BasicTextField(
+                        value = state.newName,
+                        onValueChange = { onNewNameChange(it.take(10)) },
+                        singleLine = true,
+                        textStyle = t.body.copy(color = c.ink),
+                        cursorBrush = SolidColor(c.accent),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { onAddPerson(state.newName) }),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md)
+                            .semantics { contentDescription = "함께 가는 사람 이름" },
+                        decorationBox = { field ->
+                            if (state.newName.isEmpty()) Text(state.newNamePlaceholder, style = t.body, color = c.muted)
+                            field()
+                        },
+                    )
+                }
+                DbButton(
+                    text = "추가", onClick = { onAddPerson(state.newName) }, kind = ButtonKind.Outline,
+                    enabled = state.newName.isNotBlank(), icon = DbIcons.Plus,
+                )
+            }
+            val quick = state.suggestions
+            if (quick.isNotEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.xs), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    quick.forEach { s ->
+                        Row(
+                            Modifier.heightIn(min = 40.dp).clip(DbShapes.pill).background(c.paper2)
+                                .clickable(role = Role.Button) { onAddPerson(s) }
+                                .padding(horizontal = Spacing.sm),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.s2xs),
+                        ) {
+                            DbIcon(DbIcons.Plus, 16.dp, c.muted)
+                            Text(s, style = t.bodySm.copy(fontWeight = FontWeight.Medium), color = c.ink)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * people 에 이름 하나를 더한 목록. 같은 이름이 이미 있으면 번호를 붙여 구별한다:
+ * [엄마, 친구] + 친구 → [엄마, 친구1, 친구2], 다시 + 친구 → [..., 친구3].
+ * 빈 이름, 9명이 넘는 경우는 그대로 돌려준다. 쉼표는 저장 구분자라 빈칸으로 바꾼다.
+ */
+internal fun withPerson(people: List<String>, raw: String, max: Int = 9): List<String> {
+    val name = raw.trim().replace(",", " ").take(10)
+    if (name.isEmpty() || people.size >= max) return people
+    val numbered = Regex("^${Regex.escape(name)}(\\d+)$")
+    val taken = people.mapNotNull { p -> if (p == name) 1 else numbered.find(p)?.groupValues?.get(1)?.toIntOrNull() }
+    if (taken.isEmpty()) return people + name
+    val renamed = people.map { if (it == name) "${name}1" else it }
+    return renamed + "$name${taken.max() + 1}"
+}
+
+/** 기록 탭 FlowPeople 과 같은 이름 알약. onRemove 가 있으면 오른쪽에 × 버튼. */
+@Composable
+private fun PersonChip(name: String, onRemove: (() -> Unit)?) {
+    val c = DbTheme.colors
+    val t = DbTheme.type
+    Row(
+        Modifier.height(40.dp).clip(DbShapes.pill).border(1.dp, c.rule, DbShapes.pill)
+            .padding(start = if (name.length == 1) 3.dp else Spacing.s2xs, end = when { onRemove != null -> 0.dp; name.length == 1 -> 3.dp; else -> Spacing.sm }),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+    ) {
+        Box(Modifier.size(32.dp).clip(DbShapes.pill).background(c.paper3), contentAlignment = Alignment.Center) {
+            Text(name.take(1), style = t.title, color = c.ink)
+        }
+        // 기록 탭처럼 한 글자 이름("나")은 동그라미만 보인다.
+        if (name.length > 1) Text(name, style = t.bodySm.copy(fontWeight = FontWeight.Medium), color = c.ink)
+        if (onRemove != null) {
+            Box(
+                Modifier.size(40.dp).clip(DbShapes.pill).clickable(role = Role.Button, onClick = onRemove)
+                    .semantics { contentDescription = "$name 빼기" },
+                contentAlignment = Alignment.Center,
+            ) {
+                DbIcon(DbIcons.X, 16.dp, c.muted)
+            }
         }
     }
 }
@@ -499,7 +601,8 @@ fun TripEmptyScreen(state: TripEmptyUiState = TripEmptyUiState(), onTab: (DbTab)
         AppShell(
             selectedTab = DbTab.Trip, onTab = onTab, topBar = { StoppedTopBar() },
             verticalArrangement = Arrangement.Center,
-            horizontalAlignment = if (full) Alignment.CenterHorizontally else Alignment.Start,
+            // 넓은 화면에서는 폭을 줄인 안내 묶음을 가운데에 둔다(왼쪽에 몰리면 오른쪽이 비어 보인다).
+            horizontalAlignment = if (DbTheme.layout.wide) Alignment.CenterHorizontally else Alignment.Start,
         ) {
             Column(
                 Modifier.widthIn(max = if (full) 640.dp else 560.dp).fillMaxWidth().padding(vertical = Spacing.lg),

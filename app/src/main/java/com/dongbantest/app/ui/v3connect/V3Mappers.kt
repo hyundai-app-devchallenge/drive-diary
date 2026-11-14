@@ -197,8 +197,8 @@ fun TripUiState.toDriving(
     }?.let { if (rec == RecordingState.Paused) "글레오에게 “$it”" else "“$it”" }
     val bubble = when (recordingMode) {
         RecordingMode.ON -> "$to 가는 길, 모두의 이야기를 담고 있어요."
-        RecordingMode.PAUSED -> "녹음을 잠시 멈췄어요. 질문은 계속할 수 있어요."
-        RecordingMode.OFF -> "이번 여행은 녹음 없이 질문만 함께해요."
+        RecordingMode.PAUSED -> "녹음을 잠시 멈췄어요. 다시 켜면 질문도 이어갈게요."
+        RecordingMode.OFF -> "이번 여행은 녹음 없이 조용히 함께해요."
         RecordingMode.READY -> "출발하면 모두의 이야기를 담기 시작할게요."
     }
     val people = trip.companions.size
@@ -208,7 +208,8 @@ fun TripUiState.toDriving(
         recordingText = recText,
         stopped = !safety.isRestricted,
         pillTitle = pillTitle,
-        pillSub = listOf(hhmm(trip.startedAt), ribbon?.originName ?: trip.startPlace, "출발").filterNotNull().joinToString(" "),
+        // 출발지는 진행 카드 안 길 리본 왼쪽 아래에 나오니 여기서는 시각만 쓴다.
+        pillSub = "${hhmm(trip.startedAt)} 출발",
         people = if (people > 0) "함께 ${people}명" else "",
         progress = if (ended) 100 else percentOf(ribbon?.progress),
         from = from,
@@ -228,8 +229,6 @@ fun TripUiState.toDriving(
         asked = asked,
         nowText = if (quiet) "조용히 듣는 중" else null,
         toast = voiceFeedback?.toToast()?.let { if (safety.isRestricted) it.copy(say = null) else it },
-        // 모드와 실제 캡처가 모두 녹음 중일 때만 저장 동작을 제공한다.
-        momentButton = !ended && recordingMode == RecordingMode.ON && capture.status == CaptureStatus.On,
         recordingToggleText = if (ended || safety.isRestricted) null else when (recordingMode) {
             // 모드는 ON이어도 캡처가 스스로 멈출 수 있다(음성 인식 오류 등). 그때는 다시 켜는 버튼을 준다.
             RecordingMode.ON -> if (capture.status == CaptureStatus.Paused) RESUME_TEXT else "녹음 멈추기"
