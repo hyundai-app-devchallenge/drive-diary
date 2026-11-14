@@ -24,7 +24,27 @@ data class TalkUi(
     val clipCount: Int = 1,
     val kind: String? = null,
     val hidden: Boolean = false,
+    /** 여행 시간(출발 0 → 도착 1) 안에서 이 이야기가 차지한 구간. 없으면 지도·타임라인 띠에 놓지 않는다. */
+    val span: ClosedFloatingPointRange<Float>? = null,
 )
+
+/** 여행 중 들은 노래 한 곡(M00 설계 4.2·4.5). */
+data class SongUi(
+    val id: String,
+    val start: String,
+    val end: String,
+    val title: String,
+    val artist: String,
+    /** 튼 앱 이름 (멜론, 블루투스 …) */
+    val source: String,
+    /** 실제로 재생된 시간(일시정지 뺌) */
+    val playedMs: Long,
+    /** 여행 시간(0–1) 안의 구간 */
+    val span: ClosedFloatingPointRange<Float>,
+)
+
+/** 노래 기록 권한 상태. Off 면 노래 탭이 설정 안내를 보인다. */
+enum class SongAccess { On, Off }
 
 /** 기록(여행) 한 건. 웹 data-v3.ts 의 TripRecord 와 같은 필드. */
 data class TripRecordUi(
@@ -42,6 +62,8 @@ data class TripRecordUi(
     val duration: String,
     val photos: List<String>,
     val talks: List<TalkUi>,
+    val songs: List<SongUi> = emptyList(),
+    val songAccess: SongAccess = SongAccess.On,
 )
 
 /**
@@ -109,9 +131,19 @@ object Sample {
         from = FROM, startTime = START, to = TO, arriveTime = ARRIVE, duration = TOTAL,
         photos = listOf("경포에서 넷이", "호두과자 논쟁"),
         talks = listOf(
-            TalkUi("09:52", "휴게소 호두과자 논쟁", "0:48", false, tags = listOf("음식", "웃음")),
-            TalkUi("10:05", "운전 교대 가위바위보", "1:05", false, tags = listOf("게임")),
-            TalkUi("10:15", "처음 만났던 날", "3:20", true, tags = listOf("추억", "연애", "첫만남")),
+            TalkUi("09:52", "휴게소 호두과자 논쟁", "0:48", false, tags = listOf("음식", "웃음"), id = "t1", span = gn(9, 52)..gn(9, 52, 48)),
+            TalkUi("10:05", "운전 교대 가위바위보", "1:05", false, tags = listOf("게임"), id = "t2", span = gn(10, 5)..gn(10, 6, 5)),
+            TalkUi("10:15", "처음 만났던 날", "3:20", true, tags = listOf("추억", "연애", "첫만남"), id = "t3", span = gn(10, 15)..gn(10, 18, 20)),        ),
+        songs = listOf(
+            song("s1", 9, 24, 9, 28, "Hype Boy", "NewJeans"),
+            song("s2", 9, 28, 9, 32, "Love wins all", "아이유"),
+            song("s3", 9, 49, 9, 54, "밤편지", "아이유"),
+            song("s4", 10, 2, 10, 6, "사건의 지평선", "윤하"),
+            song("s5", 10, 12, 10, 18, "봄날", "방탄소년단"),
+            song("s6", 10, 40, 10, 44, "Ditto", "NewJeans", "블루투스"),
+            song("s7", 11, 8, 11, 12, "Supernova", "aespa", "블루투스"),
+            song("s8", 11, 38, 11, 44, "바다의 왕자", "박명수"),
+            song("s9", 12, 5, 12, 9, "여름밤의 꿈", "김현철"),
         ),
     )
     val JEJU = TripRecordUi(
@@ -130,6 +162,18 @@ object Sample {
     )
     /** 최신순 */
     val RECORDS = listOf(GANGNEUNG, JEJU, YANGPYEONG)
+
+    /** 강릉 예시(09:20 → 12:30, 190분) 안에서 시각의 비율 */
+    private fun gn(h: Int, m: Int, s: Int = 0): Float = ((h * 60 + m - (9 * 60 + 20)) + s / 60f) / 190f
+
+    private fun song(id: String, h1: Int, m1: Int, h2: Int, m2: Int, title: String, artist: String, source: String = "멜론") =
+        SongUi(
+            id, "%02d:%02d".format(h1, m1), "%02d:%02d".format(h2, m2), title, artist, source,
+            ((h2 * 60 + m2) - (h1 * 60 + m1)) * 60_000L, gn(h1, m1)..gn(h2, m2),
+        )
+
+    /** 강릉 기록인데 노래 기록 권한이 꺼진 경우(노래 탭 빈 화면 확인용) */
+    val GANGNEUNG_NO_SONGS get() = GANGNEUNG.copy(songs = emptyList(), songAccess = SongAccess.Off)
 
     fun record(id: String) = RECORDS.first { it.id == id }
     /** 다음 장: 강릉 → 제주 → 양평 → 강릉. live 면 진행 중인 강릉을 빼고 제주 ↔ 양평 */

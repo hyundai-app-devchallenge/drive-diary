@@ -83,7 +83,7 @@ data class MakingDiaryUiState(
 
 /** 넓은 화면 .lead.measure: 560(Full 640) 가운데 */
 @Composable
-private fun leadWidth(): Modifier = when (DbTheme.layout) {
+internal fun leadWidth(): Modifier = when (DbTheme.layout) {
     DbLayout.Compact -> Modifier.fillMaxWidth()
     DbLayout.Expanded -> Modifier.widthIn(max = 560.dp).fillMaxWidth()
     DbLayout.Full -> Modifier.widthIn(max = 640.dp).fillMaxWidth()
@@ -230,7 +230,27 @@ data class DiaryUiState(
     val playback: PlaybackUi? = null,
     val playbackEnabled: Boolean = true,
     val recordingText: String = Sample.REC_ON,
+    /**
+     * 들은 노래 설계(M03): 상세 안을 지도(기본)·경로·이야기·노래 탭으로 나눈다.
+     * false 면 지금처럼 한 장(경로 + 나눈 이야기). 실제 앱 연결 전까지 기본은 false.
+     */
+    val tabs: Boolean = false,
+    val tabMap: String = "지도",
+    val tabRoute: String = "경로",
+    val tabTalks: String = "이야기",
+    val tabSongs: String = "노래",
+    val songsTitle: String = "들은 노래",
+    val songOfTrip: String = "이번 여행의 노래",
+    val songsOff: String = "노래 기록이 꺼져 있어요. 설정에서 켜면 다음 여행부터 들은 노래가 남아요.",
+    val songsEmpty: String = "이번 여행에선 기록된 노래가 없어요.",
+    val songsOpenSettings: String = "설정 열기",
+    val momentHint: String = "지도나 시간 띠에서 고르면 그때 나눈 이야기와 흐르던 노래를 함께 볼 수 있어요.",
+    val songDuringTalk: String = "그때 흐르던 노래",
+    val talksDuringSong: String = "이 노래 들으며 나눈 이야기",
 )
+
+/** 상세 안의 탭 */
+enum class DiaryTab { Map, Route, Talks, Songs }
 
 @Composable
 fun DiaryScreen(
@@ -244,7 +264,13 @@ fun DiaryScreen(
     map: (@Composable (Modifier) -> Unit)? = null,
     /** "편집" 버튼. null 이면 비활성(확정안 기본). */
     onEdit: (() -> Unit)? = null,
+    /** 노래 탭 빈 화면의 "설정 열기". null 이면 버튼을 숨긴다. */
+    onOpenSongSettings: (() -> Unit)? = null,
 ) {
+    if (state.tabs) {
+        TabbedDiary(state, onTab, onBack, onNextPage, onPlay, onSeek, map, onEdit, onOpenSongSettings)
+        return
+    }
     // 받은 폭으로 Compact·Expanded·Full 을 먼저 정한다(아래에서 DbTheme.layout 을 읽음)
     AdaptiveLayout(Modifier.fillMaxSize()) {
         val layout = DbTheme.layout
@@ -272,7 +298,7 @@ fun DiaryScreen(
 }
 
 @Composable
-private fun DiaryTopBar(state: DiaryUiState, onBack: () -> Unit, onNextPage: () -> Unit, onEdit: (() -> Unit)? = null) {
+internal fun DiaryTopBar(state: DiaryUiState, onBack: () -> Unit, onNextPage: () -> Unit, onEdit: (() -> Unit)? = null) {
     val c = DbTheme.colors
     TopBarFrame {
         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
@@ -291,12 +317,14 @@ private fun DiaryTopBar(state: DiaryUiState, onBack: () -> Unit, onNextPage: () 
 }
 
 @Composable
-private fun ColumnScope.DiaryInfo(state: DiaryUiState, map: (@Composable (Modifier) -> Unit)? = null) {
+internal fun ColumnScope.DiaryInfo(state: DiaryUiState, map: (@Composable (Modifier) -> Unit)? = null, header: Boolean = true) {
     val c = DbTheme.colors
     val t = DbTheme.type
     val r = state.record
-    Text(r.dateLabel, style = t.bodySm.copy(fontWeight = FontWeight.Medium, lineHeight = t.bodySm.fontSize * 1.4f), color = c.muted, modifier = Modifier.padding(top = Spacing.xs))
-    Text(r.title, style = t.display, color = c.ink, modifier = Modifier.padding(top = Spacing.s2xs, bottom = Spacing.md).semantics { heading() })
+    if (header) {
+        Text(r.dateLabel, style = t.bodySm.copy(fontWeight = FontWeight.Medium, lineHeight = t.bodySm.fontSize * 1.4f), color = c.muted, modifier = Modifier.padding(top = Spacing.xs))
+        Text(r.title, style = t.display, color = c.ink, modifier = Modifier.padding(top = Spacing.s2xs, bottom = Spacing.md).semantics { heading() })
+    }
     FlowPeople(r.people, Modifier.semantics { contentDescription = "${state.peopleLabel}: ${r.people.joinToString()}" })
     val mapModifier = Modifier.padding(top = Spacing.md).fillMaxWidth().height(if (map != null) 200.dp else 120.dp).clip(DbShapes.card)
     if (map != null) {
@@ -348,7 +376,7 @@ private fun FlowPeople(people: List<String>, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun DiaryTalks(state: DiaryUiState, onPlay: (TalkUi) -> Unit, onSeek: (TalkUi, Long) -> Unit) {
+internal fun DiaryTalks(state: DiaryUiState, onPlay: (TalkUi) -> Unit, onSeek: (TalkUi, Long) -> Unit) {
     val c = DbTheme.colors
     val t = DbTheme.type
     Text(state.talksTitle, style = t.titleLg, color = c.ink, modifier = Modifier.padding(bottom = Spacing.xs).semantics { heading() })

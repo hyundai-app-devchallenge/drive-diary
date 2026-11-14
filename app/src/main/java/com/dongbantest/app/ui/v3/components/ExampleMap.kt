@@ -56,7 +56,8 @@ data class MapLabel(val text: String, val at: Offset, val dx: Float, val dy: Flo
 @Immutable
 data class MapLive(val routeId: String, val progress: Float, val label: String)
 
-private fun ctrl(r: MapRoute, w: Float, h: Float): Triple<Offset, Offset, Offset> {
+/** 예시 경로의 2차 곡선 점(출발, 조절점, 도착). MomentMap 도 같은 곡선 위에 핀을 놓는다. */
+internal fun ctrl(r: MapRoute, w: Float, h: Float): Triple<Offset, Offset, Offset> {
     val p0 = Offset(r.from.x * w, r.from.y * h)
     val p2 = Offset(r.to.x * w, r.to.y * h)
     val dx = p2.x - p0.x
@@ -65,7 +66,7 @@ private fun ctrl(r: MapRoute, w: Float, h: Float): Triple<Offset, Offset, Offset
 }
 
 private fun lerp(a: Offset, b: Offset, t: Float) = Offset(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)
-private fun quad(p0: Offset, c: Offset, p2: Offset, t: Float) = lerp(lerp(p0, c, t), lerp(c, p2, t), t)
+internal fun quad(p0: Offset, c: Offset, p2: Offset, t: Float) = lerp(lerp(p0, c, t), lerp(c, p2, t), t)
 
 /**
  * 예시 지도(웹 SVG를 Canvas로). 외부 타일 없이 땅·바다·길과 기록 경로를 그린다.
