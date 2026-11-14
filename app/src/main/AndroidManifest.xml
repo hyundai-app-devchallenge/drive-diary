@@ -61,8 +61,10 @@
                 <!-- Gleo sends "<packageName>.<function name>"; the bare names match the Pleos examples. -->
                 <action android:name="${applicationId}.PAUSE_TRIP_RECORDING" />
                 <action android:name="${applicationId}.RESUME_TRIP_RECORDING" />
+                <action android:name="${applicationId}.ASK_NEW_QUESTION" />
                 <action android:name="PAUSE_TRIP_RECORDING" />
                 <action android:name="RESUME_TRIP_RECORDING" />
+                <action android:name="ASK_NEW_QUESTION" />
             </intent-filter>
         </receiver>
 

@@ -26,6 +26,8 @@ class CaptureOptions(
     val signals: (startMs: Long, endMs: Long) -> AppSignals? = { _, _ -> null },
     /** Runs on the capture service's main coroutine. Return true to pause capture and consume that line. */
     val voiceCommand: (text: String) -> Boolean = { false },
+    /** Runs after [voiceCommand]. Return true to consume that line (not stored, no reaction tap) without pausing. */
+    val consumeCommand: (text: String) -> Boolean = { false },
 ) {
     init { require(silenceRms.isFinite() && silenceRms >= 0) }
     internal var budgetOverride: CaptureBudget? = null

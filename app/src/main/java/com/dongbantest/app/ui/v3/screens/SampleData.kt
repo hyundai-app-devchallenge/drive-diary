@@ -1,6 +1,7 @@
 package com.dongbantest.app.ui.v3.screens
 
 import androidx.compose.ui.geometry.Offset
+import com.dongbantest.app.gleo.VoiceCommands
 import com.dongbantest.app.ui.v3.components.AskedItem
 import com.dongbantest.app.ui.v3.components.MapLabel
 import com.dongbantest.app.ui.v3.components.MapLive
@@ -70,11 +71,13 @@ object Sample {
     const val Q_SILENCE_TITLE = "강릉에서 제일 먼저 할 일"
     const val HINT = "답하지 않아도 괜찮아요"
     const val SAY_LABEL = "이렇게 말해 보세요"
-    const val PAUSE_CAPTION = "녹음 멈춤은 ‘녹음 잠시 멈춰’"
+    const val PAUSE_CAPTION = "“${VoiceCommands.PAUSE_RECORDING}”"
+    /** 녹음 중이 아니면 우리 앱이 듣지 않으므로 글레오를 부른 뒤 말한다. */
+    const val SAY_LABEL_GLEO = "글레오를 부른 뒤 이렇게 말해 보세요"
 
-    val SAY_ON = listOf("다른 질문 해 줘", "질문 그만")
-    val SAY_PAUSED = listOf("다시 녹음해 줘", "다른 질문 해 줘")
-    val SAY_OFF = listOf("녹음 시작해 줘", "다른 질문 해 줘")
+    val SAY_ON = listOf(VoiceCommands.ASK_NEXT, VoiceCommands.STOP_ASKING)
+    val SAY_PAUSED = listOf(VoiceCommands.ASK_NEXT)
+    val SAY_OFF = listOf(VoiceCommands.ASK_NEXT)
 
     const val BUBBLE_DRIVING = "강릉 가는 길, 모두의 이야기를 담고 있어요."
     const val BUBBLE_PAUSED = "녹음을 잠시 멈췄어요. 질문은 계속할 수 있어요."
@@ -96,9 +99,9 @@ object Sample {
         AskedItem("09:48", "휴게소에서 뭐 먹을까"),
     )
 
-    val TOAST_NEW = VoiceToastUi(ToastKind.Success, "‘다른 질문 해 줘’, 알겠어요.", "새로운 대화 주제를 가져왔어요.")
-    val TOAST_NOT_HEARD = VoiceToastUi(ToastKind.NotHeard, "잘 못 들었어요.", "다시 한 번 말해 주세요. 예: ‘다른 질문 해 줘’")
-    val TOAST_MISHEARD = VoiceToastUi(ToastKind.Confirm, "‘녹음 잠시 멈춰’로 들었어요.", "잘못 들었다면 이렇게 말해 주세요.", say = "아니야")
+    val TOAST_NEW = VoiceToastUi(ToastKind.Success, "‘${VoiceCommands.ASK_NEXT}’, 알겠어요.", "새로운 대화 주제를 가져왔어요.")
+    val TOAST_NOT_HEARD = VoiceToastUi(ToastKind.NotHeard, "잘 못 들었어요.", "다시 한 번 말해 주세요. 예: ‘${VoiceCommands.ASK_NEXT}’")
+    val TOAST_MISHEARD = VoiceToastUi(ToastKind.Confirm, "‘${VoiceCommands.PAUSE_RECORDING}’로 들었어요.", "잘못 들었다면 이렇게 말해 주세요.", say = "아니야")
 
     val GANGNEUNG = TripRecordUi(
         id = "gangneung", title = TRIP_TITLE, dateLabel = "2026년 10월 10일 토요일", dateShort = "2026.10.10",

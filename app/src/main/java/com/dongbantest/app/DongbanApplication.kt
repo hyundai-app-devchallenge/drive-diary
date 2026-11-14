@@ -5,12 +5,14 @@ import android.content.Context
 import com.dongbantest.app.data.ask.QuestionCoordinator
 import com.dongbantest.app.data.ask.QuestionSettingsStore
 import com.dongbantest.app.data.local.DongbanDatabase
+import com.dongbantest.app.data.map.MapboxTokenStore
 import com.drivediary.talkrec.ask.PleosQuestionSpeaker
 import com.dongbantest.app.data.repository.MediaFileStore
 import com.dongbantest.app.data.repository.TripRepository
 import com.dongbantest.app.data.repository.RecordingConsentStore
 import com.dongbantest.app.data.talk.TalkRecordingController
 import com.dongbantest.app.data.talk.TalkSinkImpl
+import com.dongbantest.app.gleo.QuestionCommand
 import com.dongbantest.app.data.talk.RepositorySummaryTarget
 import com.dongbantest.app.data.talk.RecordingSettingsStore
 import com.drivediary.talkrec.summary.SummarySettingsStore
@@ -38,6 +40,7 @@ class AppContainer(context: Context) : SummaryWorkerDependencies {
     private val database by lazy { DongbanDatabase.create(context) }
     val mediaFileStore by lazy { MediaFileStore(context) }
     val tripRepository by lazy { TripRepository(database.tripDao(), mediaFileStore) }
+    val mapboxTokenStore by lazy { MapboxTokenStore(context) }
     val recordingConsentStore by lazy { RecordingConsentStore(context) }
     val recordingSettingsStore by lazy { RecordingSettingsStore(context) }
     override val summarySettingsStore by lazy { SummarySettingsStore(context) }
@@ -83,6 +86,12 @@ class AppContainer(context: Context) : SummaryWorkerDependencies {
     fun startNavi() {
         tripRepository.onTripEnding = { talkRecording.stopForTrip(it) }
         talkRecording.observeStops(appScope)
+        talkRecording.onQuestionCommand = { command ->
+            when (command) {
+                QuestionCommand.ASK_NEXT -> questionCoordinator.requestQuestion("voice")
+                QuestionCommand.STOP_ASKING -> questionCoordinator.stopAsking("voice")
+            }
+        }
         naviMonitor.onArrived = { arrivalManager.onNaviArrived(it) }
         naviMonitor.onDestination = { arrivalManager.destination = it }
         vehicleSignalTracker.onParked = { arrivalManager.onParked(it) }
@@ -99,6 +108,7 @@ class DongbanApplication : Application(), SummaryWorkerOwner {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        container.mapboxTokenStore // 첫 MapView 보다 먼저 Mapbox 토큰을 적용한다
         container.startNavi()
         container.startSummaries(this)
         container.questionCoordinator.start()

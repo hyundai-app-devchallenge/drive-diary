@@ -360,8 +360,6 @@ fun V3NavHost(
                         restricted -> Unit
                         say == QuietCheckUiState().say -> container.questionCoordinator.acceptFromScreen()
                         else -> {
-                            if (say == "질문 그만") container.questionCoordinator.mute()
-                            if (say == "다른 질문 해 줘") container.questionCoordinator.unmute()
                             vm.onVoiceExampleTapped(say)
                         }
                     }
@@ -390,6 +388,8 @@ fun V3NavHost(
                         SilenceQuestionScreen(
                             state = SilenceQuestionUiState(
                                 tag = "가족", question = asking.question, hint = asking.hint,
+                                // 녹음 중이 아니면 글레오를 거치므로 "다른 질문"만, 글레오 안내와 함께
+                                say = questionSay(driving.recording), sayLabel = questionSayLabel(driving.recording),
                                 background = driving,
                             ),
                             events = events,

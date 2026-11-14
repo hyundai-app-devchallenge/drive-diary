@@ -20,8 +20,8 @@ internal enum class GleoRecordingAction(
     val captureStatus: CaptureStatus,
     val successMessage: String,
 ) {
-    PAUSE("PAUSE_TRIP_RECORDING", "동반차 녹음 멈춰", CaptureStatus.Paused, "Dongbancha trip recording is paused."),
-    RESUME("RESUME_TRIP_RECORDING", "글레오, 동반차 녹음 다시 시작해", CaptureStatus.On, "Dongbancha trip recording has resumed."),
+    PAUSE("PAUSE_TRIP_RECORDING", VoiceCommands.PAUSE_RECORDING, CaptureStatus.Paused, "Dongbancha trip recording is paused."),
+    RESUME("RESUME_TRIP_RECORDING", VoiceCommands.RESUME_RECORDING, CaptureStatus.On, "Dongbancha trip recording has resumed."),
 }
 
 /** Receives package-targeted Gleo service actions. The manifest verifies the sender's permission. */
@@ -29,16 +29,20 @@ class GleoRecordingReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         // Gleo 4.2 sends the tool name with the package prefix ("com.dongbantest.app.PAUSE_TRIP_RECORDING").
         // The bare schema name is kept for the form shown in the Pleos examples.
-        val action = GleoRecordingAction.entries.firstOrNull {
+        val askQuestion = intent.action == ASK_NEW_QUESTION || intent.action == "${context.packageName}.$ASK_NEW_QUESTION"
+        val action = if (askQuestion) null else GleoRecordingAction.entries.firstOrNull {
             intent.action == it.functionName || intent.action == "${context.packageName}.${it.functionName}"
-        } ?: return
+        }
+        if (!askQuestion && action == null) return
+        val functionName = if (askQuestion) ASK_NEW_QUESTION else action!!.functionName
         val app = context.applicationContext as DongbanApplication
         val pending = goAsync()
         app.container.appScope.launch {
             try {
-                val result = performGleoRecordingAction(app.container, action)
+                val result = if (askQuestion) performGleoAskQuestion(app.container)
+                else performGleoRecordingAction(app.container, action!!)
                 val response = JSONObject()
-                    .put("functionName", action.functionName)
+                    .put("functionName", functionName)
                     .put("status", if (result.success) "success" else "fail")
                     .put("message", result.message)
                 app.sendBroadcast(
@@ -55,6 +59,26 @@ class GleoRecordingReceiver : BroadcastReceiver() {
 }
 
 internal data class GleoRecordingResult(val success: Boolean, val message: String)
+
+internal const val ASK_NEW_QUESTION = "ASK_NEW_QUESTION"
+
+/**
+ * Gleo ASK_NEW_QUESTION. Needs an ongoing trip but not recording consent, and never changes recording.
+ * Also used by the debug simulator without sending a callback to the assistant.
+ */
+internal suspend fun performGleoAskQuestion(container: AppContainer): GleoRecordingResult = try {
+    val started = withTimeoutOrNull(6_000) { container.questionCoordinator.startQuestion("gleo") }
+    when (started) {
+        true -> GleoRecordingResult(true, "Dongbancha is asking a new conversation question.")
+        false -> GleoRecordingResult(false, "There is no ongoing Dongbancha trip.")
+        null -> GleoRecordingResult(false, "Dongbancha could not confirm the question.")
+    }
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (_: Exception) {
+    Log.w("GleoRecording", "Question action failed")
+    GleoRecordingResult(false, "Dongbancha could not ask a question.")
+}
 
 /** Also used by the debug simulator without sending a callback to the assistant. */
 internal suspend fun performGleoRecordingAction(

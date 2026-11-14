@@ -43,6 +43,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicInteger
 
 /** 화면에 띄울 질문 알림 */
 sealed interface QuestionOverlay {
@@ -113,6 +114,8 @@ class QuestionCoordinator(
     private var preparing: Deferred<GeneratedQuestion>? = null
     private var overlayJob: Job? = null
     private var started = false
+    /** 사용자가 직접 요청한 질문을 읽는 동안 > 0. 이 동안은 조용함 감시가 TTS 와 화면을 끊지 않는다. */
+    private val onDemandSpeaking = AtomicInteger(0)
 
     fun start() {
         if (started) return
@@ -150,13 +153,14 @@ class QuestionCoordinator(
 
     private suspend fun switchTrip(next: Long?) {
         endCheck()
-        overlayJob?.cancel()
-        speaker.stop()
+        val keepSpeech = onDemandSpeaking.get() > 0
+        if (!keepSpeech) { overlayJob?.cancel(); speaker.stop() }
         prepared = null; preparing?.cancel(); preparing = null
         watcher = QuietWatcher(policy())
         tripId = next
         tripStartedAt = next?.let { id -> tripRepository.observeTripWithMemories(id).first()?.trip?.startedAt } ?: 0L
-        state.value = QuestionUi(tripId = next)
+        state.value = if (keepSpeech) state.value.copy(tripId = next ?: state.value.tripId, phase = AskPhase.OFF, muted = false)
+        else QuestionUi(tripId = next)
         note("여행 ${next ?: "없음"}")
     }
 
@@ -165,10 +169,14 @@ class QuestionCoordinator(
         when (event) {
             AskEvent.Prepare -> prepareAsync(id)
             AskEvent.ShowCheck -> showCheck(id)
-            is AskEvent.Ask -> { endCheck(); scope.launch { ask(id) } }
+            is AskEvent.Ask -> { endCheck(); scope.launch { ask(id, onDemand = event.forced) } }
             is AskEvent.Muted -> { endCheck(); setOverlay(QuestionOverlay.None) }
             is AskEvent.Listening -> { endCheck(); if (state.value.overlay is QuestionOverlay.Check) setOverlay(QuestionOverlay.None) }
-            AskEvent.Stopped -> { endCheck(); speaker.stop(); setOverlay(QuestionOverlay.None) }
+            AskEvent.Stopped -> {
+                endCheck()
+                // 사용자가 요청한 질문은 녹음이 멈춘 뒤에도 끝까지 읽는다.
+                if (onDemandSpeaking.get() == 0) { speaker.stop(); setOverlay(QuestionOverlay.None) }
+            }
         }
         publishPhase()
     }
@@ -203,11 +211,40 @@ class QuestionCoordinator(
     /** Q01 화면의 "아니, 안 자" 예시를 정차 중에 눌렀을 때. */
     fun acceptFromScreen() = scope.launch { react(Reaction.ACCEPT, "screen") }
 
-    /** "질문 그만" */
-    fun mute() = scope.launch {
+    /** "질문 그만" (화면 예시) */
+    fun mute() = stopAsking("screen")
+
+    /** "동반차 질문 그만해줘": 이번 여행에서는 먼저 묻지 않는다. [source] = voice / screen. */
+    fun stopAsking(source: String) = scope.launch {
+        note("질문 그만 ($source)")
+        if (onDemandSpeaking.get() > 0) speaker.stop()
         val id = tripId ?: return@launch
         handle(watcher.mute(clock(), "user"), id)
     }
+
+    /**
+     * "동반차 다른 질문 해줘" (voice) / Gleo ASK_NEW_QUESTION (gleo) / 화면 예시 (screen).
+     * 녹음 상태와 무관하다: 녹음 중이면 감시기의 강제 질문, 일시정지·녹음 없음이면 독립 질문.
+     * 여행당 횟수에 세지 않고, 먼저 묻기 끔(muted)과 "조용할 때 질문하기" 설정은 건드리지 않는다.
+     * @return 질문을 시작했으면 true, 진행 중인 여행이 없으면 false
+     */
+    suspend fun startQuestion(source: String): Boolean {
+        val id = tripId ?: tripRepository.observeOngoingTrip().first()?.id
+        if (id == null) { note("질문 요청($source): 진행 중인 여행 없음"); return false }
+        note("질문 요청 ($source)")
+        // 이미 읽는 중이면 끊고 새 질문으로 바꾼다.
+        if (onDemandSpeaking.get() > 0) speaker.stop()
+        val capture = TalkRec.state.value
+        if (tripId == id && capture.tripId == id && capture.status == CaptureStatus.On) {
+            handle(watcher.forceAsk(clock()), id)
+        } else {
+            state.update { it.copy(tripId = id) }
+            scope.launch { ask(id, onDemand = true) }
+        }
+        return true
+    }
+
+    fun requestQuestion(source: String) = scope.launch { startQuestion(source) }
 
     fun unmute() = scope.launch { watcher.unmute(clock()); note("먼저 묻기 다시 켬"); publishPhase() }
 
@@ -226,9 +263,15 @@ class QuestionCoordinator(
     /** 디버그: 반응 글 대신 분류 결과를 직접 넣는다. */
     fun debugReaction(reaction: Reaction) = scope.launch { react(reaction, "debug") }
 
-    private suspend fun ask(id: Long) {
+    private suspend fun ask(id: Long, onDemand: Boolean = false) {
+        if (onDemand) onDemandSpeaking.incrementAndGet()
+        try { askNow(id, onDemand) } finally { if (onDemand) onDemandSpeaking.decrementAndGet() }
+    }
+
+    private suspend fun askNow(id: Long, onDemand: Boolean) {
         val question = freshPrepared()
-            ?: preparing?.let { withTimeoutOrNull(3_000) { it.await() } }
+            ?: preparing?.let { job -> withTimeoutOrNull(3_000) { job.await() } }
+            ?: (if (preparing == null && onDemand) withTimeoutOrNull(3_000) { prepare(id) } else null)
             ?: bankQuestion(id)
         prepared = null; preparing = null
         state.update { it.copy(lastQuestion = question.question) }

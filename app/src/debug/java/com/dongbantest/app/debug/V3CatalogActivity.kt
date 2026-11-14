@@ -63,6 +63,12 @@ class V3CatalogActivity : ComponentActivity() {
                     Button(onClick = { startActivity(Intent(this@V3CatalogActivity, SummarySettingsActivity::class.java)) }, modifier = Modifier.padding(top = 8.dp)) { Text("대화 요약 설정 열기") }
                 }
                 HorizontalDivider(Modifier.padding(top = 16.dp))
+                Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 24.dp)) {
+                    Text("지도 설정", style = MaterialTheme.typography.titleLarge)
+                    Text("Mapbox 공개 토큰을 빌드 없이 넣기 (정차 중에만 변경)", style = MaterialTheme.typography.bodyMedium)
+                    Button(onClick = { startActivity(Intent(this@V3CatalogActivity, MapSettingsActivity::class.java)) }, modifier = Modifier.padding(top = 8.dp)) { Text("지도 설정 열기") }
+                }
+                HorizontalDivider(Modifier.padding(top = 16.dp))
                 Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("인식 실험실", style = MaterialTheme.typography.titleLarge)
                     Text("PC 마이크·음성 파일의 인식, 묶음 판정과 제목을 시험해요", style = MaterialTheme.typography.bodyMedium)

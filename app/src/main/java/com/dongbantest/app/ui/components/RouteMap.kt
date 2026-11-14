@@ -8,7 +8,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -18,7 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.dongbantest.app.R
+import com.dongbantest.app.DongbanApplication
+import com.dongbantest.app.data.map.MapboxTokenSource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.doOnLayout
@@ -83,12 +86,14 @@ fun RouteMap(
     onRouteClick: ((Long) -> Unit)? = null,
 ) {
     val context = LocalContext.current
-    // 토큰이 없으면(local.properties 에 MAPBOX_ACCESS_TOKEN 이 없음) 지도를 만들지 않고 안내 문구만 보인다.
-    val hasToken = remember { context.getString(R.string.mapbox_access_token).isNotBlank() }
-    if (!hasToken) {
+    // 토큰이 없으면 지도를 만들지 않고 안내 문구만 보인다. 토큰이 저장되면 재시작 없이 지도가 나타난다.
+    val store = remember { (context.applicationContext as DongbanApplication).container.mapboxTokenStore }
+    val source by store.source.collectAsState()
+    val revision by store.revision.collectAsState()
+    if (source == MapboxTokenSource.NONE) {
         Box(modifier.background(Color(0xFFF2F2F2)), contentAlignment = Alignment.Center) {
             Text(
-                "지도를 보려면 local.properties 에 MAPBOX_ACCESS_TOKEN 을 넣어 주세요",
+                "지도를 보려면 Mapbox 토큰을 넣어 주세요 (debug 설정 또는 local.properties)",
                 Modifier.padding(16.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFF6B6B6B),
@@ -97,7 +102,8 @@ fun RouteMap(
         }
         return
     }
-    MapboxRouteMap(routes, modifier, onRouteClick)
+    // 토큰이 바뀌면 지도를 새로 만든다.
+    key(revision) { MapboxRouteMap(routes, modifier, onRouteClick) }
 }
 
 @Composable

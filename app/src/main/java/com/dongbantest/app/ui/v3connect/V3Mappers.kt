@@ -2,6 +2,7 @@ package com.dongbantest.app.ui.v3connect
 
 import com.dongbantest.app.audio.VoicePlayback
 import com.dongbantest.app.gleo.GleoRecordingAction
+import com.dongbantest.app.gleo.VoiceCommands
 import com.dongbantest.app.domain.model.Memory
 import com.dongbantest.app.domain.model.MemoryType
 import com.dongbantest.app.domain.model.SummaryStatus
@@ -68,7 +69,17 @@ fun percentOf(progress: Float?): Int = ((progress ?: 0f) * 100).roundToInt().coe
 /** 내비 길 안내 정보 → 진행률 0–100 */
 fun percentOf(route: NaviRoute?): Int = percentOf(RouteRibbon.progressOf(route?.totalMeters, route?.remainMeters))
 
-private val SAY_ON = listOf("다른 질문 해 줘", "질문 그만")
+/** 녹음 중: 우리 앱이 직접 알아듣는다. 녹음 중이 아니면 글레오를 거치므로 글레오 기능이 있는 "다른 질문"만 보인다. */
+internal fun questionSay(rec: RecordingState): List<String> =
+    if (rec == RecordingState.On) listOf(VoiceCommands.ASK_NEXT, VoiceCommands.STOP_ASKING) else listOf(VoiceCommands.ASK_NEXT)
+
+internal fun questionSayLabel(rec: RecordingState): String =
+    if (rec == RecordingState.On) "이렇게 말해 보세요" else "글레오를 부른 뒤 이렇게 말해 보세요"
+
+/** "이번 여행에서는 먼저 묻지 않을게요" 카드의 안내. 녹음 중이 아니면 글레오를 거친다. */
+internal fun quietAskBody(rec: RecordingState): String =
+    if (rec == RecordingState.On) "이야기가 필요하면 ‘${VoiceCommands.ASK_NEXT}’라고 말해 주세요."
+    else "이야기가 필요하면 글레오를 부른 뒤 ‘${VoiceCommands.ASK_NEXT}’라고 말해 주세요."
 
 /* ───────── 녹음 칩 ───────── */
 
@@ -163,7 +174,7 @@ fun TripUiState.toDriving(
         RecordingState.On -> GleoRecordingAction.PAUSE.example
         RecordingState.Paused -> GleoRecordingAction.RESUME.example
         else -> null
-    }?.let { "“$it”" }
+    }?.let { if (rec == RecordingState.Paused) "글레오에게 “$it”" else "“$it”" }
     val bubble = when (recordingMode) {
         RecordingMode.ON -> "$to 가는 길, 모두의 이야기를 담고 있어요."
         RecordingMode.PAUSED -> "녹음을 잠시 멈췄어요. 질문은 계속할 수 있어요."
@@ -184,11 +195,12 @@ fun TripUiState.toDriving(
         to = to,
         bubble = bubble,
         card = if (quiet) {
-            DrivingCard.Quiet("이번 여행에서는 먼저 묻지 않을게요", "이야기가 필요하면 ‘다른 질문 해 줘’라고 말해 주세요.", recordingHint)
+            DrivingCard.Quiet("이번 여행에서는 먼저 묻지 않을게요", quietAskBody(rec), recordingHint)
         } else {
             DrivingCard.Question(
                 question = question,
-                say = SAY_ON,
+                say = questionSay(rec),
+                sayLabel = questionSayLabel(rec),
                 tag = "동반이 질문",
                 pauseCaption = recordingHint,
             )
@@ -211,7 +223,7 @@ const val RESUME_TEXT = "다시 녹음하기"
 
 private fun VoiceFeedback.toToast(): VoiceToastUi = when (kind) {
     VoiceFeedback.Kind.SUCCESS -> VoiceToastUi(ToastKind.Success, "‘$heard’, 알겠어요.", result)
-    VoiceFeedback.Kind.NOT_HEARD -> VoiceToastUi(ToastKind.NotHeard, "잘 못 들었어요.", "다시 한 번 말해 주세요. 예: ‘다른 질문 해 줘’")
+    VoiceFeedback.Kind.NOT_HEARD -> VoiceToastUi(ToastKind.NotHeard, "잘 못 들었어요.", "다시 한 번 말해 주세요. 예: ‘${VoiceCommands.ASK_NEXT}’")
     VoiceFeedback.Kind.CONFIRM -> VoiceToastUi(ToastKind.Confirm, "‘$heard’로 들었어요.", "잘못 들었다면 이렇게 말해 주세요.", say = "아니야")
 }
 

@@ -6,7 +6,9 @@ import android.content.pm.PackageManager
 import android.util.Log
 import com.dongbantest.app.data.repository.RecordingConsentStore
 import com.dongbantest.app.data.repository.TripRepository
+import com.dongbantest.app.gleo.QuestionCommand
 import com.dongbantest.app.gleo.isPauseRecordingCommand
+import com.dongbantest.app.gleo.parseQuestionCommand
 import com.drivediary.talkrec.CaptureOptions
 import com.drivediary.talkrec.TalkRec
 import com.drivediary.talkrec.capture.CaptureStatus
@@ -30,6 +32,12 @@ class TalkRecordingController(
     private var activeTripId: Long? = null
     private val requestedPause = MutableStateFlow<Long?>(null)
     val pausedTripId = requestedPause.asStateFlow()
+
+    /** Set by the app container: receives "ask next / stop asking" commands recognized by our own STT. */
+    @Volatile var onQuestionCommand: ((QuestionCommand) -> Unit)? = null
+
+    /** Same path as a self-recognized command; also used by the debug receiver. */
+    fun dispatchQuestionCommand(command: QuestionCommand) { onQuestionCommand?.invoke(command) }
 
     fun observeStops(scope: CoroutineScope) {
         scope.launch {
@@ -75,6 +83,11 @@ class TalkRecordingController(
                 val handled = activeTripId == tripId && consent.get(tripId) == true && isPauseRecordingCommand(text)
                 if (handled) requestedPause.value = tripId
                 handled
+            }, consumeCommand = { text ->
+                // Question commands only apply to the active, consented trip; the line is consumed, capture continues.
+                val command = if (activeTripId == tripId && consent.get(tripId) == true) parseQuestionCommand(text) else null
+                if (command != null) dispatchQuestionCommand(command)
+                command != null
             }))
             activeTripId = tripId
             true

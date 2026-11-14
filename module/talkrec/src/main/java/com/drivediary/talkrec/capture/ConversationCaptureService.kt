@@ -149,11 +149,13 @@ class ConversationCaptureService : Service() {
             is Event.Line -> if (event.session == session && event.epoch == epoch) {
                 val handled = try { request?.options?.voiceCommand?.invoke(event.line.text) == true }
                     catch (_: RuntimeException) { false }
+                val consumed = !handled && try { request?.options?.consumeCommand?.invoke(event.line.text) == true }
+                    catch (_: RuntimeException) { false }
                 val current = TalkRec.state.value
                 TalkRec.mutableState.value = current.copy(finalCount = current.finalCount + 1)
                 // A finalized line is speech evidence for the question feature, even when RMS stayed low.
                 TalkRec.mutableSpeech.value = TalkRec.speech.value.copy(quietSinceMs = null)
-                if (!handled) {
+                if (!handled && !consumed) {
                     try { TalkRec.reactionTap?.invoke(event.line.text) } catch (_: RuntimeException) { /* No text in logs. */ }
                 }
                 if (handled) {
@@ -168,6 +170,9 @@ class ConversationCaptureService : Service() {
                     }
                     TalkRecDebug.emit(TalkDebugEvent.VoicePaused)
                     Log.i(TAG, "paused by voice command")
+                } else if (consumed) {
+                    // App voice command (e.g. ask a question): keep the line out of storage and keep capturing.
+                    flushCandidates(lastEnd ?: 0)
                 } else if (commandResult == null) {
                     assembler.onFinal(event.line).forEach(::closed)
                     flushCandidates(lastEnd ?: 0)

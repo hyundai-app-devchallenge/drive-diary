@@ -58,6 +58,8 @@ fun DbButton(
     enabled: Boolean = true,
     /** 편집처럼 아직 안 되는 동작(.btn-off): 회색 글자, 누르지 않음 */
     off: Boolean = false,
+    /** 글자 앞 아이콘(20dp, 글자색) */
+    icon: ImageVector? = null,
 ) {
     val c = DbTheme.colors
     val source = remember { MutableInteractionSource() }
@@ -91,14 +93,18 @@ fun DbButton(
             .padding(horizontal = if (kind == ButtonKind.Plain) Spacing.sm else Spacing.lg),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text,
-            style = DbTheme.type.button.copy(
-                textDecoration = if (kind == ButtonKind.Text) TextDecoration.Underline else null,
-            ),
-            color = if (enabled) fg else fg.copy(alpha = 0.55f),
-            textAlign = TextAlign.Center,
-        )
+        val color = if (enabled) fg else fg.copy(alpha = 0.55f)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            if (icon != null) DbIcon(icon, 20.dp, color)
+            Text(
+                text,
+                style = DbTheme.type.button.copy(
+                    textDecoration = if (kind == ButtonKind.Text) TextDecoration.Underline else null,
+                ),
+                color = color,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
 

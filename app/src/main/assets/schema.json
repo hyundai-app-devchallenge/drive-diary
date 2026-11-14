@@ -29,6 +29,19 @@
           "required": []
         }
       }
+    },
+    {
+      "type": "function",
+      "function": {
+        "component": "service",
+        "name": "ASK_NEW_QUESTION",
+        "description": "Ask a new conversation question for the people in the car in Dongbancha. Does not change recording.",
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      }
     }
   ]
 }

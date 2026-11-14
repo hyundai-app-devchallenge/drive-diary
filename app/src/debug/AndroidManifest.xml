@@ -61,6 +61,14 @@
             android:label="대화 요약 설정"
             android:theme="@style/Theme.Dongbantest" />
 
+        <!-- 지도 설정: Mapbox 공개 토큰을 빌드 없이 넣는다. 디버그 전용 -->
+        <activity
+            android:name=".debug.MapSettingsActivity"
+            android:exported="false"
+            android:taskAffinity="com.dongbantest.app.debugtools"
+            android:label="지도 설정"
+            android:theme="@style/Theme.Dongbantest" />
+
         <activity
             android:name=".debug.TalkRecLabActivity"
             android:exported="false"
@@ -84,6 +92,8 @@
                 <action android:name="com.dongbantest.app.debug.ASK_FORCE_QUESTION" />
                 <action android:name="com.dongbantest.app.debug.ASK_REACTION" />
                 <action android:name="com.dongbantest.app.debug.ASK_SHORT_POLICY" />
+                <action android:name="com.dongbantest.app.debug.ASK_VOICE" />
+                <action android:name="com.dongbantest.app.debug.ASK_GLEO" />
             </intent-filter>
         </receiver>
 

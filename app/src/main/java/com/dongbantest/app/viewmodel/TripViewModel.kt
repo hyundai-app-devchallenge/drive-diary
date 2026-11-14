@@ -7,6 +7,8 @@ import com.dongbantest.app.audio.VoicePlayer
 import com.dongbantest.app.audio.VoiceRecorder
 import com.dongbantest.app.data.repository.MediaFileStore
 import com.dongbantest.app.data.repository.QuestionBank
+import com.dongbantest.app.data.ask.QuestionCoordinator
+import com.dongbantest.app.gleo.VoiceCommands
 import com.dongbantest.app.data.repository.RecordingConsentStore
 import com.dongbantest.app.data.repository.TripRepository
 import com.dongbantest.app.data.talk.TalkRecordingController
@@ -86,6 +88,7 @@ class TripViewModel(
     private val naviMonitor: NaviMonitor,
     private val consentStore: RecordingConsentStore,
     private val talkRecording: TalkRecordingController,
+    private val questionCoordinator: QuestionCoordinator,
 ) : ViewModel() {
 
     private val player = VoicePlayer(viewModelScope) { showMessage("음성을 재생할 수 없어요.") }
@@ -318,14 +321,14 @@ class TripViewModel(
     fun onVoiceExampleTapped(say: String) {
         if (safetyMonitor.state.value.isRestricted) return
         when (say) {
-            "다른 질문 해 줘" -> {
-                nextQuestion()
+            VoiceCommands.ASK_NEXT -> {
                 local.update { it.copy(quiet = false) }
-                askCurrentQuestion()
+                questionCoordinator.requestQuestion("screen")
                 feedback(VoiceFeedback.Kind.SUCCESS, say, "새 질문을 꺼냈어요")
             }
-            "질문 그만" -> {
+            VoiceCommands.STOP_ASKING -> {
                 local.update { it.copy(quiet = true) }
+                questionCoordinator.stopAsking("screen")
                 feedback(VoiceFeedback.Kind.SUCCESS, say, "이번 여행에서는 먼저 묻지 않을게요")
             }
             else -> feedback(VoiceFeedback.Kind.NOT_HEARD, say, "잘 못 들었어요. 다시 말해 주세요")
