@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -85,6 +86,7 @@ import com.mapbox.maps.extension.style.sources.generated.geoJsonSource
 import com.mapbox.maps.extension.style.sources.getSourceAs
 import com.mapbox.maps.plugin.animation.MapAnimationOptions
 import com.mapbox.maps.plugin.animation.camera
+import com.mapbox.maps.plugin.attribution.attribution
 import com.mapbox.maps.plugin.compass.compass
 import com.mapbox.maps.plugin.gestures.OnMapClickListener
 import com.mapbox.maps.plugin.gestures.addOnMapClickListener
@@ -179,10 +181,17 @@ private fun MapboxRouteMap(
 ) {
     val context = LocalContext.current
     val colors = DbTheme.colors
+    // v3 화면은 기기 밀도 대신 창 크기로 정한 배율(LocalDensity)로 그린다. 지도도 같은 배율로 그려야
+    // 지명·선 굵기가 화면 글자와 같은 비율이 되고, 아래 dp 계산(누르는 거리, 여백)이 Compose 버튼과 맞는다.
+    val uiDensity = LocalDensity.current.density
     val mapView = remember {
+        val options = MapInitOptions.getDefaultMapOptions(context).toBuilder().pixelRatio(uiDensity).build()
         // 스크롤되는 화면 안에서도 잘 그려지도록 TextureView 방식을 쓴다.
         // 첫 장면부터 한국: 스타일·경로가 오기 전에 세계 지도가 잠깐 보이지 않게 한다.
-        MapView(context, MapInitOptions(context, cameraOptions = KOREA_CAMERA, textureView = true)).apply {
+        MapView(context, MapInitOptions(context, mapOptions = options, cameraOptions = KOREA_CAMERA, textureView = true)).apply {
+            UI_DENSITY[this] = uiDensity
+            // 로고는 기기 밀도로 그려지는데 pixelRatio 를 바꾸면 정보 버튼(ⓘ) 기본 여백만 커져 로고와 떨어진다. 기기 밀도 기준 여백으로 되돌린다.
+            attribution.marginLeft = ATTRIBUTION_LEFT_DP * resources.displayMetrics.density
             gestures.rotateEnabled = false
             gestures.pitchEnabled = false
             scalebar.enabled = false // 작은 지도에서 거리 눈금이 경로를 가려서 숨긴다
@@ -235,7 +244,7 @@ private fun MapboxRouteMap(
         val m = moments.firstOrNull { it.pin.id == selectedMoment } ?: return@LaunchedEffect
         val point = Point.fromLngLat(m.longitude, m.latitude)
         val p = mapView.mapboxMap.pixelForCoordinate(point)
-        val margin = 48 * mapView.resources.displayMetrics.density
+        val margin = 48 * mapView.uiDensity
         if (p.x < margin || p.y < margin || p.x > mapView.width - margin || p.y > mapView.height - margin) {
             mapView.camera.easeTo(CameraOptions.Builder().center(point).build(), MapAnimationOptions.Builder().duration(400L).build())
         }
@@ -250,7 +259,7 @@ private fun MapboxRouteMap(
         val listener = OnMapClickListener { point ->
             momentHandler?.let { pick ->
                 val tap = map.pixelForCoordinate(point)
-                val density = mapView.resources.displayMetrics.density
+                val density = mapView.uiDensity
                 // 이야기 핀이 노래 핀 위에 그려지므로, 거리가 비슷하면 이야기를 먼저 고른다.
                 val hit = momentsNow.map { m ->
                     val p = map.pixelForCoordinate(Point.fromLngLat(m.longitude, m.latitude))
@@ -552,7 +561,7 @@ private fun moveCamera(view: MapView, routes: List<MapRoute>, zoomControls: Bool
             points.distinct().size == 1 -> map.setCamera(CameraOptions.Builder().center(points.first()).zoom(15.0).build())
             else -> {
                 val pad = (minOf(view.width, view.height) * CAMERA_PADDING_RATIO).coerceAtLeast(CAMERA_PADDING_MIN_PX).toDouble()
-                val density = view.resources.displayMetrics.density
+                val density = view.uiDensity
                 val right = if (showZoomButtons(zoomControls, view.height / density)) {
                     pad + (ZOOM_TOUCH_DP + ZOOM_MARGIN_DP * 2) * density
                 } else {
@@ -579,7 +588,7 @@ private fun showRoute(view: MapView, route: MapRoute, zoomControls: Boolean) {
         .map { Point.fromLngLat(it.longitude, it.latitude) }
     if (points.size < 2) return
     val map = view.mapboxMap
-    val density = view.resources.displayMetrics.density
+    val density = view.uiDensity
     val edge = 12 * density
     val visible = points.all { pt ->
         val p = map.pixelForCoordinate(pt)
@@ -652,3 +661,12 @@ private val KOREA_BOUNDS: CameraBoundsOptions = CameraBoundsOptions.Builder()
     .minZoom(MIN_ZOOM)
     .maxZoom(MAX_ZOOM)
     .build()
+
+/** 지도를 만들 때의 화면 배율(LocalDensity). 기기 밀도(displayMetrics)와 다를 수 있다. */
+private val UI_DENSITY = java.util.WeakHashMap<MapView, Float>()
+
+/** 이 지도의 dp → px 배율. 지도 안의 dp 계산은 모두 이 값으로 한다(Compose 화면과 같은 배율). */
+private val MapView.uiDensity: Float get() = UI_DENSITY[this] ?: resources.displayMetrics.density
+
+/** Mapbox 기본값: 정보 버튼은 로고 오른쪽 92dp 자리 */
+private const val ATTRIBUTION_LEFT_DP = 92f
