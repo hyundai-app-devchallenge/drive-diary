@@ -94,6 +94,8 @@ interface TripDao {
     @Query("""SELECT MAX(recordedAt) FROM (
         SELECT recordedAt FROM location_points WHERE tripId = :tripId
         UNION ALL
+        SELECT endedAt AS recordedAt FROM track_plays WHERE tripId = :tripId
+        UNION ALL
         SELECT COALESCE(talk_meta.blockEndMs, memories.createdAt) AS recordedAt
         FROM memories LEFT JOIN talk_meta ON talk_meta.memoryId = memories.id
         WHERE memories.tripId = :tripId

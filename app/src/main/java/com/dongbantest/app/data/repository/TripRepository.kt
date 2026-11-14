@@ -22,6 +22,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import com.dongbantest.app.data.local.TripDao
+import com.dongbantest.app.data.local.TrackPlayDao
+import com.dongbantest.app.data.local.toDomain
 import com.dongbantest.app.data.local.TripEntity
 import com.dongbantest.app.data.local.VehicleSignalEntity
 import com.dongbantest.app.domain.location.RoutePath
@@ -47,6 +49,7 @@ import kotlinx.coroutines.sync.withLock
 class TripRepository(
     private val dao: TripDao,
     private val files: MediaFileStore,
+    private val trackDao: TrackPlayDao? = null,
 ) {
     private val clips = ClipPersistence(files.talkJournalDir)
     private var recoveredClips = false
@@ -86,12 +89,14 @@ class TripRepository(
             dao.observeMemoriesWithTalk(tripId),
             dao.observeLocationPoints(tripId),
             dao.observeVehicleSignals(tripId),
-        ) { trip, memories, points, signals ->
+            trackDao?.observe(tripId) ?: kotlinx.coroutines.flow.flowOf(emptyList()),
+        ) { trip, memories, points, signals, tracks ->
             trip?.let { t ->
                 val domainMemories = memories.map { it.toDomain() }
                 TripWithMemories(
                     trip = t.toDomain(domainMemories.firstOrNull { it.type == MemoryType.PHOTO }?.filePath),
                     memories = domainMemories,
+                    tracks = tracks.map { it.toDomain() },
                     drive = summarizeDrive(
                         points = points.map { it.toDomain() },
                         signals = signals.mapNotNull { it.toDomain() },

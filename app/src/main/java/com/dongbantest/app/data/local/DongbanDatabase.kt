@@ -8,14 +8,30 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [TripEntity::class, MemoryEntity::class, LocationPointEntity::class, VehicleSignalEntity::class, TalkMetaEntity::class],
-    version = 6,
+    entities = [TripEntity::class, MemoryEntity::class, LocationPointEntity::class, VehicleSignalEntity::class, TalkMetaEntity::class, TrackPlayEntity::class],
+    version = 7,
     exportSchema = true,
 )
 abstract class DongbanDatabase : RoomDatabase() {
     abstract fun tripDao(): TripDao
+    abstract fun trackPlayDao(): TrackPlayDao
 
     companion object {
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `track_plays` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `tripId` INTEGER NOT NULL, `startedAt` INTEGER NOT NULL,
+                        `endedAt` INTEGER NOT NULL, `playedMs` INTEGER NOT NULL,
+                        `title` TEXT NOT NULL, `artist` TEXT, `album` TEXT, `durationMs` INTEGER,
+                        `sourcePackage` TEXT NOT NULL, `sourceLabel` TEXT,
+                        FOREIGN KEY(`tripId`) REFERENCES `trips`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_track_plays_tripId` ON `track_plays` (`tripId`)")
+            }
+        }
         val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 listOf("runId" to "TEXT", "closeReason" to "TEXT", "runClosed" to "INTEGER",
@@ -44,7 +60,7 @@ abstract class DongbanDatabase : RoomDatabase() {
 
         fun create(context: Context): DongbanDatabase =
             Room.databaseBuilder(context, DongbanDatabase::class.java, "dongbancha.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .build()
 
         /** v2: 위치 기록 테이블 추가. 기존 여행·추억 데이터는 그대로 유지한다. */

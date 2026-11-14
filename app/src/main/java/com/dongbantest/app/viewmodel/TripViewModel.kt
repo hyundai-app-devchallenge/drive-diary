@@ -14,6 +14,7 @@ import com.dongbantest.app.data.repository.TripRepository
 import com.dongbantest.app.data.talk.TalkRecordingController
 import com.dongbantest.app.domain.model.TripWithMemories
 import com.dongbantest.app.location.LocationTracker
+import com.dongbantest.app.music.MusicTracker
 import com.dongbantest.app.vehicle.DrivingSafetyMonitor
 import com.dongbantest.app.vehicle.DrivingSafetyState
 import com.dongbantest.app.vehicle.SafetySource
@@ -91,7 +92,11 @@ class TripViewModel(
     private val consentStore: RecordingConsentStore,
     private val talkRecording: TalkRecordingController,
     private val questionCoordinator: QuestionCoordinator,
+    private val musicTracker: MusicTracker,
 ) : ViewModel() {
+
+    // Music does not depend on GPS permission or on voice recording consent.
+    init { musicTracker.start(tripId) }
 
     private val player = VoicePlayer(viewModelScope) { showMessage("음성을 재생할 수 없어요.") }
     val playback = player.playback
@@ -255,7 +260,10 @@ class TripViewModel(
 
     /** 진행 중인 여행이면 GPS 위치 수집을 시작한다. 위치 권한이 있을 때만 동작한다. */
     fun startLocationTracking() = viewModelScope.launch {
-        if (tripRepository.isTripOngoing(tripId)) locationTracker.start(tripId)
+        if (tripRepository.isTripOngoing(tripId)) {
+            locationTracker.start(tripId)
+            musicTracker.start(tripId)
+        }
     }
 
     fun endTrip(onEnded: () -> Unit) = viewModelScope.launch {

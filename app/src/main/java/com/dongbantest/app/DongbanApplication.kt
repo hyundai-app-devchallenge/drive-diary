@@ -21,6 +21,8 @@ import com.drivediary.talkrec.summary.SummaryWorkerDependencies
 import com.drivediary.talkrec.summary.SummaryWorkerOwner
 import com.dongbantest.app.location.LocationReader
 import com.dongbantest.app.location.LocationTracker
+import com.dongbantest.app.music.MusicSettingsStore
+import com.dongbantest.app.music.MusicTracker
 import com.dongbantest.app.navi.ArrivalManager
 import com.dongbantest.app.navi.ArrivalNotifier
 import com.dongbantest.app.navi.NaviMonitor
@@ -39,7 +41,9 @@ class AppContainer(context: Context) : SummaryWorkerDependencies {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val database by lazy { DongbanDatabase.create(context) }
     val mediaFileStore by lazy { MediaFileStore(context) }
-    val tripRepository by lazy { TripRepository(database.tripDao(), mediaFileStore) }
+    val tripRepository by lazy { TripRepository(database.tripDao(), mediaFileStore, database.trackPlayDao()) }
+    val musicSettingsStore by lazy { MusicSettingsStore(context) }
+    val musicTracker by lazy { MusicTracker(context, tripRepository, database.trackPlayDao(), musicSettingsStore, appScope) }
     val mapboxTokenStore by lazy { MapboxTokenStore(context) }
     val recordingConsentStore by lazy { RecordingConsentStore(context) }
     val recordingSettingsStore by lazy { RecordingSettingsStore(context) }
@@ -89,6 +93,7 @@ class AppContainer(context: Context) : SummaryWorkerDependencies {
     /** 내비 연결 + 도착 자동 종료 연결: 내비 도착 신호, 내비 목적지, 주차 신호를 ArrivalManager 로 보낸다. */
     fun startNavi() {
         tripRepository.onTripEnding = {
+            musicTracker.stop(it)
             locationTracker.stop(it)
             vehicleSignalTracker.stop(it)
             arrivalManager.discardTrip(it)
@@ -122,6 +127,8 @@ class DongbanApplication : Application(), SummaryWorkerOwner {
 
     override fun onCreate() {
         super.onCreate()
+        // 디버그 노래 플레이어(:musicprobe) 같은 보조 프로세스에서는 앱 초기화를 하지 않는다.
+        if (getProcessName() != packageName) return
         container = AppContainer(this)
         container.mapboxTokenStore // 첫 MapView 보다 먼저 Mapbox 토큰을 적용한다
         container.startNavi()

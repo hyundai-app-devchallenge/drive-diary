@@ -47,6 +47,7 @@ object AppViewModelProvider {
                 consentStore = c.recordingConsentStore,
                 talkRecording = c.talkRecording,
                 questionCoordinator = c.questionCoordinator,
+                musicTracker = c.musicTracker,
             )
         }
     }

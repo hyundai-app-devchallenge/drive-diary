@@ -11,7 +11,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * v4 → v6 / 현재 v5 → v6 마이그레이션 시험.
+ * v4 → v7 / 현재 v5 → v7 마이그레이션 시험.
  * room-testing(MigrationTestHelper)은 앱의 kotlinx-serialization 1.7.3(Mapbox 경유)과 충돌해 쓰지 않는다.
  * 대신 v4 테이블을 직접 만든 뒤 실제 앱처럼 Room 으로 연다. Room 이 열 때 마이그레이션을 돌리고
  * 엔티티 정의와 실제 테이블이 같은지 검사하므로, 다르면 여기서 IllegalStateException 이 난다.
@@ -73,10 +73,10 @@ class TalkMigrationTest {
         }
         old.close()
         val room = Room.databaseBuilder(context, DongbanDatabase::class.java, DB_NAME)
-            .addMigrations(DongbanDatabase.MIGRATION_4_5, DongbanDatabase.MIGRATION_5_6).build()
+            .addMigrations(DongbanDatabase.MIGRATION_4_5, DongbanDatabase.MIGRATION_5_6, DongbanDatabase.MIGRATION_6_7).build()
         try {
             val db = room.openHelper.writableDatabase
-            assertEquals(6, db.version)
+            assertEquals(7, db.version)
             assertEquals(before, snapshot(db))
             if (fromVersion == 5) {
                 db.query("SELECT title,tags,summaryStatus,runId,closeReason,runClosed,storyId,storyIndex,storyKind,storyKeep,storyReason FROM talk_meta WHERE memoryId=2").use {

@@ -83,6 +83,9 @@ class V3CatalogActivity : ComponentActivity() {
                     Button(onClick = { startActivity(Intent(this@V3CatalogActivity, QuestionLabActivity::class.java)) }) {
                         Text("질문 실험실 열기")
                     }
+                    Button(onClick = { startActivity(Intent(this@V3CatalogActivity, com.dongbantest.app.debug.music.MusicLabActivity::class.java)) }) {
+                        Text("노래 기록 실험실")
+                    }
                 }
                 HorizontalDivider()
                 Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

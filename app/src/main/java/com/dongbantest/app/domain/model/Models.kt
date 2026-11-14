@@ -86,6 +86,7 @@ data class TripWithMemories(
     val memories: List<Memory>,
     /** GPS 기록으로 계산한 주행 요약. 위치 기록이 없으면 빈 값. */
     val drive: DriveSummary = DriveSummary.EMPTY,
+    val tracks: List<TrackPlay> = emptyList(),
 )
 
 enum class DataSourceType { PLEOS_VEHICLE, MOCK }
