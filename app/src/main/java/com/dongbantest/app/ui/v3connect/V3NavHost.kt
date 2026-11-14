@@ -509,8 +509,12 @@ fun V3NavHost(
                 onOpenLiveTrip = { state.ongoingTrip?.let { navController.go(V3Routes.trip(it.id)) } },
                 // 경로를 누르면 바로 열지 않고 고른다(그 경로만 진하게, 목록 카드 아래 "기록 보기").
                 realMap = { m, selected, onSelect ->
+                    // 경로를 고를 때마다 새 목록을 만들면 지도가 수만 개 점을 다시 견준다. 경로가 바뀔 때만 만든다.
+                    val routes = remember(state.routes) {
+                        state.routes.map { (id, segments) -> RealMapRoute(id, RouteColors.forTrip(id), segments) }
+                    }
                     RouteMap(
-                        routes = state.routes.map { (id, segments) -> RealMapRoute(id, RouteColors.forTrip(id), segments) },
+                        routes = routes,
                         modifier = m,
                         onRouteClick = { onSelect(it.toString()) },
                         selectedRoute = selected?.toLongOrNull(),

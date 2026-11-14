@@ -1,6 +1,8 @@
 package com.dongbantest.app.ui.v3.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,7 +48,6 @@ import com.dongbantest.app.ui.v3.components.MomentMap
 import com.dongbantest.app.ui.v3.components.MomentPin
 import com.dongbantest.app.ui.v3.components.MomentTimeline
 import com.dongbantest.app.ui.v3.components.OutlineButton
-import com.dongbantest.app.ui.v3.components.PhotoSlot
 import com.dongbantest.app.ui.v3.components.PlayButton
 import com.dongbantest.app.ui.v3.components.PlaybackBar
 import com.dongbantest.app.ui.v3.components.Tag
@@ -142,6 +143,7 @@ internal fun MomentDiary(
                     }
                     Column(Modifier.weight(listW).fillMaxHeight().verticalScroll(rememberScrollState()).padding(end = Spacing.s2xs)) {
                         DiarySummary(state)
+                        DiaryPhotos(state, Modifier.padding(top = Spacing.lg))
                         DiaryStories(state, selected, pick, play, onSeek, Modifier.padding(top = Spacing.lg))
                     }
                 }
@@ -149,41 +151,70 @@ internal fun MomentDiary(
                 DiarySummary(state)
                 map(Modifier.padding(top = Spacing.lg).fillMaxWidth().height(280.dp))
                 strip(Modifier.padding(top = Spacing.md).fillMaxWidth())
+                DiaryPhotos(state, Modifier.padding(top = Spacing.xl))
                 DiaryStories(state, selected, pick, play, onSeek, Modifier.padding(top = Spacing.xl))
             }
         }
     }
 }
 
-/** 날짜·제목, 함께한 사람(이름 칩), 함께 달린 시간 */
+/**
+ * 날짜·제목 아래 한 줄 띠: 왼쪽 함께한 사람(겹친 머리글자 + 이름), 오른쪽 함께 달린 시간(+ 출발–도착 시각).
+ * 사진 칸이 들어오면서 칩 줄과 시간 카드 두 덩어리를 띠 하나로 줄였다.
+ */
 @Composable
 private fun DiarySummary(state: DiaryUiState) {
     val c = DbTheme.colors
     val t = DbTheme.type
     val r = state.record
+    // 날짜·제목은 맨 위 줄(DiaryTopBar)에 있다.
     Column(Modifier.padding(top = Spacing.xs)) {
-        Text(r.dateLabel, style = t.bodySm.copy(fontWeight = FontWeight.Medium), color = c.muted)
-        Text(
-            r.title, style = t.display, color = c.ink, maxLines = 2, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = Spacing.s2xs, bottom = Spacing.md).semantics { heading() },
-        )
-        FlowPeople(r.people, Modifier.semantics { contentDescription = "${state.peopleLabel}: ${r.people.joinToString()}" })
+        val span = "${r.startTime}–${r.arriveTime}"
         Row(
-            Modifier.padding(top = Spacing.md).fillMaxWidth().clip(DbShapes.card).background(c.paper2)
-                .padding(horizontal = Spacing.md, vertical = Spacing.sm),
+            Modifier.fillMaxWidth().height(IntrinsicSize.Min).clip(DbShapes.card).background(c.paper2)
+                .padding(horizontal = Spacing.sm, vertical = Spacing.xs)
+                .semantics(mergeDescendants = true) {
+                    contentDescription = "${state.peopleLabel}: ${r.people.joinToString()}. ${state.durationLabel} ${r.duration}, $span"
+                },
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
-            DbIcon(DbIcons.Route, 22.dp, c.muted)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s3xs)) {
-                Text(state.durationLabel, style = t.caption, color = c.muted)
-                Text(r.duration, style = t.titleLg, color = c.ink)
+            // 이름은 머리글자로 보이고, 글자로는 인원만 쓴다(오른쪽 칸이 좁아도 시간이 잘리지 않게).
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                AvatarStack(r.people)
+                Text("${r.people.size}명", style = t.bodySm.copy(fontWeight = FontWeight.Bold), color = c.ink, maxLines = 1)
             }
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(Spacing.s3xs)) {
-                Text("${r.startTime} 출발", style = t.bodySm, color = c.ink2)
-                Text(if (state.live) r.arriveTime else "${r.arriveTime} 도착", style = t.bodySm, color = c.ink2)
+            Box(Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.s2xs).width(1.dp).fillMaxHeight().background(c.rule))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s3xs)) {
+                Text(state.durationLabel, style = t.caption, color = c.muted, maxLines = 1)
+                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    Text(r.duration, style = t.bodySm.copy(fontWeight = FontWeight.Bold), color = c.ink, maxLines = 1)
+                    Text(span, style = t.caption, color = c.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
+    }
+}
+
+/** 함께한 사람 머리글자를 겹쳐 놓는다(3명까지, 더 있으면 +N). 띠 바탕색 테두리로 서로 떼어 보인다. */
+@Composable
+private fun AvatarStack(people: List<String>) {
+    val c = DbTheme.colors
+    val shown = people.take(3)
+    val rest = people.size - shown.size
+    Row(horizontalArrangement = Arrangement.spacedBy((-8).dp)) {
+        shown.forEach { p -> Avatar(p.take(1), c.paper, c.ink) }
+        if (rest > 0) Avatar("+$rest", c.paper3, c.muted)
+    }
+}
+
+@Composable
+private fun Avatar(label: String, bg: Color, fg: Color) {
+    val c = DbTheme.colors
+    Box(
+        Modifier.size(32.dp).clip(DbShapes.pill).background(bg).border(2.dp, c.paper2, DbShapes.pill),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, style = DbTheme.type.caption.copy(fontWeight = FontWeight.Bold), color = fg)
     }
 }
 
@@ -221,16 +252,6 @@ private fun DiaryStories(
                     OutlineButton("숨긴 대화 ${hidden.size}개 접기", { hiddenExpanded = false })
                 } else {
                     OutlineButton("숨긴 대화 ${hidden.size}개", { hiddenExpanded = true })
-                }
-            }
-        }
-        if (r.photos.isNotEmpty()) {
-            Row(Modifier.padding(top = Spacing.lg).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                r.photos.forEach { cap ->
-                    Column(Modifier.weight(1f)) {
-                        PhotoSlot(state.photoPlaceholder, tile = true)
-                        Text(cap, style = t.bodySm, color = c.muted, modifier = Modifier.padding(top = Spacing.xs))
-                    }
                 }
             }
         }

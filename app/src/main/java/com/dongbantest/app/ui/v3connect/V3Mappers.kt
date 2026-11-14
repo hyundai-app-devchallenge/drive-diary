@@ -31,6 +31,7 @@ import com.dongbantest.app.ui.v3.components.TripTone
 import com.dongbantest.app.ui.v3.components.VoiceToastUi
 import com.dongbantest.app.ui.v3.screens.ArrivalUiState
 import com.dongbantest.app.ui.v3.screens.DiaryReadyUiState
+import com.dongbantest.app.ui.v3.screens.PhotoUi
 import com.dongbantest.app.ui.v3.screens.DrivingCard
 import com.dongbantest.app.ui.v3.screens.DrivingStates
 import com.dongbantest.app.ui.v3.screens.DrivingUiState
@@ -352,13 +353,15 @@ fun TripWithMemories.toRecord(talks: List<TalkWithPath> = talks()): TripRecordUi
         to = t.endPlace ?: t.destination.ifBlank { "도착" },
         arriveTime = end?.let { hhmm(it) } ?: "진행 중",
         duration = formatElapsed((end ?: System.currentTimeMillis()) - t.startedAt),
-        photos = memories.filter { it.type == MemoryType.PHOTO }.map { hhmm(it.createdAt) },
+        photos = memories.filter { it.type == MemoryType.PHOTO }.map { PhotoUi(it.id.toString(), hhmm(it.createdAt), it.filePath) },
         talks = talks.map { it.talk.copy(span = w.span(it.startMs, it.startMs + it.durationMs)) },
     )
 }
 
 /** 기록 목록 카드에만 쓰는 가벼운 변환 (메모 없이 여행 정보만) */
 fun Trip.toRecordCard(): TripRecordUi = TripWithMemories(this, emptyList()).toRecord()
+    // 목록 카드 오른쪽 사진 칸: 기록의 첫 사진(대표 사진)
+    .copy(photos = listOfNotNull(coverPhotoPath?.let { PhotoUi("cover", "", it) }))
 
 /* ───────── S11 도착 ───────── */
 

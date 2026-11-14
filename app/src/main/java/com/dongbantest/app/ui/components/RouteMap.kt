@@ -19,6 +19,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -47,7 +48,8 @@ import com.dongbantest.app.domain.model.TimelineType
 import com.dongbantest.app.ui.v3.components.DbIcon
 import com.dongbantest.app.ui.v3.components.MomentKind
 import com.dongbantest.app.ui.v3.components.MomentPin
-import com.dongbantest.app.ui.v3.components.drawMomentPins
+import com.dongbantest.app.ui.v3.components.clusterPins
+import com.dongbantest.app.ui.v3.components.drawMomentClusters
 import com.dongbantest.app.ui.v3.components.rememberMomentPaint
 import com.dongbantest.app.ui.v3.theme.DbColors
 import com.dongbantest.app.ui.v3.theme.DbIcons
@@ -88,12 +90,14 @@ import com.mapbox.maps.plugin.animation.MapAnimationOptions
 import com.mapbox.maps.plugin.animation.camera
 import com.mapbox.maps.plugin.attribution.attribution
 import com.mapbox.maps.plugin.compass.compass
-import com.mapbox.maps.plugin.gestures.OnMapClickListener
-import com.mapbox.maps.plugin.gestures.addOnMapClickListener
+import android.annotation.SuppressLint
+import android.view.MotionEvent
+import android.view.ViewConfiguration
 import com.mapbox.maps.plugin.gestures.gestures
-import com.mapbox.maps.plugin.gestures.removeOnMapClickListener
 import com.mapbox.maps.plugin.scalebar.scalebar
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** 지도에 그릴 기록 하나의 경로. */
 data class MapRoute(
@@ -166,6 +170,7 @@ fun RouteMap(
 }
 
 @Composable
+@SuppressLint("ClickableViewAccessibility") // 터치는 지켜보기만 하고 지도에 그대로 넘긴다
 private fun MapboxRouteMap(
     routes: List<MapRoute>,
     modifier: Modifier,
@@ -209,25 +214,36 @@ private fun MapboxRouteMap(
         mapView.mapboxMap.loadStyle(STYLE_URL) { s ->
             runCatching { s.localizeLabels(Locale.KOREAN) } // 지명을 한국어로
             runCatching { tintBaseStyle(s, colors) }
+            // 경로 레이어를 먼저 깔아 둔다(빈 데이터). 노래 길 레이어가 늘 그 위·점 아래에 놓이게 하기 위해서다.
+            addRouteLayers(s)
             style = s
         }
     }
 
-    LaunchedEffect(style, routes, selectedRoute) {
-        val s = style ?: return@LaunchedEffect
-        drawRoutes(s, routes, selectedRoute)
+    // 경로 데이터(수만 개 위치 점)는 화면 스레드 밖에서 한 번만 줄이고 묶는다. 경로를 고를 때는 다시 만들지 않는다.
+    val prepared by produceState<PreparedRoutes?>(null, routes) {
+        value = withContext(Dispatchers.Default) { prepareRoutes(routes) }
     }
-    LaunchedEffect(style, routes) {
-        if (style == null) return@LaunchedEffect
-        moveCamera(mapView, routes, zoomControls)
+    val selectedNow by rememberUpdatedState(selectedRoute)
+    LaunchedEffect(style, prepared) {
+        val s = style ?: return@LaunchedEffect
+        val p = prepared ?: return@LaunchedEffect
+        drawRoutes(s, p)
+        applyRouteSelection(s, selectedNow)
+        moveCamera(mapView, p.fitPoints, zoomControls)
+    }
+    // 고르기는 레이어 속성(색·투명도·위 칸 필터)만 바꾼다: 지도 데이터를 다시 읽지 않아 바로 반응한다.
+    LaunchedEffect(style, selectedRoute) {
+        val s = style ?: return@LaunchedEffect
+        applyRouteSelection(s, selectedRoute)
     }
     // 목록에서 고른 경로가 화면 밖으로 나가 있으면 그 경로가 다 보이게 옮긴다(이미 보이면 그대로 둔다).
-    LaunchedEffect(style, selectedRoute) {
+    LaunchedEffect(style, prepared, selectedRoute) {
         if (style == null || selectedRoute == null) return@LaunchedEffect
-        val route = routes.firstOrNull { it.tripId == selectedRoute } ?: return@LaunchedEffect
+        val route = prepared?.byTrip?.get(selectedRoute) ?: return@LaunchedEffect
         showRoute(mapView, route, zoomControls)
     }
-    LaunchedEffect(style, routes, songPaths, selectedMoment) {
+    LaunchedEffect(style, songPaths, selectedMoment) {
         val s = style ?: return@LaunchedEffect
         drawSongPaths(s, songPaths, selectedMoment, colors.music.hex())
     }
@@ -254,46 +270,75 @@ private fun MapboxRouteMap(
     val blankHandler by rememberUpdatedState(onBlankClick)
     val momentHandler by rememberUpdatedState(onMomentClick)
     val momentsNow by rememberUpdatedState(moments)
+    val selectedMomentNow by rememberUpdatedState(selectedMoment)
+    // 누를 수 있는 지도는 두 번 눌러 확대를 끈다: Mapbox 는 두 번 누르기인지 가리느라 한 번 누르기를
+    // 0.3초 늦게 알리는데, 그동안 경로·핀이 반응하지 않아 느리게 느껴진다. 확대는 버튼과 두 손가락으로 한다.
+    val tappable = onRouteClick != null || onBlankClick != null || onMomentClick != null
+    LaunchedEffect(mapView, tappable) {
+        mapView.gestures.doubleTapToZoomInEnabled = !tappable
+        mapView.gestures.quickZoomEnabled = !tappable
+    }
     DisposableEffect(mapView) {
         val map = mapView.mapboxMap
-        val listener = OnMapClickListener { point ->
+        fun onTap(x: Double, y: Double) {
             momentHandler?.let { pick ->
-                val tap = map.pixelForCoordinate(point)
                 val density = mapView.uiDensity
-                // 이야기 핀이 노래 핀 위에 그려지므로, 거리가 비슷하면 이야기를 먼저 고른다.
-                val hit = momentsNow.map { m ->
+                // 그림과 같은 방법으로 묶는다. 묶음을 누르면 그 핀들이 다 보이게 확대하고, 낱개 핀은 고른다.
+                val placed = momentsNow.map { m ->
                     val p = map.pixelForCoordinate(Point.fromLngLat(m.longitude, m.latitude))
-                    m to kotlin.math.hypot(p.x - tap.x, p.y - tap.y)
-                }.minByOrNull { (m, d) -> d - if (m.pin.kind == MomentKind.Talk) 6 * density else 0f }
-                pick(hit?.takeIf { it.second < MOMENT_TOUCH_DP * density }?.first?.pin?.id)
-                return@OnMapClickListener true
+                    m.pin to Offset(p.x.toFloat(), p.y.toFloat())
+                }
+                val clusters = clusterPins(placed, selectedMomentNow, CLUSTER_DP * density)
+                // 이야기 핀이 노래 핀 위에 그려지므로, 거리가 비슷하면 이야기를 먼저 고른다.
+                val hit = clusters.map { cl -> cl to kotlin.math.hypot(cl.at.x - x, cl.at.y - y) }
+                    .minByOrNull { (cl, d) -> d - if (cl.lead.kind == MomentKind.Talk) 6 * density else 0f }
+                    ?.takeIf { it.second < MOMENT_TOUCH_DP * density }?.first
+                if (hit != null && hit.size > 1) {
+                    val ids = hit.pins.map { it.first.id }.toSet()
+                    val members = momentsNow.filter { it.pin.id in ids }
+                    // 지도는 이 손가락 이벤트를 받은 뒤 진행 중인 카메라 움직임을 멈춘다. 다음 차례로 미뤄 확대가 끊기지 않게 한다.
+                    mapView.post { zoomToMoments(mapView, members) }
+                } else {
+                    pick(hit?.lead?.id)
+                }
+                return
             }
-            if (clickHandler == null) return@OnMapClickListener false
-            val p = map.pixelForCoordinate(point)
-            val box = ScreenBox(
-                ScreenCoordinate(p.x - TOUCH_PX, p.y - TOUCH_PX),
-                ScreenCoordinate(p.x + TOUCH_PX, p.y + TOUCH_PX),
-            )
+            if (clickHandler == null && blankHandler == null) return
+            val box = ScreenBox(ScreenCoordinate(x - TOUCH_PX, y - TOUCH_PX), ScreenCoordinate(x + TOUCH_PX, y + TOUCH_PX))
             map.queryRenderedFeatures(
                 RenderedQueryGeometry(box),
-                RenderedQueryOptions(listOf(ROUTE_LAYER, ROUTE_CASING_LAYER), null),
+                RenderedQueryOptions(listOf(PICK_LAYER, PICK_CASING_LAYER, ROUTE_LAYER, ROUTE_CASING_LAYER), null),
             ) { result ->
                 val tripId = result.value?.firstOrNull()?.queriedFeature?.feature
                     ?.getNumberProperty(PROP_TRIP)?.toLong()
                 // 경로가 없는 빈 곳을 누르면 고른 경로를 푼다.
                 mapView.post { if (tripId != null) clickHandler?.invoke(tripId) else blankHandler?.invoke() }
             }
-            true
         }
-        map.addOnMapClickListener(listener)
-        onDispose { map.removeOnMapClickListener(listener) }
+        // 손을 떼는 즉시 누르기로 본다(끌기·두 손가락·길게 누르기는 뺀다). 이벤트는 그대로 지도에 넘겨 끌기·확대는 Mapbox 가 한다.
+        val slop = ViewConfiguration.get(mapView.context).scaledTouchSlop
+        var downX = 0f
+        var downY = 0f
+        var downAt = 0L
+        var isTap = false
+        mapView.setOnTouchListener { _, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { downX = e.x; downY = e.y; downAt = e.eventTime; isTap = true }
+                MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_CANCEL -> isTap = false
+                MotionEvent.ACTION_MOVE -> if (kotlin.math.hypot(e.x - downX, e.y - downY) > slop) isTap = false
+                MotionEvent.ACTION_UP ->
+                    if (isTap && e.eventTime - downAt < ViewConfiguration.getLongPressTimeout()) onTap(e.x.toDouble(), e.y.toDouble())
+            }
+            false
+        }
+        onDispose { mapView.setOnTouchListener(null) }
     }
 
     BoxWithConstraints(modifier) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
         if (moments.isNotEmpty() && style != null) {
             val paint = rememberMomentPaint(if (momentTone == Color.Unspecified) colors.accent else momentTone)
-            // 누르기는 지도 클릭 리스너가 받는다. 이 그림 칸은 손가락을 가로채지 않는다.
+            // 누르기는 지도(MapView)의 터치 리스너가 받는다. 이 그림 칸은 손가락을 가로채지 않는다.
             Canvas(Modifier.fillMaxSize()) {
                 @Suppress("UNUSED_EXPRESSION") cameraTick // 카메라가 움직이면 다시 그린다
                 val map = mapView.mapboxMap
@@ -301,7 +346,7 @@ private fun MapboxRouteMap(
                     val p = map.pixelForCoordinate(Point.fromLngLat(m.longitude, m.latitude))
                     m.pin to Offset(p.x.toFloat(), p.y.toFloat())
                 }
-                drawMomentPins(placed, selectedMoment, paint)
+                drawMomentClusters(clusterPins(placed, selectedMoment, CLUSTER_DP.dp.toPx()), selectedMoment, paint)
             }
         }
         if (showZoomButtons(zoomControls, maxHeight.value)) {
@@ -352,25 +397,65 @@ private fun zoomBy(view: MapView, delta: Double) {
 }
 
 /**
- * 경로를 그린다. [selected] 가 있으면 그 경로만 진하게 두고 나머지는 흐리게([DIM_OPACITY]),
- * 고른 경로는 다른 경로 위에 오도록 맨 나중에 그린다.
+ * 묶인 핀을 눌렀을 때: 그 핀들이 다 들어오게 확대한다. 핀이 거의 한 점에 모여 있으면(같은 정차 자리 등)
+ * 맞춘 배율이 지금과 별 차이가 없으므로, 적어도 두 단계는 확대해 펼쳐 보이게 한다.
  */
-private fun drawRoutes(style: Style, routes: List<MapRoute>, selected: Long? = null) {
-    val drawable = routes.filter { r -> r.segments.any { it.size >= 2 } }
-        .sortedBy { if (it.tripId == selected) 1 else 0 }
-    val lines = drawable.map { route ->
-        val dim = selected != null && route.tripId != selected
-        val geometry = MultiLineString.fromLineStrings(
-            route.segments.filter { it.size >= 2 }.map { seg ->
-                LineString.fromLngLats(seg.map { Point.fromLngLat(it.longitude, it.latitude) })
-            }
-        )
-        Feature.fromGeometry(geometry).apply {
+private fun zoomToMoments(view: MapView, moments: List<MapMoment>) {
+    if (moments.isEmpty()) return
+    val map = view.mapboxMap
+    val points = moments.map { Point.fromLngLat(it.longitude, it.latitude) }
+    val current = map.cameraState.zoom
+    val pad = (64 * view.uiDensity).toDouble()
+    val center = Point.fromLngLat(points.map { it.longitude() }.average(), points.map { it.latitude() }.average())
+    val ease = { camera: CameraOptions -> view.camera.easeTo(camera, MapAnimationOptions.Builder().duration(450L).build()) }
+    if (points.distinct().size == 1) {
+        ease(CameraOptions.Builder().center(center).zoom((current + 2).coerceAtMost(MAX_ZOOM)).build())
+        return
+    }
+    map.cameraForCoordinates(points, CameraOptions.Builder().build(), EdgeInsets(pad, pad, pad, pad), MAX_ZOOM, null) { fit ->
+        // 다 들어오는 배율이 지금보다 한 단계 이상 크면 그대로, 아니면(거의 한 점) 두 단계 확대해 펼친다.
+        val fitted = fit.zoom ?: current
+        val z = (if (fitted >= current + 1) fitted else current + 2).coerceAtMost(MAX_ZOOM)
+        ease(CameraOptions.Builder().center(fit.center ?: center).zoom(z).build())
+    }
+}
+
+/** 화면 스레드 밖에서 미리 만든 지도 데이터. 경로가 바뀔 때만 새로 만든다. */
+private class PreparedRoutes(
+    val lines: FeatureCollection,
+    val dots: FeatureCollection,
+    /** 모든 경로가 보이게 카메라를 맞출 점(줄인 경로, 한국 안) */
+    val fitPoints: List<Point>,
+    /** 여행 id → 그 경로를 감싸는 네모와 점. 고른 경로가 화면 안에 다 있는지 볼 때 쓴다. */
+    val byTrip: Map<Long, RouteBox>,
+)
+
+private class RouteBox(val southWest: Point, val northEast: Point, val points: List<Point>)
+
+/**
+ * 경로를 지도 데이터로 바꾼다. GPS 점은 1초마다 찍혀 기록 열몇 개면 3만 개가 넘는데,
+ * 가장 가까이 볼 때(줌 17)에도 구분되지 않는 점([SIMPLIFY_TOLERANCE_DEG], 약 3m 안쪽으로 곧은 곳)은 뺀다.
+ */
+private fun prepareRoutes(routes: List<MapRoute>): PreparedRoutes {
+    val lines = ArrayList<Feature>()
+    val fit = ArrayList<Point>()
+    val byTrip = HashMap<Long, RouteBox>()
+    routes.forEach { route ->
+        val segs = route.segments.filter { it.size >= 2 }.map { simplify(it, SIMPLIFY_TOLERANCE_DEG) }
+        if (segs.isEmpty()) return@forEach
+        lines += Feature.fromGeometry(MultiLineString.fromLineStrings(segs.map { LineString.fromLngLats(it) })).apply {
             addNumberProperty(PROP_TRIP, route.tripId)
-            // 흐린 경로는 투명도 대신 회청색으로 바꾼다: 반투명 색이 지도와 섞이면 갈색·회갈색으로 탁해진다.
-            addStringProperty(PROP_COLOR, if (dim) RouteColors.DIMMED else route.color)
-            addNumberProperty(PROP_OPACITY, if (dim) DIM_OPACITY else 1.0)
-            addNumberProperty(PROP_GLOW_OPACITY, if (dim) 0.0 else if (selected != null) 0.28 else 0.16)
+            addStringProperty(PROP_COLOR, route.color)
+        }
+        // 한국 밖 좌표(예: 에뮬레이터 기본 위치인 미국)는 카메라 맞추기에서 뺀다.
+        val inKorea = segs.flatten().filter { it.latitude() in KOREA_LAT_RANGE && it.longitude() in KOREA_LNG_RANGE }
+        fit += inKorea
+        if (inKorea.size >= 2) {
+            byTrip[route.tripId] = RouteBox(
+                Point.fromLngLat(inKorea.minOf { it.longitude() }, inKorea.minOf { it.latitude() }),
+                Point.fromLngLat(inKorea.maxOf { it.longitude() }, inKorea.maxOf { it.latitude() }),
+                inKorea,
+            )
         }
     }
     val dots = routes.flatMap { route -> routeDots(route) }
@@ -385,45 +470,100 @@ private fun drawRoutes(style: Style, routes: List<MapRoute>, selected: Long? = n
                 addNumberProperty(PROP_STROKE_WIDTH, if (dot.kind == DotKind.STOP) 2.0 else 3.0)
             }
         }
+    return PreparedRoutes(FeatureCollection.fromFeatures(lines), FeatureCollection.fromFeatures(dots), fit, byTrip)
+}
 
-    upsertSource(style, ROUTE_SOURCE, FeatureCollection.fromFeatures(lines))
-    upsertSource(style, EVENT_SOURCE, FeatureCollection.fromFeatures(dots))
+/**
+ * 더글러스-포이커 방식으로 거의 곧은 구간의 가운데 점을 뺀다. 첫 점·끝 점은 늘 남는다.
+ * 경도는 위도에 맞춰 줄여(cos) 가로·세로 거리를 같은 잣대로 잰다.
+ */
+private fun simplify(seg: List<LocationPoint>, tolerance: Double): List<Point> {
+    val n = seg.size
+    if (n <= 2) return seg.map { Point.fromLngLat(it.longitude, it.latitude) }
+    val k = kotlin.math.cos(Math.toRadians(seg[0].latitude))
+    val xs = DoubleArray(n) { seg[it].longitude * k }
+    val ys = DoubleArray(n) { seg[it].latitude }
+    val keep = BooleanArray(n).also { it[0] = true; it[n - 1] = true }
+    val tol2 = tolerance * tolerance
+    // (시작, 끝) 구간 쌍을 하나의 Long 에 담아 쌓는다(재귀 대신).
+    val stack = ArrayDeque<Long>().apply { addLast((n - 1).toLong()) }
+    while (stack.isNotEmpty()) {
+        val pair = stack.removeLast()
+        val a = (pair ushr 32).toInt()
+        val b = (pair and 0xFFFFFFFFL).toInt()
+        if (b - a < 2) continue
+        val dx = xs[b] - xs[a]
+        val dy = ys[b] - ys[a]
+        val len2 = dx * dx + dy * dy
+        var far = -1
+        var farD = tol2
+        for (i in a + 1 until b) {
+            val t = if (len2 == 0.0) 0.0 else (((xs[i] - xs[a]) * dx + (ys[i] - ys[a]) * dy) / len2).coerceIn(0.0, 1.0)
+            val ex = xs[a] + t * dx - xs[i]
+            val ey = ys[a] + t * dy - ys[i]
+            val d = ex * ex + ey * ey
+            if (d > farD) { farD = d; far = i }
+        }
+        if (far > 0) {
+            keep[far] = true
+            stack.addLast((a.toLong() shl 32) or far.toLong())
+            stack.addLast((far.toLong() shl 32) or b.toLong())
+        }
+    }
+    return (0 until n).filter { keep[it] }.map { Point.fromLngLat(seg[it].longitude, seg[it].latitude) }
+}
 
-    // 아래에서 위로: 번짐 → 흰 테두리 → 색 선 → 점
-    if (!style.styleLayerExists(ROUTE_GLOW_LAYER)) {
-        style.addLayer(
-            lineLayer(ROUTE_GLOW_LAYER, ROUTE_SOURCE) {
-                lineColor(get(PROP_COLOR))
-                lineWidth(widthByZoom(3.0))
-                lineOpacity(get(PROP_GLOW_OPACITY))
-                lineBlur(widthByZoom(1.4))
-                lineCap(LineCap.ROUND)
-                lineJoin(LineJoin.ROUND)
-            }
-        )
+/** 미리 만든 경로·점 데이터를 지도에 넣는다(레이어는 [addRouteLayers] 가 이미 깔아 두었다). */
+private fun drawRoutes(style: Style, routes: PreparedRoutes) {
+    upsertSource(style, ROUTE_SOURCE, routes.lines)
+    upsertSource(style, EVENT_SOURCE, routes.dots)
+}
+
+/**
+ * 경로 레이어를 아래에서 위로 깐다: 모든 경로(번짐 → 흰 테두리 → 색 선) → 고른 경로만(같은 세 겹) → 점.
+ * 고른 경로는 위 칸 세 겹이 필터로 따로 그려 늘 다른 경로 위에 온다. 고르기는 [applyRouteSelection] 이
+ * 레이어 속성만 바꾸므로 지도 데이터를 다시 읽지 않는다.
+ */
+private fun addRouteLayers(style: Style) {
+    val empty = FeatureCollection.fromFeatures(emptyList())
+    upsertSource(style, ROUTE_SOURCE, empty)
+    upsertSource(style, EVENT_SOURCE, empty)
+    fun addLines(glow: String, casing: String, line: String, glowOpacity: Double) {
+        if (!style.styleLayerExists(glow)) {
+            style.addLayer(
+                lineLayer(glow, ROUTE_SOURCE) {
+                    lineColor(get(PROP_COLOR))
+                    lineWidth(widthByZoom(3.0))
+                    lineOpacity(glowOpacity)
+                    lineBlur(widthByZoom(1.4))
+                    lineCap(LineCap.ROUND)
+                    lineJoin(LineJoin.ROUND)
+                }
+            )
+        }
+        if (!style.styleLayerExists(casing)) {
+            style.addLayer(
+                lineLayer(casing, ROUTE_SOURCE) {
+                    lineColor("#FFFFFF")
+                    lineWidth(widthByZoom(1.0, extra = 3.0))
+                    lineCap(LineCap.ROUND)
+                    lineJoin(LineJoin.ROUND)
+                }
+            )
+        }
+        if (!style.styleLayerExists(line)) {
+            style.addLayer(
+                lineLayer(line, ROUTE_SOURCE) {
+                    lineColor(get(PROP_COLOR))
+                    lineWidth(widthByZoom(1.0))
+                    lineCap(LineCap.ROUND)
+                    lineJoin(LineJoin.ROUND)
+                }
+            )
+        }
     }
-    if (!style.styleLayerExists(ROUTE_CASING_LAYER)) {
-        style.addLayer(
-            lineLayer(ROUTE_CASING_LAYER, ROUTE_SOURCE) {
-                lineColor("#FFFFFF")
-                lineWidth(widthByZoom(1.0, extra = 3.0))
-                lineOpacity(get(PROP_OPACITY))
-                lineCap(LineCap.ROUND)
-                lineJoin(LineJoin.ROUND)
-            }
-        )
-    }
-    if (!style.styleLayerExists(ROUTE_LAYER)) {
-        style.addLayer(
-            lineLayer(ROUTE_LAYER, ROUTE_SOURCE) {
-                lineColor(get(PROP_COLOR))
-                lineWidth(widthByZoom(1.0))
-                lineOpacity(get(PROP_OPACITY))
-                lineCap(LineCap.ROUND)
-                lineJoin(LineJoin.ROUND)
-            }
-        )
-    }
+    addLines(ROUTE_GLOW_LAYER, ROUTE_CASING_LAYER, ROUTE_LAYER, GLOW_OPACITY)
+    addLines(PICK_GLOW_LAYER, PICK_CASING_LAYER, PICK_LAYER, PICK_GLOW_OPACITY)
     if (!style.styleLayerExists(EVENT_LAYER)) {
         style.addLayer(
             circleLayer(EVENT_LAYER, EVENT_SOURCE) {
@@ -434,6 +574,22 @@ private fun drawRoutes(style: Style, routes: List<MapRoute>, selected: Long? = n
             }
         )
     }
+    applyRouteSelection(style, null)
+}
+
+/**
+ * 고른 경로만 위 칸에 진하게, 나머지는 아래 칸에서 회청색([RouteColors.DIMMED])으로 흐리게.
+ * 흐린 경로는 투명도 대신 색을 바꾼다: 반투명 색이 지도와 섞이면 갈색·회갈색으로 탁해진다.
+ */
+private fun applyRouteSelection(style: Style, selected: Long?) {
+    val dim = selected != null
+    val opacity = Value.valueOf(if (dim) DIM_OPACITY else 1.0)
+    style.setStyleLayerProperty(ROUTE_LAYER, "line-color", if (dim) Value.valueOf(RouteColors.DIMMED) else get(PROP_COLOR))
+    style.setStyleLayerProperty(ROUTE_LAYER, "line-opacity", opacity)
+    style.setStyleLayerProperty(ROUTE_CASING_LAYER, "line-opacity", opacity)
+    style.setStyleLayerProperty(ROUTE_GLOW_LAYER, "line-opacity", Value.valueOf(if (dim) 0.0 else GLOW_OPACITY))
+    val filter = if (selected == null) Expression.literal(false) else Expression.eq(get(PROP_TRIP), Expression.literal(selected.toDouble()))
+    listOf(PICK_GLOW_LAYER, PICK_CASING_LAYER, PICK_LAYER).forEach { style.setStyleLayerProperty(it, "filter", filter) }
 }
 
 private enum class DotKind { START, STOP, END }
@@ -549,12 +705,9 @@ private fun upsertSource(style: Style, id: String, data: FeatureCollection) {
  * 경로가 손톱만 하게 나오기 때문이다. 확대·축소 버튼이 있으면 오른쪽 여백에 버튼 폭을 더해
  * 출발·도착 점이 버튼 밑에 깔리지 않게 한다.
  */
-private fun moveCamera(view: MapView, routes: List<MapRoute>, zoomControls: Boolean) {
-    // 한국 밖 좌표(예: 에뮬레이터 기본 위치인 미국)는 빼고 맞춘다. 남는 게 없으면 한국 전체를 보여 준다.
+private fun moveCamera(view: MapView, points: List<Point>, zoomControls: Boolean) {
+    // 한국 밖 좌표는 [prepareRoutes] 에서 이미 뺐다. 남는 게 없으면 한국 전체를 보여 준다.
     // 그대로 맞추면 카메라가 경계 끝 바다로 밀려나 지도가 회색 한 면으로 보인다.
-    val points = routes.flatMap { it.segments.flatten() }
-        .filter { it.latitude in KOREA_LAT_RANGE && it.longitude in KOREA_LNG_RANGE }
-        .map { Point.fromLngLat(it.longitude, it.latitude) }
     view.doOnLayout {
         val map: MapboxMap = view.mapboxMap
         when {
@@ -582,24 +735,22 @@ private fun moveCamera(view: MapView, routes: List<MapRoute>, zoomControls: Bool
     }
 }
 
-/** 고른 경로가 화면 밖으로 삐져나가 있으면 그 경로에 맞춰 부드럽게 옮긴다. 다 보이면 그대로 둔다. */
-private fun showRoute(view: MapView, route: MapRoute, zoomControls: Boolean) {
-    val points = route.segments.flatten()
-        .filter { it.latitude in KOREA_LAT_RANGE && it.longitude in KOREA_LNG_RANGE }
-        .map { Point.fromLngLat(it.longitude, it.latitude) }
-    if (points.size < 2) return
+/**
+ * 고른 경로가 화면 밖으로 삐져나가 있으면 그 경로에 맞춰 부드럽게 옮긴다. 다 보이면 그대로 둔다.
+ * 지도를 돌리거나 기울이지 않으므로 경로를 감싸는 네모의 두 꼭짓점만 보면 된다.
+ */
+private fun showRoute(view: MapView, route: RouteBox, zoomControls: Boolean) {
     val map = view.mapboxMap
     val density = view.uiDensity
     val edge = 12 * density
-    val visible = points.all { pt ->
-        val p = map.pixelForCoordinate(pt)
-        p.x >= edge && p.y >= edge && p.x <= view.width - edge && p.y <= view.height - edge
-    }
+    val sw = map.pixelForCoordinate(route.southWest)
+    val ne = map.pixelForCoordinate(route.northEast)
+    val visible = sw.x >= edge && ne.y >= edge && ne.x <= view.width - edge && sw.y <= view.height - edge
     if (visible) return
     val pad = (minOf(view.width, view.height) * CAMERA_PADDING_RATIO).coerceAtLeast(CAMERA_PADDING_MIN_PX).toDouble()
     val right = if (showZoomButtons(zoomControls, view.height / density)) pad + (ZOOM_TOUCH_DP + ZOOM_MARGIN_DP * 2) * density else pad
     map.cameraForCoordinates(
-        points, CameraOptions.Builder().build(), EdgeInsets(pad, pad, pad + LOGO_INSET_DP * density, right), MAX_FIT_ZOOM, null,
+        route.points, CameraOptions.Builder().build(), EdgeInsets(pad, pad, pad + LOGO_INSET_DP * density, right), MAX_FIT_ZOOM, null,
     ) { camera -> view.camera.easeTo(camera, MapAnimationOptions.Builder().duration(450L).build()) }
 }
 
@@ -613,8 +764,15 @@ private const val EVENT_SOURCE = "dongban-events"
 private const val EVENT_LAYER = "dongban-events-circle"
 private const val PROP_TRIP = "tripId"
 private const val PROP_COLOR = "color"
-private const val PROP_OPACITY = "opacity"
-private const val PROP_GLOW_OPACITY = "glowOpacity"
+/** 고른 경로만 따로 그리는 위 칸(아래 칸 세 겹과 같은 모양, 필터로 고른 여행만) */
+private const val PICK_GLOW_LAYER = "dongban-routes-pick-glow"
+private const val PICK_CASING_LAYER = "dongban-routes-pick-casing"
+private const val PICK_LAYER = "dongban-routes-pick-line"
+/** 번짐 투명도: 아무것도 안 골랐을 때 모든 경로, 골랐을 때 고른 경로 */
+private const val GLOW_OPACITY = 0.16
+private const val PICK_GLOW_OPACITY = 0.28
+/** 경로 줄이기 허용 오차(도). 약 3m: 가장 가까이(줌 17) 볼 때 선 굵기(9px ≈ 8m)보다 작다. */
+private const val SIMPLIFY_TOLERANCE_DEG = 0.00003
 /** 다른 경로를 고른 동안 나머지 경로의 투명도 */
 private const val DIM_OPACITY = 0.75
 private const val PROP_FILL = "fill"
@@ -627,6 +785,8 @@ private const val PROP_SONG_WIDTH = "songWidth"
 private const val PROP_SONG_OPACITY = "songOpacity"
 /** 핀을 누른 것으로 보는 거리 */
 private const val MOMENT_TOUCH_DP = 28f
+/** 이보다 가까운 핀(화면 거리)은 하나로 묶어 "+N" 을 단다. 이야기 핀 지름(30dp)보다 조금 넓게. */
+private const val CLUSTER_DP = 32f
 private const val TOUCH_PX = 24.0
 /** 이보다 낮은 지도(다이어리 한 장의 200dp 지도 등)에는 확대·축소 버튼을 띄우지 않는다 */
 private const val SMALL_MAP_HEIGHT_DP = 280f
