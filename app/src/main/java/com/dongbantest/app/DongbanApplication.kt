@@ -39,7 +39,7 @@ import kotlinx.coroutines.launch
 /** 간단한 수동 DI 컨테이너. */
 class AppContainer(context: Context) : SummaryWorkerDependencies {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val database by lazy { DongbanDatabase.create(context) }
+    internal val database by lazy { DongbanDatabase.create(context) }
     val mediaFileStore by lazy { MediaFileStore(context) }
     val tripRepository by lazy { TripRepository(database.tripDao(), mediaFileStore, database.trackPlayDao()) }
     val musicSettingsStore by lazy { MusicSettingsStore(context) }

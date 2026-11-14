@@ -26,7 +26,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
@@ -40,7 +44,14 @@ import com.dongbantest.app.domain.model.LocationPoint
 import com.dongbantest.app.domain.model.TimelineEvent
 import com.dongbantest.app.domain.model.TimelineType
 import com.dongbantest.app.ui.v3.components.DbIcon
+import com.dongbantest.app.ui.v3.components.MomentKind
+import com.dongbantest.app.ui.v3.components.MomentPin
+import com.dongbantest.app.ui.v3.components.drawMomentPins
+import com.dongbantest.app.ui.v3.components.rememberMomentPaint
+import com.dongbantest.app.ui.v3.theme.DbColors
 import com.dongbantest.app.ui.v3.theme.DbIcons
+import com.dongbantest.app.ui.v3.theme.DbTheme
+import com.mapbox.bindgen.Value
 import com.mapbox.geojson.Feature
 import com.mapbox.geojson.FeatureCollection
 import com.mapbox.geojson.LineString
@@ -63,6 +74,7 @@ import com.mapbox.maps.extension.style.expressions.dsl.generated.interpolate
 import com.mapbox.maps.extension.style.expressions.generated.Expression
 import com.mapbox.maps.extension.style.expressions.generated.Expression.Companion.get
 import com.mapbox.maps.extension.style.layers.addLayer
+import com.mapbox.maps.extension.style.layers.addLayerBelow
 import com.mapbox.maps.extension.style.layers.generated.circleLayer
 import com.mapbox.maps.extension.style.layers.generated.lineLayer
 import com.mapbox.maps.extension.style.layers.properties.generated.LineCap
@@ -92,6 +104,12 @@ data class MapRoute(
     val events: List<TimelineEvent> = emptyList(),
 )
 
+/** 지도 위 한 순간(이야기·노래 핀). 자리는 그 시각에 가장 가까운 위치 기록. */
+data class MapMoment(val pin: MomentPin, val latitude: Double, val longitude: Double)
+
+/** 노래가 흐른 길: 그 곡이 재생되는 동안 지난 위치 기록. 경로 옆 점선으로 그린다. */
+data class MapSongPath(val id: String, val points: List<LocationPoint>)
+
 /**
  * Mapbox 지도에 기록 경로를 그린다. 공개 토큰은 디버그 앱 "지도 설정" 또는 local.properties 의
  * MAPBOX_ACCESS_TOKEN 에서 온다. 지도 스타일은 [STYLE_URL] 하나만 바꾸면 된다.
@@ -100,7 +118,13 @@ data class MapRoute(
  * - 오른쪽 아래 확대·축소 버튼.
  * - 경로는 번짐(glow) → 흰 테두리 → 색 선 세 겹으로 그려 밝은 지도 위에서 또렷하게 보인다.
  *
+ * - 바탕 지도는 v3 예시 지도와 같은 색(땅 mapLand, 바다 mapSea)으로 칠하고, 가게·버스 정류장 이름처럼
+ *   기록과 상관없는 표시는 숨긴다.
+ *
  * @param onRouteClick 경로를 누르면 그 기록의 id 로 부른다. null 이면 누를 수 없다.
+ * @param moments 이야기·노래 핀. 예시 지도(MomentMap)와 같은 모양으로 지도 위에 그린다.
+ * @param songPaths 노래가 흐른 길(베리색 점선)
+ * @param onMomentClick 핀을 누르면 그 id, 빈 곳을 누르면 null. 고른 핀이 화면 밖이면 그쪽으로 지도를 옮긴다.
  */
 @Composable
 fun RouteMap(
@@ -108,6 +132,11 @@ fun RouteMap(
     modifier: Modifier = Modifier,
     onRouteClick: ((Long) -> Unit)? = null,
     zoomControls: Boolean = true,
+    moments: List<MapMoment> = emptyList(),
+    songPaths: List<MapSongPath> = emptyList(),
+    selectedMoment: String? = null,
+    onMomentClick: ((String?) -> Unit)? = null,
+    momentTone: Color = Color.Unspecified,
 ) {
     val context = LocalContext.current
     // 토큰이 없으면 지도를 만들지 않고 안내 문구만 보인다. 토큰이 저장되면 재시작 없이 지도가 나타난다.
@@ -127,7 +156,9 @@ fun RouteMap(
         return
     }
     // 토큰이 바뀌면 지도를 새로 만든다.
-    key(revision) { MapboxRouteMap(routes, modifier, onRouteClick, zoomControls) }
+    key(revision) {
+        MapboxRouteMap(routes, modifier, onRouteClick, zoomControls, moments, songPaths, selectedMoment, onMomentClick, momentTone)
+    }
 }
 
 @Composable
@@ -136,8 +167,14 @@ private fun MapboxRouteMap(
     modifier: Modifier,
     onRouteClick: ((Long) -> Unit)?,
     zoomControls: Boolean,
+    moments: List<MapMoment>,
+    songPaths: List<MapSongPath>,
+    selectedMoment: String?,
+    onMomentClick: ((String?) -> Unit)?,
+    momentTone: Color,
 ) {
     val context = LocalContext.current
+    val colors = DbTheme.colors
     val mapView = remember {
         // 스크롤되는 화면 안에서도 잘 그려지도록 TextureView 방식을 쓴다.
         // 첫 장면부터 한국: 스타일·경로가 오기 전에 세계 지도가 잠깐 보이지 않게 한다.
@@ -158,6 +195,7 @@ private fun MapboxRouteMap(
     LaunchedEffect(mapView) {
         mapView.mapboxMap.loadStyle(STYLE_URL) { s ->
             runCatching { s.localizeLabels(Locale.KOREAN) } // 지명을 한국어로
+            runCatching { tintBaseStyle(s, colors) }
             style = s
         }
     }
@@ -167,11 +205,46 @@ private fun MapboxRouteMap(
         drawRoutes(s, routes)
         moveCamera(mapView, routes, zoomControls)
     }
+    LaunchedEffect(style, routes, songPaths, selectedMoment) {
+        val s = style ?: return@LaunchedEffect
+        drawSongPaths(s, songPaths, selectedMoment, colors.music.hex())
+    }
+
+    // 지도를 끌거나 확대하면 핀 자리를 다시 계산해 그린다.
+    var cameraTick by remember { mutableIntStateOf(0) }
+    DisposableEffect(mapView) {
+        val sub = mapView.mapboxMap.subscribeCameraChanged { cameraTick++ }
+        onDispose { sub.cancel() }
+    }
+    // 목록·시간 띠에서 고른 핀이 화면 밖이면 그 자리로 지도를 옮긴다.
+    LaunchedEffect(style, selectedMoment) {
+        if (style == null) return@LaunchedEffect
+        val m = moments.firstOrNull { it.pin.id == selectedMoment } ?: return@LaunchedEffect
+        val point = Point.fromLngLat(m.longitude, m.latitude)
+        val p = mapView.mapboxMap.pixelForCoordinate(point)
+        val margin = 48 * mapView.resources.displayMetrics.density
+        if (p.x < margin || p.y < margin || p.x > mapView.width - margin || p.y > mapView.height - margin) {
+            mapView.camera.easeTo(CameraOptions.Builder().center(point).build(), MapAnimationOptions.Builder().duration(400L).build())
+        }
+    }
 
     val clickHandler by rememberUpdatedState(onRouteClick)
+    val momentHandler by rememberUpdatedState(onMomentClick)
+    val momentsNow by rememberUpdatedState(moments)
     DisposableEffect(mapView) {
         val map = mapView.mapboxMap
         val listener = OnMapClickListener { point ->
+            momentHandler?.let { pick ->
+                val tap = map.pixelForCoordinate(point)
+                val density = mapView.resources.displayMetrics.density
+                // 이야기 핀이 노래 핀 위에 그려지므로, 거리가 비슷하면 이야기를 먼저 고른다.
+                val hit = momentsNow.map { m ->
+                    val p = map.pixelForCoordinate(Point.fromLngLat(m.longitude, m.latitude))
+                    m to kotlin.math.hypot(p.x - tap.x, p.y - tap.y)
+                }.minByOrNull { (m, d) -> d - if (m.pin.kind == MomentKind.Talk) 6 * density else 0f }
+                pick(hit?.takeIf { it.second < MOMENT_TOUCH_DP * density }?.first?.pin?.id)
+                return@OnMapClickListener true
+            }
             if (clickHandler == null) return@OnMapClickListener false
             val p = map.pixelForCoordinate(point)
             val box = ScreenBox(
@@ -194,6 +267,19 @@ private fun MapboxRouteMap(
 
     BoxWithConstraints(modifier) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
+        if (moments.isNotEmpty() && style != null) {
+            val paint = rememberMomentPaint(if (momentTone == Color.Unspecified) colors.accent else momentTone)
+            // 누르기는 지도 클릭 리스너가 받는다. 이 그림 칸은 손가락을 가로채지 않는다.
+            Canvas(Modifier.fillMaxSize()) {
+                @Suppress("UNUSED_EXPRESSION") cameraTick // 카메라가 움직이면 다시 그린다
+                val map = mapView.mapboxMap
+                val placed = moments.map { m ->
+                    val p = map.pixelForCoordinate(Point.fromLngLat(m.longitude, m.latitude))
+                    m.pin to Offset(p.x.toFloat(), p.y.toFloat())
+                }
+                drawMomentPins(placed, selectedMoment, paint)
+            }
+        }
         if (showZoomButtons(zoomControls, maxHeight.value)) {
             Column(
                 Modifier.align(Alignment.BottomEnd).padding(ZOOM_MARGIN_DP.dp),
@@ -339,6 +425,70 @@ private fun routeDots(route: MapRoute): List<RouteDot> {
     return listOf(RouteDot(last.latitude, last.longitude, DotKind.END, route.color))
 }
 
+/**
+ * 노래가 흐른 길: 경로 왼쪽 옆으로 띄운 베리색 점선. 고른 곡은 진하고 굵게, 나머지는 옅게.
+ * 경로 선 위, 출발·도착 점 아래에 놓는다.
+ */
+private fun drawSongPaths(style: Style, paths: List<MapSongPath>, selected: String?, color: String) {
+    val features = paths.filter { it.points.size >= 2 }.map { p ->
+        val sel = p.id == selected
+        Feature.fromGeometry(LineString.fromLngLats(p.points.map { Point.fromLngLat(it.longitude, it.latitude) })).apply {
+            addNumberProperty(PROP_SONG_WIDTH, if (sel) 4.0 else 3.0)
+            addNumberProperty(PROP_SONG_OPACITY, if (sel) 1.0 else 0.6)
+        }
+    }
+    upsertSource(style, SONG_SOURCE, FeatureCollection.fromFeatures(features))
+    if (!style.styleLayerExists(SONG_LAYER)) {
+        val layer = lineLayer(SONG_LAYER, SONG_SOURCE) {
+            lineColor(color)
+            lineWidth(get(PROP_SONG_WIDTH))
+            lineOpacity(get(PROP_SONG_OPACITY))
+            // 0 길이 대시 + 둥근 끝 = 점. 간격은 선 굵기의 2배.
+            lineDasharray(listOf(0.0, 2.0))
+            lineCap(LineCap.ROUND)
+            lineJoin(LineJoin.ROUND)
+            // 경로(흰 테두리 포함) 바깥으로 비켜 그린다. 음수 = 진행 방향 왼쪽.
+            lineOffset(interpolate {
+                linear()
+                zoom()
+                stop { literal(5.0); literal(-5.0) }
+                stop { literal(9.0); literal(-6.0) }
+                stop { literal(13.0); literal(-8.0) }
+                stop { literal(17.0); literal(-10.0) }
+            })
+        }
+        if (style.styleLayerExists(EVENT_LAYER)) style.addLayerBelow(layer, EVENT_LAYER) else style.addLayer(layer)
+    }
+}
+
+/**
+ * Mapbox 밝은 지도를 v3 예시 지도처럼 칠한다: 땅은 mapLand, 바다·강은 mapSea.
+ * 공원·건물·가게·정류장 같은 표시는 숨겨 경로와 핀이 먼저 눈에 띄게 한다. 지명·도로 이름은 남긴다.
+ */
+private fun tintBaseStyle(style: Style, c: DbColors) {
+    val land = Value.valueOf(c.mapLand.hex())
+    val sea = Value.valueOf(c.mapSea.hex())
+    val hidden = Value.valueOf("none")
+    style.styleLayers.forEach { layer ->
+        val id = layer.id
+        if (id.startsWith("dongban-")) return@forEach
+        when {
+            layer.type == "background" -> style.setStyleLayerProperty(id, "background-color", land)
+            HIDDEN_BASE_LAYERS.any { id.contains(it) } -> style.setStyleLayerProperty(id, "visibility", hidden)
+            id.startsWith("water") && layer.type == "fill" -> style.setStyleLayerProperty(id, "fill-color", sea)
+            id.startsWith("water") && layer.type == "line" -> style.setStyleLayerProperty(id, "line-color", sea)
+        }
+    }
+}
+
+private fun Color.hex(): String = String.format(Locale.ROOT, "#%06X", toArgb() and 0xFFFFFF)
+
+/** 숨기는 바탕 레이어(Mapbox light-v11 이름의 일부) */
+private val HIDDEN_BASE_LAYERS = listOf(
+    "landuse", "landcover", "national-park", "hillshade", "building", "poi-label", "transit-label",
+    "airport-label", "aerialway", "ferry", "road-number-shield", "road-exit-shield", "pitch-outline", "admin-1",
+)
+
 /** 줌에 따라 굵어지는 선 폭: 전국을 볼 때는 가늘게, 동네를 볼 때는 굵게. */
 private fun widthByZoom(scale: Double, extra: Double = 0.0): Expression = interpolate {
     linear()
@@ -412,6 +562,12 @@ private const val PROP_FILL = "fill"
 private const val PROP_STROKE = "stroke"
 private const val PROP_RADIUS = "radius"
 private const val PROP_STROKE_WIDTH = "strokeWidth"
+private const val SONG_SOURCE = "dongban-songs"
+private const val SONG_LAYER = "dongban-songs-line"
+private const val PROP_SONG_WIDTH = "songWidth"
+private const val PROP_SONG_OPACITY = "songOpacity"
+/** 핀을 누른 것으로 보는 거리 */
+private const val MOMENT_TOUCH_DP = 28f
 private const val TOUCH_PX = 24.0
 /** 이보다 낮은 지도(다이어리 한 장의 200dp 지도 등)에는 확대·축소 버튼을 띄우지 않는다 */
 private const val SMALL_MAP_HEIGHT_DP = 280f

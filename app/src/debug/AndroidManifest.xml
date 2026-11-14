@@ -35,6 +35,14 @@
             android:theme="@style/Theme.Dongbantest" />
 
         <receiver
+            android:name=".debug.music.DebugSongSampleReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.dongbantest.app.DEBUG_SAMPLE_SONGS" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
             android:name=".debug.music.DebugMusicReceiver"
             android:exported="true">
             <intent-filter>

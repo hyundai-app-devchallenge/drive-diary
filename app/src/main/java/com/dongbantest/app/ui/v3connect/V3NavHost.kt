@@ -48,6 +48,8 @@ import com.dongbantest.app.location.LocationReader
 import com.dongbantest.app.ui.ArrivalRequest
 import com.dongbantest.app.ui.components.RouteColors
 import com.dongbantest.app.ui.components.RouteMap
+import com.dongbantest.app.music.MusicAccess
+import com.dongbantest.app.ui.v3.screens.SongAccess
 import com.dongbantest.app.ui.v3.components.DbDialog
 import com.dongbantest.app.ui.v3.components.DbTab
 import com.dongbantest.app.ui.v3.components.DbTextButton
@@ -530,7 +532,14 @@ fun V3NavHost(
             }
             var editStep by rememberSaveable { mutableIntStateOf(0) } // 0 닫힘, 1 편집 메뉴, 2 지우기 확인
             val talks = remember(data) { data.talks() }
-            val record = remember(data, talks) { data.toRecord(talks) }
+            // 노래 기록: 알림 접근 허용 + "들은 노래 기록" 켜짐일 때만 On. 설정에서 돌아오면 다시 확인한다.
+            val musicAccess = remember(context) { MusicAccess(context) }
+            var musicGranted by remember { mutableStateOf(musicAccess.isGranted()) }
+            LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { musicGranted = musicAccess.isGranted() }
+            val musicEnabled by container.musicSettingsStore.enabled.collectAsStateWithLifecycle()
+            val songAccess = if (musicGranted && musicEnabled) SongAccess.On else SongAccess.Off
+            val record = remember(data, talks, songAccess) { data.toRecord(talks, songAccess) }
+            val songPaths = remember(data) { data.songPaths() }
             val playback by vm.playback.collectAsStateWithLifecycle()
             Box(Modifier.fillMaxSize()) {
             DiaryScreen(
@@ -540,7 +549,28 @@ fun V3NavHost(
                     playback = playback?.toUi(talks),
                     playbackEnabled = !restricted,
                     recordingText = "여행 기록 중",
+                    tabs = true,
                 ),
+                // 권한이 없으면 시스템 알림 접근 화면을, 권한은 있는데 꺼 두었으면 바로 켠다.
+                onOpenSongSettings = {
+                    if (musicGranted) {
+                        container.musicSettingsStore.setEnabled(true)
+                    } else {
+                        musicAccess.settingsIntents().firstOrNull { runCatching { context.startActivity(it) }.isSuccess }
+                    }
+                },
+                momentMap = { m, pins, selected, onSelect ->
+                    val moments = remember(data, pins) { data.mapMoments(pins) }
+                    RouteMap(
+                        routes = listOf(RealMapRoute(tripId, RouteColors.forTrip(tripId), data.drive.path, data.drive.timeline)),
+                        modifier = m,
+                        moments = moments,
+                        songPaths = songPaths,
+                        selectedMoment = selected,
+                        onMomentClick = onSelect,
+                        momentTone = record.tone.color,
+                    )
+                },
                 onTab = onTab,
                 onBack = { if (!navController.popBackStack()) onTab(DbTab.Record) },
                 onNextPage = {

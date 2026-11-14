@@ -48,6 +48,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.dongbantest.app.ui.v3.theme.DbColors
 import com.dongbantest.app.ui.v3.theme.DbIcons
 import com.dongbantest.app.ui.v3.theme.DbShapes
 import com.dongbantest.app.ui.v3.theme.DbTheme
@@ -98,10 +99,7 @@ fun MomentMap(
 ) {
     val c = DbTheme.colors
     val tone = route.tone.color
-    val measurer = rememberTextMeasurer()
-    val talkIcon = rememberVectorPainter(DbIcons.MessageCircle)
-    val noteIcon = rememberVectorPainter(MomentIcons.Music)
-    val bubbleStyle = DbTheme.type.label.copy(color = c.ink, fontWeight = FontWeight.SemiBold)
+    val paint = rememberMomentPaint(tone)
     val talks = pins.count { it.kind == MomentKind.Talk }
     val songs = pins.count { it.kind == MomentKind.Song }
     Box(modifier.clip(DbShapes.card)) {
@@ -145,26 +143,52 @@ fun MomentMap(
                     ),
                 )
             }
-            // 2) 핀: 노래 → 이야기 → 고른 핀 순으로 위에 쌓는다.
-            val order = pins.sortedBy { if (it.id == selected) 2 else if (it.kind == MomentKind.Talk) 1 else 0 }
-            order.forEach { pin ->
-                val at = quad(p0, k, p2, pin.start)
-                val sel = pin.id == selected
-                when (pin.kind) {
-                    MomentKind.Talk -> talkPin(at, sel, tone, c.paper, c.shadow, talkIcon)
-                    MomentKind.Song -> songPin(at, sel, c.music, c.musicInk, c.paper, c.shadow, noteIcon)
-                }
-            }
-            // 3) 고른 핀 위 말풍선
-            pins.firstOrNull { it.id == selected }?.let { pin ->
-                val at = quad(p0, k, p2, pin.start)
-                val r = if (pin.kind == MomentKind.Talk) 19.dp.toPx() else 14.dp.toPx()
-                bubble(
-                    measurer, pin.label, bubbleStyle, Offset(at.x, at.y - r - 18.dp.toPx()),
-                    c.paper, if (pin.kind == MomentKind.Talk) tone else c.music, size.width,
-                )
+            // 2) 핀과 고른 핀 위 말풍선
+            drawMomentPins(pins.map { it to quad(p0, k, p2, it.start) }, selected, paint)
+        }
+    }
+}
+
+/** 핀을 그리는 데 필요한 색·아이콘·글자 도구 묶음 */
+internal class MomentPaint(
+    val tone: Color,
+    val c: DbColors,
+    val talkIcon: VectorPainter,
+    val noteIcon: VectorPainter,
+    val measurer: TextMeasurer,
+    val bubbleStyle: TextStyle,
+)
+
+@Composable
+internal fun rememberMomentPaint(tone: Color): MomentPaint {
+    val c = DbTheme.colors
+    val measurer = rememberTextMeasurer()
+    val talkIcon = rememberVectorPainter(DbIcons.MessageCircle)
+    val noteIcon = rememberVectorPainter(MomentIcons.Music)
+    val bubbleStyle = DbTheme.type.label.copy(color = c.ink, fontWeight = FontWeight.SemiBold)
+    return MomentPaint(tone, c, talkIcon, noteIcon, measurer, bubbleStyle)
+}
+
+/**
+ * 화면 좌표에 놓인 핀을 그린다. 노래 → 이야기 → 고른 핀 순으로 위에 쌓고, 고른 핀 위에 말풍선을 띄운다.
+ * 예시 지도(MomentMap)와 실제 지도(RouteMap) 둘 다 이 함수로 그려 모양이 같다.
+ */
+internal fun DrawScope.drawMomentPins(placed: List<Pair<MomentPin, Offset>>, selected: String?, p: MomentPaint) {
+    val c = p.c
+    placed.sortedBy { (pin, _) -> if (pin.id == selected) 2 else if (pin.kind == MomentKind.Talk) 1 else 0 }
+        .forEach { (pin, at) ->
+            val sel = pin.id == selected
+            when (pin.kind) {
+                MomentKind.Talk -> talkPin(at, sel, p.tone, c.paper, c.shadow, p.talkIcon)
+                MomentKind.Song -> songPin(at, sel, c.music, c.musicInk, c.paper, c.shadow, p.noteIcon)
             }
         }
+    placed.firstOrNull { it.first.id == selected }?.let { (pin, at) ->
+        val r = if (pin.kind == MomentKind.Talk) 19.dp.toPx() else 14.dp.toPx()
+        bubble(
+            p.measurer, pin.label, p.bubbleStyle, Offset(at.x, at.y - r - 18.dp.toPx()),
+            c.paper, if (pin.kind == MomentKind.Talk) p.tone else c.music, size.width,
+        )
     }
 }
 
@@ -215,7 +239,7 @@ private fun DrawScope.bubble(
 }
 
 /**
- * 출발~도착 시간을 가로로 편 두 줄 띠. 위 줄은 이야기(여행 색), 아래 줄은 노래(코랄).
+ * 출발~도착 시간을 가로로 편 두 줄 띠. 위 줄은 이야기(여행 색), 아래 줄은 노래(베리색).
  * 막대를 누르면 onSelect(id). 고른 순간 자리에는 세로선이 선다.
  * ticks: (0–1 비율, "10:30") 사이 눈금. 양 끝은 startLabel / endLabel.
  */

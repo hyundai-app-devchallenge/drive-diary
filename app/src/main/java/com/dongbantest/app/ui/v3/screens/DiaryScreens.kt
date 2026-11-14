@@ -266,9 +266,11 @@ fun DiaryScreen(
     onEdit: (() -> Unit)? = null,
     /** 노래 탭 빈 화면의 "설정 열기". null 이면 버튼을 숨긴다. */
     onOpenSongSettings: (() -> Unit)? = null,
+    /** 지도 탭의 지도. null 이면 예시 지도(MomentMap). 앱은 핀을 얹은 실제 지도(RouteMap)를 넣는다. */
+    momentMap: MomentMapSlot? = null,
 ) {
     if (state.tabs) {
-        TabbedDiary(state, onTab, onBack, onNextPage, onPlay, onSeek, map, onEdit, onOpenSongSettings)
+        TabbedDiary(state, onTab, onBack, onNextPage, onPlay, onSeek, map, onEdit, onOpenSongSettings, momentMap)
         return
     }
     // 받은 폭으로 Compact·Expanded·Full 을 먼저 정한다(아래에서 DbTheme.layout 을 읽음)

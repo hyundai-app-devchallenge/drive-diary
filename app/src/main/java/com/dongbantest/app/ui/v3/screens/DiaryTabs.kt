@@ -66,6 +66,18 @@ import com.dongbantest.app.ui.v3.theme.Spacing
 private fun talkKey(t: TalkUi) = "talk:" + t.id.ifEmpty { t.time + t.title }
 private fun songKey(s: SongUi) = "song:" + s.id
 
+/** 빈 칸은 빼고 " · " 로 잇는다(가수 정보가 없는 곡) */
+internal fun dotJoin(vararg parts: String) = parts.filter { it.isNotBlank() }.joinToString(" · ")
+
+/** "제목 · 가수" */
+internal val SongUi.label: String get() = dotJoin(title, artist)
+
+/**
+ * 지도 탭의 지도 칸. 받은 핀을 그리고, 핀을 누르면 onSelect(id), 빈 곳은 onSelect(null).
+ * 앱은 실제 지도(RouteMap)에 핀을 얹어 넣는다. null 이면 예시 지도(MomentMap).
+ */
+typealias MomentMapSlot = @Composable (modifier: Modifier, pins: List<MomentPin>, selected: String?, onSelect: (String?) -> Unit) -> Unit
+
 private fun ClosedFloatingPointRange<Float>.overlaps(o: ClosedFloatingPointRange<Float>) =
     start <= o.endInclusive && o.start <= endInclusive
 
@@ -78,7 +90,7 @@ internal fun minutesLabel(ms: Long): String {
 private fun TripRecordUi.pins(): List<MomentPin> =
     talks.filter { !it.hidden && it.span != null }.map {
         MomentPin(talkKey(it), MomentKind.Talk, it.span!!.start, it.span.endInclusive, it.title)
-    } + songs.map { MomentPin(songKey(it), MomentKind.Song, it.span.start, it.span.endInclusive, "${it.title} · ${it.artist}") }
+    } + songs.map { MomentPin(songKey(it), MomentKind.Song, it.span.start, it.span.endInclusive, it.label) }
 
 private fun hhmmToMin(s: String): Int? {
     val p = s.split(":")
@@ -109,6 +121,7 @@ internal fun TabbedDiary(
     map: (@Composable (Modifier) -> Unit)?,
     onEdit: (() -> Unit)?,
     onOpenSongSettings: (() -> Unit)?,
+    momentMap: MomentMapSlot?,
 ) {
     val r = state.record
     var tab by remember(r.id) { mutableStateOf(DiaryTab.Map) }
@@ -127,7 +140,7 @@ internal fun TabbedDiary(
             val body = if (wide) Modifier.weight(1f).fillMaxWidth().padding(top = Spacing.md) else Modifier.padding(top = Spacing.md)
             Column(body) {
                 when (tab) {
-                    DiaryTab.Map -> MapTab(state, pins, selected, pick, { selected = it }, onPlay, onSeek)
+                    DiaryTab.Map -> MapTab(state, pins, selected, pick, { selected = it }, onPlay, onSeek, momentMap)
                     DiaryTab.Route -> Pane(wide) { DiaryInfo(state, map, header = false) }
                     DiaryTab.Talks -> Pane(wide) { DiaryTalks(state, onPlay, onSeek) }
                     DiaryTab.Songs -> Pane(wide) {
@@ -227,12 +240,17 @@ private fun ColumnScope.MapTab(
     onJump: (String) -> Unit,
     onPlay: (TalkUi) -> Unit,
     onSeek: (TalkUi, Long) -> Unit,
+    momentMap: MomentMapSlot?,
 ) {
     val r = state.record
     val layout = DbTheme.layout
     val ticks = remember(r) { r.hourTicks() }
     val map = @Composable { m: Modifier ->
-        MomentMap(SampleMap.route(r), SampleMap.labelsFor(r), pins, selected, { onPick(it) }, m)
+        if (momentMap != null) {
+            Box(m.clip(DbShapes.card)) { momentMap(Modifier.fillMaxSize(), pins, selected) { onPick(it) } }
+        } else {
+            MomentMap(SampleMap.route(r), SampleMap.labelsFor(r), pins, selected, { onPick(it) }, m)
+        }
     }
     val strip = @Composable { m: Modifier ->
         MomentTimeline(pins, selected, onPick, "${r.startTime} ${r.from}", "${r.arriveTime} ${r.to}", r.tone.color, m, ticks)
@@ -301,14 +319,14 @@ private fun MomentCard(
                 val during = talk.span?.let { s -> r.songs.filter { it.span.overlaps(s) } }.orEmpty()
                 if (during.isNotEmpty()) {
                     Related(state.songDuringTalk) {
-                        during.forEach { s -> RelatedRow("${s.title} · ${s.artist}", song = true, tone = r.tone.color) { onJump(songKey(s)) } }
+                        during.forEach { s -> RelatedRow(s.label, song = true, tone = r.tone.color) { onJump(songKey(s)) } }
                     }
                 }
             }
             song != null -> {
                 Text("${song.start} – ${song.end} · ${minutesLabel(song.playedMs)} 들음", style = t.caption, color = c.muted)
                 Text(song.title, style = t.titleLg, color = c.ink)
-                Text("${song.artist} · ${song.source}", style = t.body, color = c.ink2)
+                Text(dotJoin(song.artist, song.source), style = t.body, color = c.ink2)
                 val during = r.talks.filter { !it.hidden && it.span?.overlaps(song.span) == true }
                 if (during.isNotEmpty()) {
                     Related(state.talksDuringSong) {
@@ -359,7 +377,7 @@ private fun MomentList(state: DiaryUiState, selected: String?, onPick: (String?)
     data class Row3(val key: String, val start: Float, val time: String, val text: String, val song: Boolean)
     val rows = remember(r) {
         (r.talks.filter { !it.hidden && it.span != null }.map { Row3(talkKey(it), it.span!!.start, it.time, it.title, false) } +
-            r.songs.map { Row3(songKey(it), it.span.start, it.start, "${it.title} · ${it.artist}", true) })
+            r.songs.map { Row3(songKey(it), it.span.start, it.start, it.label, true) })
             .sortedBy { it.start }
     }
     if (rows.isEmpty()) return
@@ -424,7 +442,7 @@ private fun ColumnScope.SongsTab(state: DiaryUiState, onOpenSettings: (() -> Uni
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s3xs)) {
             Text(state.songOfTrip, style = t.caption.copy(fontWeight = FontWeight.SemiBold), color = c.musicInk)
             Text(top.title, style = t.titleLg, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("${top.artist} · ${minutesLabel(top.playedMs)} 들음", style = t.bodySm, color = c.ink2)
+            Text(dotJoin(top.artist, "${minutesLabel(top.playedMs)} 들음"), style = t.bodySm, color = c.ink2)
         }
     }
     Column(Modifier.padding(top = Spacing.lg)) {
