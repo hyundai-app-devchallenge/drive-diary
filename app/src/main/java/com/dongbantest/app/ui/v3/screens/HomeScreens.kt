@@ -22,6 +22,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -332,34 +333,34 @@ fun TripSetupScreen(
 
 /* ───────── S03 녹음 동의 ───────── */
 
-// talk-rec 연동: 동의를 세 가지로 나눴다(DESIGN §7). 아래 문구는 초안이며 팀에서 확정한다.
-//  (1) 여행 중 대화 기록  (2) 전사 글을 외부 AI로 보내 제목·태그 만들기(1을 고른 경우만)  (3) 녹음 없이 출발
+// talk-rec 연동: 동의 두 가지(DESIGN §7). 문구는 초안이며 팀에서 확정한다.
+//  (1) 상시 음성 듣기 + 기기 안 모델로 남길 대화 고르기 — 밖으로 보내지 않음. 조용할 때 질문도 이것이 있어야 된다.
+//  (2) (1)이 고른 대화의 글만 외부 AI로 보내기 — (1)을 켠 경우만. 둘 다 처음에는 켜져 있다.
 data class ConsentUiState(
-    val title: String = "이번 여행의 대화를 기록할까요?",
-    val subtitle: String = "여행 중 차 안의 대화를 듣다가, 남길 만한 이야기만 저장해요",
+    val title: String = "이번 여행, 동반이가 함께 들어도 될까요?",
+    val subtitle: String = "차 안의 대화를 듣다가 남길 만한 이야기만 모으고, 조용할 때는 먼저 말을 걸어요",
     val items: List<String> = listOf(
-        "녹음 중에는 화면 위쪽에 항상 표시돼요",
-        "“${GleoRecordingAction.PAUSE.example}”라고 말하면 녹음을 멈출 수 있어요",
+        "듣는 중에는 화면 위쪽에 항상 표시돼요",
+        "“${GleoRecordingAction.PAUSE.example}”라고 말하면 언제든 멈출 수 있어요",
         "남긴 대화는 정차 후 언제든 지울 수 있어요",
     ),
-    /** (1) 여행 중 대화 기록 */
-    val recordOption: String = "여행 중 대화 기록",
-    val recordOptionSub: String = "상시 기록해요. 남길 것만 저장하고 나머지는 바로 지워요",
-    /**
-     * (2) 외부 AI 제목·태그 + 대화 질문 (1을 고른 경우에만 켤 수 있음).
-     * 기기 안 모델이 1차로 고른 이야기만 외부로 간다는 점을 앞세운다(question-suggest DESIGN §7.1). 최종 문구는 팀과 맞춘다.
-     */
-    val aiOption: String = "AI로 이야기 제목과 질문 만들기",
-    val aiOptionSub: String = "기기 안 모델이 먼저 고른 이야기의 글만 외부 AI로 보내 제목을 붙여요. " +
-        "조용할 때 건넬 질문은 대화 없이 목적지·지역 이름·날씨만 보내 만들어요. 음성과 이름은 보내지 않아요",
-    /** (3) 녹음 없이 출발 */
-    val noRecordOption: String = "녹음 없이 출발",
-    val noRecordOptionSub: String = "질문만 함께해요",
-    val primaryRecord: String = "대화 기록하고 출발",
+    /** (1) 상시 음성 + 기기 안 판별 */
+    val listenOption: String = "대화 듣고 기기 안에서 고르기",
+    val listenOptionSub: String = "차 안 대화를 계속 듣고, 기기 안 모델이 남길 이야기만 골라요. " +
+        "나머지는 바로 지워요. 조용할 때 건네는 질문도 이걸 켜야 나와요",
+    val listenBadge: String = "음성·대화는 밖으로 보내지 않아요",
+    /** (2) 고른 대화 글을 외부 AI로 ((1)을 켠 경우에만 켤 수 있음) */
+    val aiOption: String = "고른 이야기를 AI로 정리하기",
+    val aiOptionSub: String = "기기 안에서 고른 이야기의 글만 외부 AI로 보내 제목·태그를 붙이고, " +
+        "목적지·날씨에 맞는 질문을 만들어요. 음성과 이름은 보내지 않아요",
+    val aiBadge: String = "글만 외부 AI로 보내요",
+    /** (1)을 껐을 때 보이는 안내 */
+    val offNote: String = "녹음 없이 출발해요. 조용할 때 먼저 묻는 질문도 나오지 않아요",
+    val primaryRecord: String = "동의하고 출발",
     val primaryNoRecord: String = "녹음 없이 출발",
-    /** 처음 선택 상태. 외부 AI 전송은 직접 체크해야만 켜진다. */
-    val recordSelected: Boolean = true,
-    val sendToAi: Boolean = false,
+    /** 처음 선택 상태: 둘 다 켜짐 */
+    val listen: Boolean = true,
+    val sendToAi: Boolean = true,
     val home: HomeUiState = HomeUiState(),
 )
 
@@ -375,7 +376,7 @@ fun ConsentScreen(
         val c = DbTheme.colors
         val t = DbTheme.type
         val icons = listOf(DbIcons.Eye, DbIcons.MicOff, DbIcons.Trash2)
-        var record by rememberSaveable { mutableStateOf(state.recordSelected) }
+        var record by rememberSaveable { mutableStateOf(state.listen) }
         var sendToAi by rememberSaveable { mutableStateOf(state.sendToAi) }
         AppShell(
             selectedTab = DbTab.Home, onTab = onTab, topBar = { StoppedTopBar() },
@@ -394,21 +395,25 @@ fun ConsentScreen(
                             }
                         }
                     }
-                    Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                         ConsentChoice(
-                            label = state.recordOption, sub = state.recordOptionSub,
-                            selected = record, onClick = { record = true },
+                            label = state.listenOption, sub = state.listenOptionSub,
+                            badge = state.listenBadge, badgeIcon = DbIcons.Lock,
+                            selected = record, onClick = { record = !record },
                         )
-                        // (2) 외부 AI 전송: (1)을 고른 경우에만 켤 수 있다
+                        // (2) 외부 AI 전송: (1)을 켠 경우에만 켤 수 있다
                         ConsentChoice(
                             label = state.aiOption, sub = state.aiOptionSub,
+                            badge = state.aiBadge, badgeIcon = DbIcons.Cloud,
                             selected = record && sendToAi, enabled = record,
-                            checkbox = true, indent = true, onClick = { sendToAi = !sendToAi },
+                            indent = true, onClick = { sendToAi = !sendToAi },
                         )
-                        ConsentChoice(
-                            label = state.noRecordOption, sub = state.noRecordOptionSub,
-                            selected = !record, onClick = { record = false },
-                        )
+                        if (!record) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                                DbIcon(DbIcons.MicOff, 20.dp, c.ink2, Modifier.padding(top = 1.dp))
+                                Text(state.offNote, style = t.bodySm, color = c.ink2)
+                            }
+                        }
                     }
                     PrimaryButton(
                         if (record) state.primaryRecord else state.primaryNoRecord,
@@ -422,20 +427,21 @@ fun ConsentScreen(
     }
 }
 
-/** S03 선택 줄: 라디오(둥근) 또는 체크박스(네모) 표시 + 제목 + 설명. 높이 48dp 이상. */
+/** S03 동의 줄: 체크박스 + 제목 + 설명 + 보내는 범위 표시. 높이 48dp 이상. */
 @Composable
 private fun ConsentChoice(
     label: String,
     sub: String,
     selected: Boolean,
     onClick: () -> Unit,
+    badge: String? = null,
+    badgeIcon: ImageVector? = null,
     enabled: Boolean = true,
-    checkbox: Boolean = false,
     indent: Boolean = false,
 ) {
     val c = DbTheme.colors
     val t = DbTheme.type
-    val mark = if (checkbox) androidx.compose.foundation.shape.RoundedCornerShape(6.dp) else DbShapes.pill
+    val mark = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
     val alpha = if (enabled) 1f else 0.4f
     Row(
         Modifier
@@ -444,10 +450,7 @@ private fun ConsentChoice(
             .heightIn(min = 48.dp)
             .clip(DbShapes.card)
             .border(1.dp, if (selected) c.ink else c.rule, DbShapes.card)
-            .then(
-                if (checkbox) Modifier.toggleable(selected, enabled = enabled, role = Role.Checkbox, onValueChange = { onClick() })
-                else Modifier.selectable(selected, enabled = enabled, role = Role.RadioButton, onClick = onClick),
-            )
+            .toggleable(selected, enabled = enabled, role = Role.Checkbox, onValueChange = { onClick() })
             .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
@@ -462,6 +465,16 @@ private fun ConsentChoice(
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s3xs)) {
             Text(label, style = t.body.copy(fontWeight = FontWeight.Medium), color = c.ink.copy(alpha = alpha))
             Text(sub, style = t.bodySm, color = c.muted.copy(alpha = alpha))
+            if (badge != null) {
+                Row(
+                    Modifier.padding(top = Spacing.s3xs),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.s3xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    badgeIcon?.let { DbIcon(it, 16.dp, c.ink.copy(alpha = alpha)) }
+                    Text(badge, style = t.bodySm.copy(fontWeight = FontWeight.Medium), color = c.ink.copy(alpha = alpha))
+                }
+            }
         }
     }
 }
