@@ -140,13 +140,13 @@ fun QuestionCard(
         Text(hint, style = t.bodySm, color = c.muted)
         Hairline(Modifier.padding(vertical = hairGap))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm), verticalAlignment = Alignment.Bottom) {
-            Text(sayLabel, style = t.caption, color = c.muted)
+            if (say.isNotEmpty()) Text(sayLabel, style = t.caption, color = c.muted)
             Spacer(Modifier.weight(1f))
             if (pauseCaption != null) {
                 Text(pauseCaption, style = t.caption, color = c.muted, maxLines = 1, overflow = TextOverflow.Clip)
             }
         }
-        SayList(say, onSay, Modifier.padding(top = if (wide) Spacing.s2xs else 0.dp), density)
+        if (say.isNotEmpty()) SayList(say, onSay, Modifier.padding(top = if (wide) Spacing.s2xs else 0.dp), density)
     }
 }
 

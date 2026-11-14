@@ -100,7 +100,7 @@ class ConversationCaptureService : Service() {
                 if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
                 else startForeground(NOTIFICATION, notification)
             } catch (_: RuntimeException) {
-                error(); TalkRec.finished(); stopSelf(); return START_NOT_STICKY
+                error(); TalkRec.finished(next); TalkRec.stopped(next); stopSelf(); return START_NOT_STICKY
             }
             dispatch(Event.Start(next))
         } else if (action in setOf(STOP, PAUSE, RESUME, MARK)) dispatch(Event.Control(action!!))
@@ -117,6 +117,7 @@ class ConversationCaptureService : Service() {
         when (event) {
             is Event.Start -> {
                 endInput()
+                TalkRec.stopped(request)
                 request = event.request; factory = event.request.options.audioSource; stoppedEvent = false
                 temporarySource = false
                 assembler = BlockAssembler(silenceRms = event.request.options.silenceRms)
@@ -124,7 +125,7 @@ class ConversationCaptureService : Service() {
                 startInput()
             }
             is Event.Control -> when (event.action) {
-                STOP -> { endInput(); debugStopped(); state(CaptureStatus.Off); TalkRec.finished(); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
+                STOP -> { endInput(); debugStopped(); state(CaptureStatus.Off); TalkRec.finished(request); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
                 PAUSE -> pauseCapture()
                 RESUME -> if (request != null && TalkRec.state.value.status == CaptureStatus.Paused) startInput()
                 MARK -> if (TalkRec.state.value.status == CaptureStatus.On) {
@@ -431,7 +432,7 @@ class ConversationCaptureService : Service() {
         debugTraces.forEach { it.finish() }; debugTraces.clear()
         debugStopped()
         wake?.let { if (it.isHeld) it.release() }; wake = null
-        state(CaptureStatus.Off); TalkRec.finished()
+        state(CaptureStatus.Off); TalkRec.finished(request); TalkRec.stopped(request)
         super.onDestroy()
     }
 

@@ -11,6 +11,8 @@ import android.util.Log
 import java.util.Locale
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -100,6 +102,7 @@ class PleosQuestionSpeaker(
             current = finished
             firstSoundAt = null
             val error = try {
+                currentCoroutineContext().ensureActive()
                 engine.speak(text, true)
                 val outcome = withTimeoutOrNull(SPEAK_TIMEOUT_MS) { finished.await() }
                 when (outcome) {
@@ -107,14 +110,21 @@ class PleosQuestionSpeaker(
                     DONE -> null
                     else -> outcome
                 }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (_: RuntimeException) { "SPEAK_EXCEPTION" }
-            current = null
+            finally {
+                // Cancellation must release actual device TTS, including while stop callbacks lag.
+                if (!finished.isCompleted) runCatching { engine.stop() }
+                current = null
+            }
             val end = SystemClock.elapsedRealtime()
             SpeakResult(error, firstSoundAt?.let { it - begin }, end - begin)
         }
     }
 
     override fun stop() {
+        current?.complete("STOPPED")
         runCatching { tts?.stop() }
     }
 

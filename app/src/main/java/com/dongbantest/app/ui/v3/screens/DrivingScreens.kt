@@ -135,6 +135,8 @@ data class DrivingEvents(
     /** "이 순간 담기" 탭 */
     val onMoment: () -> Unit = {},
     val onRecordingToggle: () -> Unit = {},
+    /** 맨 아래 "여행 끝내기". null 이면 버튼을 그리지 않는다(디자인 카탈로그·미리보기). 정차 중에만 눌린다. */
+    val onEndTrip: (() -> Unit)? = null,
     val onPlayStory: (String) -> Unit = {},
     val onSeekStory: (String, Long) -> Unit = { _, _ -> },
 )
@@ -240,6 +242,33 @@ private fun DrivingLeft(state: DrivingUiState, events: DrivingEvents) {
             onSay = events.onVoiceExample.takeIf { state.stopped },
         )
         is DrivingCard.Quiet -> QuietFace(card.title, card.body, card.pauseHint)
+    }
+    events.onEndTrip?.let { EndTripButton(state.stopped, it) }
+}
+
+/**
+ * 왼쪽 열 맨 아래 "여행 끝내기". 도착 자동 종료를 기다리지 않고 직접 끝내는 길.
+ * 주행 중에는 흐리게 두고 이유를 한 줄로 알린다(누르면 저장·버리기를 묻는 창).
+ */
+@Composable
+private fun EndTripButton(stopped: Boolean, onEndTrip: () -> Unit) {
+    val c = DbTheme.colors
+    val t = DbTheme.type
+    Column(
+        Modifier.fillMaxWidth().padding(top = Spacing.lg, bottom = Spacing.sm),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Spacing.s2xs),
+    ) {
+        com.dongbantest.app.ui.v3.components.DbButton(
+            text = "여행 끝내기",
+            onClick = onEndTrip,
+            kind = com.dongbantest.app.ui.v3.components.ButtonKind.Outline,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+            block = true, capWide = false,
+            enabled = stopped,
+            icon = DbIcons.Flag,
+        )
+        if (!stopped) Text("정차 중에만 끝낼 수 있어요", style = t.caption, color = c.muted)
     }
 }
 
@@ -359,7 +388,7 @@ data class VoiceGuideUiState(
     val commands: List<VoiceCommandUi> = listOf(
         VoiceCommandUi(GleoRecordingAction.PAUSE.example, "녹음 중에 말하면 여행 녹음을 잠깐 멈춰요"),
         VoiceCommandUi(GleoRecordingAction.RESUME.example, "글레오를 부른 뒤 말하면 멈춘 녹음을 이어가요"),
-        VoiceCommandUi(com.dongbantest.app.gleo.VoiceCommands.ASK_NEXT, "동반이가 새 질문을 건네요. 녹음은 그대로예요"),
+        VoiceCommandUi(com.dongbantest.app.gleo.VoiceCommands.STOP_ASKING, "녹음 중에 말하면 이번 여행에서는 동반이가 먼저 묻지 않아요"),
     ),
     val primary: String = "알겠어요, 출발",
     val background: DrivingUiState = DrivingStates.S04,

@@ -138,4 +138,12 @@ class ClipPersistenceTest {
         task.join()
         assertTrue(task.isCancelled); assertTrue(rowExists); assertTrue(file.exists())
     }
+
+    @Test fun discardDuringEncodingRejectsCommitAndRemovesEncodedAudio() = runBlocking {
+        val file = File(temp.root, "voice.m4a")
+        val result = store().save(file, existing = { null },
+            write = { file.writeText("aac"); 1_000 }, insert = { null })
+        assertNull(result)
+        assertFalse(file.exists())
+    }
 }

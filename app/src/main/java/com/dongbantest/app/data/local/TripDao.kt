@@ -84,8 +84,21 @@ interface TripDao {
     @Query("SELECT * FROM trips ORDER BY startedAt DESC")
     fun observeTrips(): Flow<List<TripEntity>>
 
-    @Query("SELECT * FROM trips WHERE endedAt IS NULL ORDER BY startedAt DESC LIMIT 1")
+    @Query("SELECT * FROM trips WHERE endedAt IS NULL AND isSample = 0 ORDER BY startedAt DESC, id DESC LIMIT 1")
     fun observeOngoingTrip(): Flow<TripEntity?>
+
+    @Query("SELECT * FROM trips WHERE endedAt IS NULL AND isSample = 0 ORDER BY startedAt DESC, id DESC")
+    suspend fun getOngoingTrips(): List<TripEntity>
+
+    /** Talk timestamps describe the recording, rather than a possibly delayed file save. */
+    @Query("""SELECT MAX(recordedAt) FROM (
+        SELECT recordedAt FROM location_points WHERE tripId = :tripId
+        UNION ALL
+        SELECT COALESCE(talk_meta.blockEndMs, memories.createdAt) AS recordedAt
+        FROM memories LEFT JOIN talk_meta ON talk_meta.memoryId = memories.id
+        WHERE memories.tripId = :tripId
+    )""")
+    suspend fun getLastRecordAt(tripId: Long): Long?
 
     @Query("SELECT * FROM trips WHERE id = :id")
     fun observeTrip(id: Long): Flow<TripEntity?>

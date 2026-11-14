@@ -16,6 +16,10 @@ class VoiceCommandsTest {
 
     @Test fun recognizesAskNext() {
         listOf(
+            "동반차 질문 해줘",
+            "동반차 질문해 줘",
+            "동반차 질문 좀 해줘",
+            "동반자 질문해주세요",
             "동반차 다른 질문 해줘",
             "동반차 다른 질문 해 줘.",
             "동반자 다른 질문 해주세요",
@@ -28,7 +32,7 @@ class VoiceCommandsTest {
     }
 
     @Test fun askNextRequiresInvokeWord() {
-        listOf("다른 질문 해줘", "새 질문 해줘", "질문 하나 해줘", "글레오 다른 질문 해줘", "아빠 다른 질문 해줘")
+        listOf("질문 해줘", "다른 질문 해줘", "새 질문 해줘", "질문 하나 해줘", "글레오 다른 질문 해줘", "아빠 다른 질문 해줘")
             .forEach { assertFalse(it, isAskNextCommand(it)) }
     }
 

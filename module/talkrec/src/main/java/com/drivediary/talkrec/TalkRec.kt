@@ -13,6 +13,7 @@ import com.drivediary.talkrec.sink.TalkSink
 import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,11 +37,13 @@ class CaptureOptions(
 
 /** Call start after consent + runtime RECORD_AUDIO permission, from a visible Activity. No auto restore. */
 object TalkRec {
-    internal data class Request(val id: String, val tripId: Long, val options: CaptureOptions)
+    internal data class Request(val id: String, val tripId: Long, val options: CaptureOptions,
+        val stopped: CompletableDeferred<Unit> = CompletableDeferred())
     private var application: Context? = null
     private var requested = false
     private var pending: Request? = null
     private var activeOptions: CaptureOptions? = null
+    private var activeRequest: Request? = null
     internal val mutableState = MutableStateFlow(CaptureState())
     val state: StateFlow<CaptureState> = mutableState.asStateFlow()
     internal val budget = CaptureBudget()
@@ -52,17 +55,28 @@ object TalkRec {
         val request = Request(UUID.randomUUID().toString(), tripId, options)
         activeOptions?.onReplaced?.invoke()
         activeOptions = options
+        activeRequest = request
         application = app; pending = request; requested = true
         try {
             app.startForegroundService(Intent(app, ConversationCaptureService::class.java)
                 .setAction(ConversationCaptureService.START).putExtra("request", request.id))
-        } catch (error: RuntimeException) { pending = null; requested = false; activeOptions = null; throw error }
+        } catch (error: RuntimeException) { finished(request); stopped(request); throw error }
     }
 
     @Synchronized internal fun takeRequest(id: String?): Request? = pending?.takeIf { it.id == id }?.also { pending = null }
-    @Synchronized internal fun finished() {
+    @Synchronized internal fun finished(request: Request?) {
+        if (request == null || activeRequest !== request) return
         requested = false; pending = null
         activeOptions?.onReplaced?.invoke(); activeOptions = null
+        activeRequest = null
+    }
+    internal fun stopped(request: Request?) { request?.stopped?.complete(Unit) }
+
+    /** Includes a pending start-service handoff. Completion means the service released this session. */
+    @Synchronized fun stopForTrip(tripId: Long): Deferred<Unit>? {
+        val request = activeRequest?.takeIf { it.tripId == tripId } ?: return null
+        control(ConversationCaptureService.STOP)
+        return request.stopped
     }
     /** Includes the start-service handoff and paused captures, which state alone cannot detect. */
     @Synchronized internal fun isIdle(): Boolean = !requested && state.value.status !in setOf(

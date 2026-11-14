@@ -18,6 +18,13 @@ import com.dongbantest.app.R
  * 알림을 누르면 MainActivity 가 열리고 S11 도착 화면을 보여준다 ("아직 여행 중이에요"로 되돌릴 수 있다).
  */
 class ArrivalNotifier(private val context: Context) {
+    private var shownTripId: Long? = null
+
+    fun cancel(tripId: Long) {
+        if (shownTripId != tripId) return
+        context.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
+        shownTripId = null
+    }
 
     fun show(tripId: Long, destinationName: String) {
         val granted = ContextCompat.checkSelfPermission(
@@ -52,6 +59,7 @@ class ArrivalNotifier(private val context: Context) {
             .setAutoCancel(true)
             .build()
         manager.notify(NOTIFICATION_ID, notification)
+        shownTripId = tripId
         Log.i(TAG, "도착 알림 표시: tripId=$tripId, 목적지=$place")
     }
 

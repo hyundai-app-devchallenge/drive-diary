@@ -15,6 +15,7 @@ import com.drivediary.talkrec.capture.CaptureStatus
 import com.drivediary.talkrec.capture.MicAudioSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
@@ -30,6 +31,7 @@ class TalkRecordingController(
     private val recordingSettings: RecordingSettingsStore,
 ) {
     private var activeTripId: Long? = null
+    private var stoppingCapture: Deferred<Unit>? = null
     private val requestedPause = MutableStateFlow<Long?>(null)
     val pausedTripId = requestedPause.asStateFlow()
 
@@ -61,6 +63,7 @@ class TalkRecordingController(
     suspend fun startForTrip(tripId: Long): Boolean = startForTrip(tripId, resumePaused = false)
 
     private suspend fun startForTrip(tripId: Long, resumePaused: Boolean): Boolean {
+        stoppingCapture?.await()
         if (consent.get(tripId) != true || !repository.isTripOngoing(tripId)) {
             stopForTrip(tripId)
             return false
@@ -99,10 +102,16 @@ class TalkRecordingController(
 
     fun stopForTrip(tripId: Long) {
         if (requestedPause.value == tripId) requestedPause.value = null
-        if (activeTripId != tripId) return
-        TalkRec.stop()
-        activeTripId = null
+        TalkRec.stopForTrip(tripId)?.let { stoppingCapture = it }
+        if (activeTripId == tripId) activeTripId = null
     }
+
+    suspend fun finishTrip(tripId: Long) {
+        stopForTrip(tripId)
+        stoppingCapture?.await()
+    }
+
+    suspend fun discardTrip(tripId: Long) = finishTrip(tripId)
 
     fun pause(tripId: Long) {
         if (consent.get(tripId) != true) return
@@ -116,7 +125,8 @@ class TalkRecordingController(
     }
 
     fun resumeExisting(tripId: Long): Boolean {
-        if (activeTripId != tripId || consent.get(tripId) != true) return false
+        if (repository.isTripBeingDeleted(tripId) || repository.isTripEnding(tripId) ||
+            activeTripId != tripId || consent.get(tripId) != true) return false
         if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return false
         TalkRec.resume()
         if (requestedPause.value == tripId) requestedPause.value = null

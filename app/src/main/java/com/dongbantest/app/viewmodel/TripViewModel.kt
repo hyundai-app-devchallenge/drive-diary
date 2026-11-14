@@ -24,6 +24,8 @@ import com.dongbantest.app.navi.TripPlaceRecorder
 import com.dongbantest.app.navi.NaviMonitor
 import com.dongbantest.app.domain.model.RouteRibbon
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -94,6 +96,7 @@ class TripViewModel(
     private val player = VoicePlayer(viewModelScope) { showMessage("음성을 재생할 수 없어요.") }
     val playback = player.playback
     private val local = MutableStateFlow(LocalState())
+    private var discarding = false
     private val recordingMode = combine(consentStore.changes(), talkRecording.pausedTripId) { _, _ ->
         currentRecordingMode()
     }.distinctUntilChanged()
@@ -170,6 +173,7 @@ class TripViewModel(
 
     /** 사용자가 녹음 시작 버튼 + 동승자 동의를 확인한 뒤에만 호출된다. */
     fun startRecording() {
+        if (discarding) return
         if (consentStore.get(tripId) == true) {
             if (recorder.isRecording) saveCurrentClip()
             player.stop()
@@ -277,6 +281,29 @@ class TripViewModel(
         onDeleted()
     }
 
+    /** Drop the current trip without publishing the manual recorder's unfinished clip. */
+    fun discardTrip(onDiscarded: () -> Unit) {
+        if (discarding) return
+        discarding = true
+        tripRepository.beginDiscardTrip(tripId)
+        recorder.cancel()
+        local.update { it.copy(isRecording = false, recordingStartedAt = null) }
+        player.stop()
+        locationTracker.stop(tripId)
+        vehicleSignalTracker.stop(tripId)
+        arrivalManager.discardTrip(tripId)
+        questionCoordinator.cancelForTrip(tripId)
+        talkRecording.stopForTrip(tripId)
+        viewModelScope.launch {
+            // Complete cleanup even if the trip disappearing removes this ViewModel's screen.
+            withContext(NonCancellable) {
+                talkRecording.discardTrip(tripId)
+                tripRepository.deleteTrip(tripId)
+                withContext(kotlinx.coroutines.Dispatchers.Main.immediate) { onDiscarded() }
+            }
+        }
+    }
+
     fun showMessage(text: String) = local.update { it.copy(message = text) }
     fun consumeMessage() = local.update { it.copy(message = null) }
 
@@ -356,6 +383,7 @@ class TripViewModel(
 
     /** 녹음 중인 조각을 멈추고 저장한다 (메시지 없이). */
     private fun saveCurrentClip() {
+        if (discarding) { recorder.cancel(); return }
         val result = recorder.stop()
         local.update { it.copy(isRecording = false, recordingStartedAt = null) }
         if (result != null) {
