@@ -117,6 +117,8 @@ ANSWERING ──► COOLDOWN (20분) ──► LISTENING
 - 순서: `TextToSpeech(context, Mode.ON_DEVICE)` → `initialize(OnInitializeListener)` → `addEventListener` → `setLocale(Locale.KOREA)` → `speak(text, isFinal = true)` → `stop()` → `removeEventListener` → `release()`.
 - 이벤트: `onReady`, `onStart`, `onUpdatedRms`, `onDone`, `onStop`, `onError(ErrorType)`. 오류 종류에 `ON_DEVICE_ENGINE_ERROR`, `UNAVAILABLE_LANGUAGE`, `PERMISSION_DENIED`, `AUDIO_ERROR`, `NOT_SUPPORTED_API` 등이 있다.
 - SDK가 차량 오디오로 직접 재생한다. 클래스에 `setAudioAttributes`, `setAudioZoneId`, `setSpeakerType`이 있으나 문서 본문이 비어 있어 뜻을 확인하지 못했다.
+- **AAR(3.3.1)에서 확인한 공개 API**: `TextToSpeech(Context, Mode)`, `initialize(OnInitializeListener)`, `addEventListener/removeEventListener(EventListener)`, `speak(String, Boolean)`, `stop()`, `release()`, `setLocale(Locale)`, `setAudioAttributes(android.media.AudioAttributes)`, `setAudioZoneId(Int)`, `setSpeakerType(String)`(쓸 수 있는 값은 AAR에 상수로 없음), `registerApp(...)`. `ErrorType` 12개는 문서와 같다. AAR은 음성 서비스 `ai.pleos.playground.caas` 4.1.29 이상을 요구하고, Pleos AVD 2.1.0에는 4.2.10이 있다.
+- 구현: 모듈 `ask/QuestionSpeaker.kt`의 `PleosQuestionSpeaker`(ON_DEVICE, ko-KR, 한 번에 하나, 초기화 10초·읽기 30초 시간 제한, 이벤트는 이름과 시각만 남김).
 - [소개](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/TextToSpeech/intro), [권한](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/TextToSpeech/declaring-permissions), [재생과 멈춤](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/TextToSpeech/start-and-stop), [오류 코드](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/TextToSpeech/error-code)
 
 **AVD에서 먼저 확인할 것 (QS0)**
@@ -129,7 +131,9 @@ ANSWERING ──► COOLDOWN (20분) ──► LISTENING
 
 **자기 소리 막기**: TTS `onStart`~`onDone`(+1초) 동안 캡처는 그 구간을 `Unavailable`처럼 다룬다. 묶음 조립에 말소리로 넣지 않고, 그 사이 STT 확정 결과는 버린다. TTS가 실패하면(오류·5초 안에 `onStart` 없음) 화면 Q02만 보이고 상태기는 그대로 ANSWERING으로 간다.
 
-**질문 구간 = 저장하지 않음**: `QuestionCoordinator`가 캡처 서비스에 `markNoRecord(fromMs, untilMs)`를 보낸다. 구간은 Q01 표시부터 반응 창 끝까지, 그리고 TTS 시작부터 TTS 끝 + **설정한 녹음 제외 시간**(§7.2, 기본 90초)까지다. "빼지 않음"이면 TTS 구간만 뺀다. 값은 ASKING에 들어갈 때 한 번 읽어 그 질문에 고정한다. 이 구간에서 **시작한** 묶음은 판정·저장·요약하지 않고 버린다. 구간 앞에서 시작해 걸쳐 있는 묶음은 구간 시작 시각에서 잘라 닫는다. 순환 버퍼의 음성은 평소처럼 3분 안에 덮어쓴다.
+**질문 구간 = 저장하지 않음**: `QuestionCoordinator`가 캡처 서비스에 `markNoRecord(fromMs, untilMs)`를 보낸다. 구간은 Q01 표시부터 반응 창 끝까지, 그리고 TTS 시작부터 TTS 끝 + **설정한 녹음 제외 시간**(§7.2, 기본 90초)까지다. "빼지 않음"이면 TTS 구간만 뺀다. 값은 ASKING에 들어갈 때 한 번 읽어 그 질문에 고정한다. 이 구간과 **겹치는** 묶음은 판정·저장·요약하지 않고 버린다(구현: `TalkRec.markNoRecord`, 캡처 서비스 `flushCandidates`). Q01은 8분 넘게 조용한 뒤에만 뜨므로 구간 앞에서 시작해 걸치는 묶음은 사실상 없다. 그래서 잘라 닫지 않고 통째로 버리는 쪽을 택했다. 순환 버퍼의 음성은 평소처럼 3분 안에 덮어쓴다.
+
+**구현 메모 (2026-11-14)**: TTS 소리가 마이크로 들어와 생긴 STT 줄과 묶음도 이 구간 안에 있으므로 따로 막지 않는다. TTS 프레임은 말소리로 잡혀 조용함 시간이 0이 되지만, 질문 뒤에는 어차피 대답 시간과 쉬는 시간이 이어진다.
 
 ## 7. 질문 만들기 (Cloudflare Workers AI)
 
@@ -171,11 +175,11 @@ S03의 두 번째 체크(전사 글을 외부 AI로 보내 제목·태그 만들
 
 | 항목 | 값 | 기본 | 저장 |
 | --- | --- | --- | --- |
-| 질문 뒤 녹음하지 않는 시간 | 빼지 않음 / 30초 / 60초 / 90초 / 3분 / 5분 | 90초 | `QuestionSettingsStore` (모듈 `ask/`, DataStore, 초 단위 정수) |
+| 질문 뒤 녹음하지 않는 시간 | 빼지 않음 / 30초 / 60초 / 90초 / 3분 / 5분 | 90초 | 앱 `data/ask/QuestionSettingsStore` (SharedPreferences, 초 단위 정수) |
 | 조용할 때 질문하기 | 켬 / 끔 | 켬 | 같음 |
 
 - 사용자 설정이다. 키처럼 숨길 값이 아니므로 암호화하지 않는다.
-- 화면: 팀 앱에 사용자 설정 화면이 아직 없어 처음에는 debug `SummarySettingsActivity`(동반차 디버그 → 대화 요약 설정)에 "대화 질문" 묶음으로 둔다. 사용자 설정 화면이 생기면 같은 저장 값을 그 화면에서 보이게 하고, debug 화면에서는 지운다. 그래서 release 빌드는 지금 기본값(90초, 켬)으로만 동작한다.
+- 화면: **v3 사용자 설정 화면(`SettingsScreen`, 홈 → 설정)**에 "마이크 증폭" 아래로 둔다. 2026-11-14 구현 때 팀 앱에 이 화면이 이미 생겨 있어 처음 계획(debug 설정 화면)을 바꿨다. release 빌드에서도 바꿀 수 있다.
 - 정차 중에만 바꿀 수 있다(대화 요약 설정과 같은 주행 제한).
 - 질문 실험실(§9)의 시간 바꾸기는 시험용 덮어쓰기이고, 이 저장 값과 따로 둔다.
 
@@ -221,6 +225,8 @@ adb shell am broadcast -a com.dongbantest.app.debug.ASK_REACTION --es kind accep
 | QS7 | 리허설: 지어낸 대화 PCM 주입 + 조용함 + 반응 넣기로 수락·거절·무반응·기타 네 갈래 | Claude + 사람 | 시나리오 표와 걸린 시간 기록 |
 
 QS0·QS1은 나란히 할 수 있다. QS2·QS3도 서로 기다리지 않는다. QS4는 QS0 결과가 필요하다.
+
+**진행 (2026-11-14)**: QS0([결과](QS0-tts-check.md)), QS2~QS6을 구현하고 AVD에서 실험실·adb로 흐름을 확인했다(`drive-diary-int`, 커밋 전). 남은 것은 QS1(질문 지시문 측정 T64: 지어낸 맥락 30개로 통과율·자연스러움)과 QS7(지어낸 대화 PCM 주입 리허설, 실제 발화 반응은 Devbox·실차).
 
 ## 11. 위험과 확인할 것
 
