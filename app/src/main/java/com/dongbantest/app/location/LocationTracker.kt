@@ -21,6 +21,10 @@ class LocationTracker(
     private var job: Job? = null
     private var trackingTripId: Long? = null
 
+    /** 마지막으로 받은 위치. 대화 질문의 날씨 조회에 쓴다(question-suggest). */
+    @Volatile var lastSample: LocationSample? = null
+        private set
+
     fun start(tripId: Long) {
         if (trackingTripId == tripId && job?.isActive == true) return
         if (!reader.hasPermission()) return
@@ -30,6 +34,7 @@ class LocationTracker(
             reader.locationUpdates()
                 .catch { e -> Log.w(TAG, "위치 수집 실패", e) }
                 .collect { location ->
+                    lastSample = location
                     repository.addLocationPoint(
                         LocationPoint(
                             tripId = tripId,

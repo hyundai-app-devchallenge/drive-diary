@@ -22,6 +22,7 @@ object DbIcons {
     val Play: ImageVector by lazy { lucide("Play", "M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z") }
     val MicOff: ImageVector by lazy { lucide("MicOff", "M12 19v3", "M15 9.34V5a3 3 0 0 0-5.68-1.33", "M16.95 16.95A7 7 0 0 1 5 12v-2", "M18.89 13.23A7 7 0 0 0 19 12v-2", "m2 2 20 20", "M9 9v3a3 3 0 0 0 5.12 2.12") }
     val Mic: ImageVector by lazy { lucide("Mic", "M12 19v3", "M19 10v2a7 7 0 0 1-14 0v-2", "M12 2h0a3 3 0 0 1 3 3v7a3 3 0 0 1 -3 3h0a3 3 0 0 1 -3 -3v-7a3 3 0 0 1 3 -3z") }
+    val BookmarkPlus: ImageVector by lazy { lucide("BookmarkPlus", "m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z", "M12 7v6", "M15 10H9") }
     val Check: ImageVector by lazy { lucide("Check", "M20 6 9 17l-5-5") }
     val Navigation: ImageVector by lazy { lucide("Navigation", "M3 11L22 2L13 21L11 13L3 11Z") }
     val Image: ImageVector by lazy { lucide("Image", "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2z", "M7 9a2 2 0 1 0 4 0a2 2 0 1 0 -4 0", "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21") }

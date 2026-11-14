@@ -90,11 +90,12 @@ fun TopBarFrame(modifier: Modifier = Modifier, divider: Boolean = false, content
 
 /** 정차 중 화면의 상단 줄: 워드마크 + "정차 중" 칩 */
 @Composable
-fun StoppedTopBar(stateLabel: String = "정차 중", wordmark: String = "동반차") {
+fun StoppedTopBar(stateLabel: String = "정차 중", wordmark: String = "동반차", onSettings: (() -> Unit)? = null) {
     val c = DbTheme.colors
     TopBarFrame {
         Text(wordmark, style = DbTheme.type.titleMd.copy(lineHeight = DbTheme.type.titleMd.fontSize), color = c.ink, modifier = Modifier.weight(1f).semantics { heading() })
         StateChip(stateLabel, parked = true, small = true)
+        if (onSettings != null) DbButton("설정", onSettings, kind = ButtonKind.Plain)
     }
 }
 

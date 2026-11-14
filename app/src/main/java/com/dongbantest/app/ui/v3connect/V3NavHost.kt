@@ -65,6 +65,12 @@ import com.dongbantest.app.ui.v3.screens.DrivingLayout
 import com.dongbantest.app.ui.v3.screens.HomeScreen
 import com.dongbantest.app.ui.v3.screens.MakingDiaryScreen
 import com.dongbantest.app.ui.v3.screens.RecordMapScreen
+import com.dongbantest.app.ui.v3.screens.QuietCheckScreen
+import com.dongbantest.app.ui.v3.screens.QuietCheckUiState
+import com.dongbantest.app.ui.v3.screens.SettingsScreen
+import com.dongbantest.app.ui.v3.screens.SilenceQuestionScreen
+import com.dongbantest.app.ui.v3.screens.SilenceQuestionUiState
+import com.dongbantest.app.data.ask.QuestionOverlay
 import com.dongbantest.app.ui.v3.screens.StopNoticeScreen
 import com.dongbantest.app.ui.v3.screens.StopNoticeUiState
 import com.dongbantest.app.ui.v3.screens.TripEmptyScreen
@@ -92,6 +98,7 @@ import com.dongbantest.app.ui.components.MapRoute as RealMapRoute
  */
 private object V3Routes {
     const val HOME = "home"
+    const val SETTINGS = "settings"
     const val SETUP = "setup"
     const val TRIP = "trip/{tripId}?guide={guide}"
     const val TRIP_EMPTY = "tripEmpty"
@@ -146,8 +153,8 @@ fun V3NavHost(
     val home by homeVm.uiState.collectAsStateWithLifecycle()
     val restricted = home.safety?.isRestricted == true
     // talk-rec 연동(I5b): debug 설정의 "주행 중 제목 보이기"를 여행 중 화면에 적용한다.
-    val summaryStore = remember { (context.applicationContext as DongbanApplication).container.summarySettingsStore }
-    val summarySettings by summaryStore.settings.collectAsStateWithLifecycle()
+    val container = remember(context) { (context.applicationContext as DongbanApplication).container }
+    val summarySettings by container.summarySettingsStore.settings.collectAsStateWithLifecycle()
 
     // 홈 진행률을 위해 15초마다 내비에 남은 거리를 묻는다.
     LaunchedEffect(Unit) {
@@ -186,6 +193,27 @@ fun V3NavHost(
                 onOpenPastTrip = { id -> id.toLongOrNull()?.let(openDiary) },
                 onOpenLiveTrip = { home.ongoingTrip?.let { navController.go(V3Routes.trip(it.id)) } },
                 onPastLocked = { navController.go(V3Routes.stop(V3Routes.RECORDS)) },
+                onSettings = if (restricted) null else { { navController.go(V3Routes.SETTINGS) } },
+            )
+        }
+
+        composable(V3Routes.SETTINGS) {
+            val settings = container.recordingSettingsStore
+            val micBoostEnabled by settings.micBoostEnabled.collectAsStateWithLifecycle()
+            val questions = container.questionSettingsStore
+            val questionsEnabled by questions.enabled.collectAsStateWithLifecycle()
+            val answerWindow by questions.answerWindowSeconds.collectAsStateWithLifecycle()
+            fun stopped() = homeVm.uiState.value.safety?.isRestricted != true
+            SettingsScreen(
+                micBoostEnabled = micBoostEnabled,
+                restricted = restricted,
+                onMicBoostChange = { if (stopped()) settings.setMicBoostEnabled(it) },
+                questionsEnabled = questionsEnabled,
+                onQuestionsEnabledChange = { if (stopped()) questions.setEnabled(it) },
+                answerWindowSeconds = answerWindow,
+                onAnswerWindowChange = { if (stopped()) questions.setAnswerWindowSeconds(it) },
+                onBack = { navController.popBackStack() },
+                onTab = onTab,
             )
         }
 
@@ -246,6 +274,8 @@ fun V3NavHost(
             val tripId = entry.tripId()
             val vm: TripViewModel = viewModel(factory = AppViewModelProvider.trip(tripId))
             val state by vm.uiState.collectAsStateWithLifecycle()
+            val playback by vm.playback.collectAsStateWithLifecycle()
+            val talks = remember(state.data) { state.data?.talks().orEmpty() }
             val now = rememberNow()
             val capture by TalkRec.state.collectAsStateWithLifecycle() // talk-rec: 상시 캡처 상태(녹음 칩)
             var showGuide by rememberSaveable { mutableStateOf(entry.arguments?.getBoolean("guide") == true) }
@@ -292,14 +322,22 @@ fun V3NavHost(
                     recordingToggleBlocked = false
                 }
             }
-            val driving = state.toDriving(now, capture)
+            // 조용할 때만 건네는 대화 질문(question-suggest): 이 여행의 질문 상태
+            val questionUi by container.questionCoordinator.ui.collectAsStateWithLifecycle()
+            val question = questionUi.takeIf { it.tripId == tripId }
+            val driving = remember(state, now, capture, talks) { state.toDriving(now, capture, talks) }
                 .copy(
+                    playback = playback?.toUi(talks),
                     showTitlesWhileDriving = summarySettings.showTitlesWhileDriving,
                     momentDone = momentDone,
                     recordingToggleEnabled = !recordingToggleBlocked,
                 )
+                .withQuestion(question)
             val events = DrivingEvents(
-                onPlayStory = { id -> state.data?.talks()?.firstOrNull { it.talk.id == id }?.paths?.let(vm::toggleStory) },
+                onPlayStory = { id -> talks.firstOrNull { it.talk.id == id }?.paths?.let(vm::toggleStory) },
+                onSeekStory = { id, position ->
+                    talks.firstOrNull { it.talk.id == id }?.let { vm.seekStory(it.paths, position) }
+                },
                 onTab = onTab,
                 onMoment = {
                     if (!momentDone && !recordingToggleBlocked && vm.uiState.value.toDriving(now, TalkRec.state.value).momentButton) {
@@ -313,18 +351,20 @@ fun V3NavHost(
                     val text = current.toDriving(now, TalkRec.state.value).recordingToggleText
                     if (!recordingToggleBlocked && text != null) {
                         recordingToggleBlocked = true
-                        // 화면에 보이는 버튼 그대로 동작한다(모드 ON이지만 캡처가 멈춘 경우 포함).
-                        if (text == RESUME_TEXT) {
-                            vm.resumeRecording()
-                            vm.showMessage("다시 녹음할게요")
-                        } else {
-                            vm.pauseRecording()
-                            vm.showMessage("녹음을 잠시 멈췄어요")
+                        vm.toggleRecordingWhileStopped(resume = text == RESUME_TEXT)
+                    }
+                },
+                onVoiceExample = { say ->
+                    // 대화 질문: Q01 예시("아니, 안 자")는 수락, "질문 그만"은 이번 여행 먼저 묻지 않기(정차 중 탭)
+                    when {
+                        restricted -> Unit
+                        say == QuietCheckUiState().say -> container.questionCoordinator.acceptFromScreen()
+                        else -> {
+                            vm.onVoiceExampleTapped(say)
                         }
                     }
                 },
-                onVoiceExample = vm::onVoiceCommand,
-                onToastSay = vm::onVoiceCommand,
+                onToastSay = vm::onVoiceExampleTapped,
                 // 진행 알약을 누르면 여행을 직접 끝낼 수 있다(정차 중일 때만). 도착 자동 종료가 안 될 때를 위한 길.
                 onTripPill = { if (!restricted) confirmEnd = true },
             )
@@ -339,6 +379,22 @@ fun V3NavHost(
                             vm.onScreenShown(context.hasMic())
                         },
                     )
+                    question?.overlay == QuestionOverlay.Check -> QuietCheckScreen(
+                        state = QuietCheckUiState(background = driving),
+                        events = events,
+                    )
+                    question?.overlay is QuestionOverlay.Asking -> {
+                        val asking = question.overlay as QuestionOverlay.Asking
+                        SilenceQuestionScreen(
+                            state = SilenceQuestionUiState(
+                                tag = "가족", question = asking.question, hint = asking.hint,
+                                // 녹음 중이 아니면 글레오를 거치므로 "다른 질문"만, 글레오 안내와 함께
+                                say = questionSay(driving.recording), sayLabel = questionSayLabel(driving.recording),
+                                background = driving,
+                            ),
+                            events = events,
+                        )
+                    }
                     confirmEnd -> DrivingLayout(driving, events, overlay = {
                         EndTripDialog(
                             onEnd = {
@@ -453,13 +509,15 @@ fun V3NavHost(
             }
             var editStep by rememberSaveable { mutableIntStateOf(0) } // 0 닫힘, 1 편집 메뉴, 2 지우기 확인
             val talks = remember(data) { data.talks() }
-            val playing = talks.firstOrNull { state.playingPath in it.paths }?.talk
+            val record = remember(data, talks) { data.toRecord(talks) }
+            val playback by vm.playback.collectAsStateWithLifecycle()
             Box(Modifier.fillMaxSize()) {
             DiaryScreen(
                 state = DiaryUiState(
-                    record = data.toRecord(),
+                    record = record,
                     live = data.trip.isOngoing && !restricted,
-                    playingTime = playing?.time, playingId = playing?.id,
+                    playback = playback?.toUi(talks),
+                    playbackEnabled = !restricted,
                     recordingText = "여행 기록 중",
                 ),
                 onTab = onTab,
@@ -472,7 +530,10 @@ fun V3NavHost(
                         navController.navigate(V3Routes.diary(next)) { popUpTo(V3Routes.DIARY) { inclusive = true } }
                     }
                 },
-                onPlay = { talk -> talks.firstOrNull { it.talk == talk }?.paths?.let(vm::toggleStory) },
+                onPlay = { talk -> talks.firstOrNull { it.talk.id == talk.id }?.paths?.let(vm::toggleStory) },
+                onSeek = { talk, position ->
+                    talks.firstOrNull { it.talk.id == talk.id }?.let { vm.seekStory(it.paths, position) }
+                },
                 map = { m ->
                     RouteMap(
                         routes = listOf(RealMapRoute(tripId, RouteColors.forTrip(tripId), data.drive.path, data.drive.timeline)),

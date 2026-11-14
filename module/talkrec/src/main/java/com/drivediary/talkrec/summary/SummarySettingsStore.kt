@@ -141,6 +141,22 @@ class SummarySettingsStore internal constructor(
         }
     }
 
+    /**
+     * Question generation (ask/) shares the summary provider choice and Cloudflare key.
+     * Null when the selected provider is not Cloudflare or the key is not set.
+     */
+    internal suspend fun cloudflareCredentials(): CloudflareCredentials? = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val current = readSettings()
+            if (current.provider != SummaryProviderType.CLOUDFLARE || current.cloudflareAccountId.isBlank()) return@withLock null
+            val token = try { readCloudflareToken() } catch (_: SummaryException) { null } ?: return@withLock null
+            CloudflareCredentials(current.cloudflareAccountId, token, current.modelName)
+        }
+    }
+
+    /** True when summaries use the offline fake provider (questions then use the fake generator too). */
+    internal fun usesFakeProvider(): Boolean = readSettings().provider == SummaryProviderType.FAKE
+
     private fun readSettings(): SummarySettings {
         val selected = storedSummaryProvider(prefs.getString("provider", null))
         return SummarySettings(

@@ -1,0 +1,47 @@
+{
+  "packageName": "com.dongbantest.app",
+  "appDescription": "Dongbancha is a travel diary that records conversations during a trip with the occupants' consent.",
+  "invokeWord": "동반차",
+  "version": "1.0",
+  "actionCalls": [
+    {
+      "type": "function",
+      "function": {
+        "component": "service",
+        "name": "PAUSE_TRIP_RECORDING",
+        "description": "Turn off or pause Dongbancha's in-car conversation recording for the current trip.",
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "component": "service",
+        "name": "RESUME_TRIP_RECORDING",
+        "description": "Restart paused in-car conversation recording for the current trip in Dongbancha.",
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "component": "service",
+        "name": "ASK_NEW_QUESTION",
+        "description": "Ask a new conversation question for the people in the car in Dongbancha. Does not change recording.",
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      }
+    }
+  ]
+}

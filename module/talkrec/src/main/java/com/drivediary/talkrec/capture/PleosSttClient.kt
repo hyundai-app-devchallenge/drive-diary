@@ -25,6 +25,7 @@ import kotlinx.coroutines.withContext
 /** SDK operations and callbacks are serialized on Main, as in SyntheticStreamProbe. */
 class PleosSttClient(
     context: Context, private val scope: CoroutineScope, private val locale: Locale = Locale.KOREA,
+    private val onStatus: (SttStatus) -> Unit,
     private val onFailure: () -> Unit,
 ) {
     private val app = context.applicationContext
@@ -48,6 +49,7 @@ class PleosSttClient(
     val isInputDrained: Boolean get() = ready && queued.isEmpty() && draining?.isActive != true
 
     suspend fun start() = withContext(Dispatchers.Main.immediate) {
+        onStatus(SttStatus.Connecting)
         initialize()
         initialized.await()
     }
@@ -67,7 +69,9 @@ class PleosSttClient(
                             client.setLocale(locale)
                             val resultListener = results(id)
                             listener = resultListener; client.addListener(resultListener)
-                            ready = true; consecutiveFailures = 0; initialized.complete(Unit); drain()
+                            ready = true; consecutiveFailures = 0
+                            onStatus(SttStatus.Ready)
+                            initialized.complete(Unit); drain()
                             Log.i(TAG, "stt ready restarts=$restarts errors=$failures")
                         } catch (_: RuntimeException) { reconnect(true) }
                     } }
@@ -146,6 +150,7 @@ class PleosSttClient(
         restarts++
         Log.i(TAG, "stt reopen count=$restarts errors=$failures sent=$sent queued=${queued.size}")
         if (consecutiveFailures >= 5) { fail(); return }
+        onStatus(SttStatus.Reconnecting)
         reopen = scope.launch { delay(300); reopen = null; initialize() }
     }
 
@@ -162,13 +167,14 @@ class PleosSttClient(
     private fun fail() {
         if (closed) return
         if (TalkRecDebug.enabled) TalkRecDebug.emit(TalkDebugEvent.SttError("stt_failed"))
-        close(); onFailure()
+        close(); onStatus(SttStatus.Failed); onFailure()
     }
 
     /** Call on Main. Release cancels in-flight recognition; pause/stop do not flush private candidates. */
     fun close() {
         if (closed) return
         closed = true; release()
+        onStatus(SttStatus.Idle)
         queued.forEach { it.fill(0) }; queued.clear()
         initialized.cancel(); output.cancel()
         Log.i(TAG, "stt closed finals=$finals sent=$sent restarts=$restarts errors=$failures")

@@ -46,6 +46,7 @@ object AppViewModelProvider {
                 naviMonitor = c.naviMonitor,
                 consentStore = c.recordingConsentStore,
                 talkRecording = c.talkRecording,
+                questionCoordinator = c.questionCoordinator,
             )
         }
     }

@@ -16,9 +16,11 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /** The MIC source/format used by the Pleos AVD probe. One collector owns one AudioRecord. */
-class MicAudioSource : AudioSource {
+class MicAudioSource(private val boostEnabled: () -> Boolean = { false }) : AudioSource {
     @Suppress("MissingPermission")
     override fun frames(): Flow<PcmFrame> = flow {
         val minimum = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
@@ -65,8 +67,11 @@ class MicAudioSource : AudioSource {
                 filled += count
                 if (filled == samples.size) {
                     val bytes = ByteArray(PcmFrame.BYTES)
-                    if (available) for (i in samples.indices) {
-                        bytes[i * 2] = samples[i].toByte(); bytes[i * 2 + 1] = (samples[i].toInt() shr 8).toByte()
+                    if (available) {
+                        if (boostEnabled()) amplifyMicFrame(samples)
+                        for (i in samples.indices) {
+                            bytes[i * 2] = samples[i].toByte(); bytes[i * 2 + 1] = (samples[i].toInt() shr 8).toByte()
+                        }
                     }
                     // If scheduling lost real capture time, expose a discontinuity rather than compressing it.
                     if (SystemClock.elapsedRealtime() - elapsed - (number + 1) * 100 > 300) {
@@ -85,4 +90,15 @@ class MicAudioSource : AudioSource {
             } finally { recorder.release() }
         }
     }.flowOn(Dispatchers.IO)
+}
+
+/** Apply up to 30 dB of gain, using one gain per frame to avoid clipping peaks. */
+internal fun amplifyMicFrame(samples: ShortArray) {
+    val peak = samples.maxOfOrNull { abs(it.toInt()) } ?: return
+    if (peak == 0) return
+    val gain = (Short.MAX_VALUE.toDouble() / peak).coerceIn(1.0, 32.0)
+    if (gain == 1.0) return
+    for (i in samples.indices) {
+        samples[i] = (samples[i] * gain).roundToInt().toShort()
+    }
 }

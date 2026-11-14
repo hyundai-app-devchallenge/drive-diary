@@ -9,7 +9,6 @@ import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 
 enum class SafetySource { CAR_UX_RESTRICTIONS, MOCK }
 
@@ -43,19 +42,18 @@ class DrivingSafetyMonitor(context: Context) {
     fun start() {
         if (bridge != null) return
         if (!appContext.packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE)) {
-            _state.update { it.copy(source = SafetySource.MOCK, detail = "Automotive 기기가 아님 → 모의 주행 상태 사용") }
+            publishVehicleState(DrivingSafetyState(SafetySource.MOCK, mockDriving, "Automotive 기기가 아님 → 모의 주행 상태 사용"))
             return
         }
         try {
             bridge = CarUxBridge(appContext) { restricted, detail ->
-                carUxState = DrivingSafetyState(SafetySource.CAR_UX_RESTRICTIONS, restricted, detail)
-                _state.value = withSimulatedDriving(carUxState!!)
+                publishVehicleState(DrivingSafetyState(SafetySource.CAR_UX_RESTRICTIONS, restricted, detail))
             }.also { it.connect() }
         } catch (t: Throwable) {
             // android.car 라이브러리 미탑재, 서비스 미연결 등 → Mock 유지
             Log.w(TAG, "CarUxRestrictions unavailable", t)
             bridge = null
-            _state.update { it.copy(source = SafetySource.MOCK, detail = "CarUxRestrictions 사용 불가: ${t.javaClass.simpleName}") }
+            publishVehicleState(DrivingSafetyState(SafetySource.MOCK, mockDriving, "CarUxRestrictions 사용 불가: ${t.javaClass.simpleName}"))
         }
     }
 
@@ -64,8 +62,13 @@ class DrivingSafetyMonitor(context: Context) {
         bridge = null
     }
 
-    /** CarUx 가 실제로 보낸 마지막 상태. 시연용 주행 상태를 끌 때 이 값으로 돌아간다. */
-    @Volatile private var carUxState: DrivingSafetyState? = null
+    private var vehicleState = _state.value
+    private var mockDriving = false
+
+    private fun publishVehicleState(state: DrivingSafetyState) {
+        vehicleState = state
+        _state.value = withSimulatedDriving(state)
+    }
 
     /** 시연용 주행 상태. true=주행 중, false=정차 중, null=차량 값을 그대로 쓴다. */
     @Volatile private var simulatedDriving: Boolean? = null
@@ -77,7 +80,7 @@ class DrivingSafetyMonitor(context: Context) {
     fun simulateDriving(driving: Boolean?) {
         simulatedDriving = driving
         Log.i(TAG, "주행 상태 흉내: ${driving ?: "끔"}")
-        _state.value = withSimulatedDriving(carUxState ?: _state.value)
+        _state.value = withSimulatedDriving(vehicleState)
     }
 
     private fun withSimulatedDriving(state: DrivingSafetyState): DrivingSafetyState {
@@ -87,8 +90,9 @@ class DrivingSafetyMonitor(context: Context) {
 
     /** Mock 모드에서만 동작: 모의 주행/정차 전환 */
     fun setMockDriving(driving: Boolean) {
-        if (_state.value.source != SafetySource.MOCK) return
-        _state.update { it.copy(isRestricted = driving) }
+        if (vehicleState.source != SafetySource.MOCK) return
+        mockDriving = driving
+        publishVehicleState(vehicleState.copy(isRestricted = driving))
     }
 
     private class CarUxBridge(

@@ -1,6 +1,9 @@
 package com.drivediary.talkrec.summary
 
+import com.drivediary.talkrec.TalkRecDebug
 import java.io.IOException
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
@@ -9,6 +12,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+
+internal class SummaryTripContext(val tripId: Long?) : AbstractCoroutineContextElement(Key) {
+    companion object Key : CoroutineContext.Key<SummaryTripContext>
+}
 
 // Deliberately not data classes: toString must not expose bodies or credentials.
 class SummaryHttpRequest(
@@ -26,9 +33,16 @@ fun interface SummaryHttpClient {
 class UrlConnectionSummaryHttpClient : SummaryHttpClient {
     override suspend fun post(request: SummaryHttpRequest): SummaryHttpResponse = withContext(Dispatchers.IO) {
         var connection: HttpURLConnection? = null
+        var trace: ((Int?, String?, String?) -> Unit)? = null
+        var status: Int? = null
         try {
             ensureActive()
-            connection = URL(request.url).openConnection() as HttpURLConnection
+            val endpoint = URL(request.url)
+            trace = coroutineContext[SummaryTripContext]?.tripId?.let {
+                val provider = if (endpoint.host == "api.cloudflare.com") "Cloudflare" else "AI 릴레이"
+                TalkRecDebug.traceAiRequest(it, provider, request.body)
+            }
+            connection = endpoint.openConnection() as HttpURLConnection
             connection.requestMethod = "POST"
             // A redirect must never forward an API key or transcript to another host.
             connection.instanceFollowRedirects = false
@@ -43,8 +57,9 @@ class UrlConnectionSummaryHttpClient : SummaryHttpClient {
             // Relay requires Content-Length and rejects chunked requests.
             connection.setFixedLengthStreamingMode(bytes.size)
             connection.outputStream.use { it.write(bytes) }
-            val status = connection.responseCode
-            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+            val code = connection.responseCode
+            status = code
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
             val body = stream?.use {
                 val output = ByteArrayOutputStream()
                 val buffer = ByteArray(4096)
@@ -57,16 +72,23 @@ class UrlConnectionSummaryHttpClient : SummaryHttpClient {
                 output.toByteArray().toString(Charsets.UTF_8)
             }.orEmpty()
             ensureActive()
-            SummaryHttpResponse(status, body)
+            // Error bodies can echo request metadata. Show their HTTP status instead.
+            trace?.invoke(code, body.takeIf { code in 200..299 }, null)
+            SummaryHttpResponse(code, body)
         } catch (cancelled: CancellationException) {
+            trace?.invoke(status, null, "CANCELLED")
             throw cancelled
         } catch (safe: SummaryException) {
+            trace?.invoke(status, null, safe.code.name)
             throw safe
         } catch (_: SocketTimeoutException) {
+            trace?.invoke(status, null, SummaryErrorCode.TIMEOUT.name)
             throw SummaryException(SummaryErrorCode.TIMEOUT)
         } catch (_: IOException) {
+            trace?.invoke(status, null, SummaryErrorCode.NETWORK.name)
             throw SummaryException(SummaryErrorCode.NETWORK)
         } catch (_: Exception) {
+            trace?.invoke(status, null, SummaryErrorCode.HTTP_ERROR.name)
             throw SummaryException(SummaryErrorCode.HTTP_ERROR)
         } finally {
             connection?.disconnect()

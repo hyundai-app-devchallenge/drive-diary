@@ -152,7 +152,7 @@ fun QuestionCard(
 
 /** B01 조용히 듣는 중: 질문 카드 자리의 조용한 면(paper-2, 테두리 없음). 아래에 녹음 멈춤 명령 한 줄. */
 @Composable
-fun QuietFace(title: String, body: String, pauseHint: String, modifier: Modifier = Modifier) {
+fun QuietFace(title: String, body: String, pauseHint: String?, modifier: Modifier = Modifier) {
     val c = DbTheme.colors
     val wide = DbTheme.layout.wide
     val minH = if (wide) 296.dp else 234.dp
@@ -169,25 +169,28 @@ fun QuietFace(title: String, body: String, pauseHint: String, modifier: Modifier
                 Text(title, style = DbTheme.type.titleMd, color = c.ink, modifier = Modifier.semantics { heading() })
                 Text(body, style = DbTheme.type.hint, color = c.muted)
             }
-            Row(
-                Modifier.padding(top = Spacing.sm).fillMaxWidth().topRule(c.rule).padding(top = Spacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Spacing.s2xs),
-            ) {
-                DbIcon(DbIcons.Mic, 14.dp, c.muted)
-                Text(pauseHint, style = DbTheme.type.bodySm.copy(fontWeight = FontWeight.Medium, lineHeight = DbTheme.type.caption.lineHeight), color = c.muted)
+            if (pauseHint != null) {
+                Row(
+                    Modifier.padding(top = Spacing.sm).fillMaxWidth().topRule(c.rule).padding(top = Spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.s2xs),
+                ) {
+                    DbIcon(DbIcons.Mic, 14.dp, c.muted)
+                    Text(pauseHint, style = DbTheme.type.bodySm.copy(fontWeight = FontWeight.Medium, lineHeight = DbTheme.type.caption.lineHeight), color = c.muted)
+                }
             }
         },
     ) { ms, cs ->
         // 위 안내는 남은 높이의 가운데, 명령 줄은 맨 아래(웹 grid-template-rows: 1fr auto)
         val loose = cs.copy(minWidth = 0, minHeight = 0)
         val main = ms[0].measure(loose)
-        val foot = ms[1].measure(loose.copy(minWidth = cs.maxWidth))
+        val foot = ms.getOrNull(1)?.measure(loose.copy(minWidth = cs.maxWidth))
+        val footHeight = foot?.height ?: 0
         val inner = (minH.roundToPx() - (Spacing.md * 2).roundToPx()).coerceAtLeast(0)
-        val h = maxOf(inner, main.height + foot.height).coerceIn(cs.minHeight, cs.maxHeight)
+        val h = maxOf(inner, main.height + footHeight).coerceIn(cs.minHeight, cs.maxHeight)
         layout(cs.maxWidth, h) {
-            main.place(0, ((h - foot.height - main.height) / 2).coerceAtLeast(0))
-            foot.place(0, h - foot.height)
+            main.place(0, ((h - footHeight - main.height) / 2).coerceAtLeast(0))
+            foot?.place(0, h - footHeight)
         }
     }
 }
@@ -263,12 +266,14 @@ fun AskedPanel(
     nowNote: String = "지금 이야기 중",
     footnote: String? = null,
     bottom: (@Composable ColumnScope.() -> Unit)? = null,
-    // talk-rec 연동(DESIGN §6): 주행 중에는 제목 한 줄 + 태그 2개까지. 조작 없음(목록은 스크롤·펼치기 없음).
+    // 주행 중에는 제목을 한 줄로 줄이고 목록 스크롤과 재생 조작을 숨긴다.
     driving: Boolean = false,
-    // 주행 중 제목 보이기 설정이 꺼져 있으면 제목·태그 대신 중립 문구만 보인다.
+    // 주행 중 제목 보이기 설정이 꺼져 있으면 중립 문구만 보인다.
     hideTitles: Boolean = false,
     hiddenLabel: String = "나눈 대화",
     onPlayStory: (String) -> Unit = {},
+    playback: PlaybackUi? = null,
+    onSeekStory: (String, Long) -> Unit = { _, _ -> },
 ) {
     val c = DbTheme.colors
     val t = DbTheme.type
@@ -282,6 +287,7 @@ fun AskedPanel(
         }
         Column(Modifier.weight(1f).then(if (!driving) Modifier.verticalScroll(rememberScrollState()) else Modifier)) {
         items.forEach { a ->
+            val active = playback?.takeIf { !driving && it.id == a.id }
             Row(
                 Modifier.fillMaxWidth().topRule(c.rule).padding(vertical = Spacing.sm),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
@@ -293,21 +299,11 @@ fun AskedPanel(
                 val titleText = if (hideTitles) hiddenLabel else a.title
                 val titleLines = if (driving) 1 else Int.MAX_VALUE
                 val titleColor = if (hideTitles) c.muted else c.ink
-                val tagRow = @Composable {
-                    if (!hideTitles && a.audio != null) {
-                        Text("음성 ${a.audio} · 클립 ${a.clipCount}개" + when (a.kind) {
-                            "story" -> " · 이야기"
-                            "moment" -> " · 순간"
-                            else -> ""
-                        }, style = t.caption, color = c.muted)
-                    }
-                    if (!hideTitles && a.fromQuestion) Tag("동반이 질문", small = true)
-                    val shown = if (driving) a.tags.take(2) else a.tags
-                    if (!hideTitles && shown.isNotEmpty()) {
-                        Row(Modifier.padding(top = Spacing.s2xs), horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                            // MIXED: 첫 태그는 분류, 주행 중에는 분류 + 첫 키워드까지.
-                            shown.forEachIndexed { index, tag -> Tag(tag, small = true, category = index == 0) }
-                        }
+                val audioDetails = @Composable {
+                    if (active != null && active.durationMs > 0) {
+                        PlaybackBar(active) { onSeekStory(a.id, it) }
+                    } else if (!hideTitles && a.audio != null) {
+                        Text("음성 ${a.audio} · 클립 ${a.clipCount}개", style = t.caption, color = c.muted)
                     }
                 }
                 if (full) {
@@ -316,16 +312,20 @@ fun AskedPanel(
                             Text(titleText, style = titleStyle, color = titleColor, maxLines = titleLines, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             if (a.now && !hideTitles) note()
                         }
-                        tagRow()
+                        audioDetails()
                     }
                 } else {
                     Column(Modifier.weight(1f)) {
                         Text(titleText, style = titleStyle, color = titleColor, maxLines = titleLines, overflow = TextOverflow.Ellipsis)
                         if (a.now && !hideTitles) note()
-                        tagRow()
+                        audioDetails()
                     }
                 }
-                if (!driving && a.id.isNotEmpty()) PlayButton(false, "${a.title} 재생", { onPlayStory(a.id) })
+                if (!driving && a.id.isNotEmpty()) {
+                    val playing = active?.isPlaying == true
+                    val action = if (playing) "일시정지" else "재생"
+                    PlayButton(playing, "${a.title} $action", { onPlayStory(a.id) })
+                }
             }
         }
         }

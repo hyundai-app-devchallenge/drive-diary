@@ -35,6 +35,9 @@ sealed interface TalkDebugEvent {
         val runId: String? = null,
     ) : TalkDebugEvent
     data class RunClosed(val runId: String) : TalkDebugEvent
+    data object VoicePaused : TalkDebugEvent
+    class AiRequest(val id: Long, val provider: String, val body: String) : TalkDebugEvent
+    class AiResponse(val id: Long, val httpStatus: Int? = null, val body: String? = null, val error: String? = null) : TalkDebugEvent
     data object SourceEnded : TalkDebugEvent
     data class SttError(val code: String) : TalkDebugEvent
     /** Decoder/source failures are asynchronous; show the fixed code, never a URI or cause. */
@@ -51,12 +54,53 @@ object TalkRecDebug {
         var lastLevelMonotonicMs: Long? = null
     }
     private val sessions = MutableStateFlow<Session?>(null)
+    private var labEnabled = false
+    private var observedTrip: Pair<Long, Any>? = null
+    private var nextRequestId = 0L
 
     var enabled: Boolean
         get() = sessions.value != null
         @Synchronized set(value) {
-            if (value != enabled) sessions.value = if (value) Session() else null
+            if (labEnabled == value) return
+            labEnabled = value
+            sessions.value = if (value || observedTrip != null) Session() else null
         }
+
+    /** Ends when the debugger goes into the background. No producer can keep using the retired buffer. */
+    @Synchronized fun observeTrip(tripId: Long): AutoCloseable {
+        require(tripId > 0)
+        val token = Any()
+        observedTrip = tripId to token
+        if (!labEnabled) sessions.value = Session()
+        return AutoCloseable {
+            synchronized(this) {
+                if (observedTrip?.second === token) {
+                    observedTrip = null
+                    if (!labEnabled) sessions.value = null
+                }
+            }
+        }
+    }
+
+    @Synchronized internal fun traceAiRequest(
+        tripId: Long, provider: String, body: String,
+    ): ((status: Int?, body: String?, error: String?) -> Unit)? {
+        val observer = observedTrip?.takeIf { it.first == tripId }?.second ?: return null
+        val session = sessions.value ?: return null
+        val id = ++nextRequestId
+        session.events.tryEmit(TalkDebugEvent.AiRequest(id, provider, body))
+        // Retain only the lease token, never the session's string buffer, during an HTTP call.
+        val sessionToken = session.token
+        return { status, response, error ->
+            synchronized(this) {
+                if (observedTrip?.second === observer) {
+                    sessions.value?.takeIf { it.token === sessionToken }?.events?.tryEmit(
+                        TalkDebugEvent.AiResponse(id, status, response, error),
+                    )
+                }
+            }
+        }
+    }
 
     // Switch the subscription itself, rather than leaving private text queued for slow collectors
     // in one permanent SharedFlow. collectLatest cancels the old buffer on disable/restart.

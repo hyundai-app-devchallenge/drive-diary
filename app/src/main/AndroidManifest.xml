@@ -53,6 +53,21 @@
         <!-- CarUxRestrictions (AAOS). 비 Automotive 기기에서는 없어도 실행된다. -->
         <uses-library android:name="android.car" android:required="false" />
 
+        <receiver
+            android:name=".gleo.GleoRecordingReceiver"
+            android:exported="true"
+            android:permission="ai.umos.gleo.permission.APP_ACTION">
+            <intent-filter>
+                <!-- Gleo sends "<packageName>.<function name>"; the bare names match the Pleos examples. -->
+                <action android:name="${applicationId}.PAUSE_TRIP_RECORDING" />
+                <action android:name="${applicationId}.RESUME_TRIP_RECORDING" />
+                <action android:name="${applicationId}.ASK_NEW_QUESTION" />
+                <action android:name="PAUSE_TRIP_RECORDING" />
+                <action android:name="RESUME_TRIP_RECORDING" />
+                <action android:name="ASK_NEW_QUESTION" />
+            </intent-filter>
+        </receiver>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

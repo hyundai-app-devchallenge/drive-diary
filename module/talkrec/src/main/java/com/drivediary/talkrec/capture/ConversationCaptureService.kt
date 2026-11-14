@@ -30,7 +30,9 @@ class ConversationCaptureService : Service() {
     private sealed interface Event {
         class Start(val request: TalkRec.Request) : Event
         class Control(val action: String) : Event
-        class Switch(val factory: () -> AudioSource) : Event
+        class Switch(
+            val factory: (() -> AudioSource)?, val tripId: Long?, val commandResult: CompletableDeferred<Boolean>?,
+        ) : Event
         class Audio(val session: Long, val frame: PcmFrame) : Event
         class Line(val session: Long, val epoch: Long, val line: FinalLine) : Event
         class Failed(val session: Long) : Event
@@ -45,7 +47,13 @@ class ConversationCaptureService : Service() {
         fun discard() { audio.erase(); closed.trace?.finish() }
     }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val events = Channel<Event>(128, onUndeliveredElement = { if (it is Event.Audio) it.frame.pcm.fill(0) })
+    private val events = Channel<Event>(128, onUndeliveredElement = {
+        when (it) {
+            is Event.Audio -> it.frame.pcm.fill(0)
+            is Event.Switch -> { it.commandResult?.complete(false) }
+            else -> Unit
+        }
+    })
     private val ring = PcmRingBuffer()
     private val pending = mutableListOf<ClosedBlock>()
     private val debugTraces = mutableListOf<DebugBlockTrace>()
@@ -64,12 +72,14 @@ class ConversationCaptureService : Service() {
     private var route: Int? = null
     private var wake: PowerManager.WakeLock? = null
     private var stoppedEvent = false
+    private var temporarySource = false
+    private var commandResult: CompletableDeferred<Boolean>? = null
 
     override fun onCreate() {
         super.onCreate()
         requireNotNull(getSystemService(NotificationManager::class.java)).createNotificationChannel(
             NotificationChannel(CHANNEL, "여행 대화 기록", NotificationManager.IMPORTANCE_LOW))
-        TalkRec.switchSource = { dispatch(Event.Switch(it)) }
+        TalkRec.switchSource = { source, tripId, result -> dispatch(Event.Switch(source, tripId, result)) }
         scope.launch {
             for (event in events) {
                 try { handle(event) }
@@ -108,6 +118,7 @@ class ConversationCaptureService : Service() {
             is Event.Start -> {
                 endInput()
                 request = event.request; factory = event.request.options.audioSource; stoppedEvent = false
+                temporarySource = false
                 assembler = BlockAssembler(silenceRms = event.request.options.silenceRms)
                 TalkRec.mutableState.value = CaptureState(tripId = event.request.tripId)
                 startInput()
@@ -121,17 +132,51 @@ class ConversationCaptureService : Service() {
                     flushCandidates(lastEnd ?: 0)
                 }
             }
-            is Event.Switch -> if (request != null) {
+            is Event.Switch -> {
+                val current = request
                 val active = TalkRec.state.value.status == CaptureStatus.On
-                endInput(); factory = event.factory
+                if (current == null || (event.tripId != null && (event.tripId != current.tripId || !active))) {
+                    event.commandResult?.complete(false)
+                    return
+                }
+                endInput()
+                temporarySource = event.tripId != null && event.factory != null
+                commandResult = event.commandResult
+                factory = event.factory ?: current.options.audioSource
                 if (active) startInput()
             }
             is Event.Audio -> if (event.session == session) consume(event.frame) else event.frame.pcm.fill(0)
             is Event.Line -> if (event.session == session && event.epoch == epoch) {
+                val handled = try { request?.options?.voiceCommand?.invoke(event.line.text) == true }
+                    catch (_: RuntimeException) { false }
+                val consumed = !handled && try { request?.options?.consumeCommand?.invoke(event.line.text) == true }
+                    catch (_: RuntimeException) { false }
                 val current = TalkRec.state.value
                 TalkRec.mutableState.value = current.copy(finalCount = current.finalCount + 1)
-                assembler.onFinal(event.line).forEach(::closed)
-                flushCandidates(lastEnd ?: 0)
+                // A finalized line is speech evidence for the question feature, even when RMS stayed low.
+                TalkRec.mutableSpeech.value = TalkRec.speech.value.copy(quietSinceMs = null)
+                if (!handled && !consumed) {
+                    try { TalkRec.reactionTap?.invoke(event.line.text) } catch (_: RuntimeException) { /* No text in logs. */ }
+                }
+                if (handled) {
+                    flushCandidates(lastEnd ?: 0)
+                    val result = commandResult
+                    commandResult = null
+                    try {
+                        pauseCapture()
+                        result?.complete(true)
+                    } finally {
+                        result?.complete(false)
+                    }
+                    TalkRecDebug.emit(TalkDebugEvent.VoicePaused)
+                    Log.i(TAG, "paused by voice command")
+                } else if (consumed) {
+                    // App voice command (e.g. ask a question): keep the line out of storage and keep capturing.
+                    flushCandidates(lastEnd ?: 0)
+                } else if (commandResult == null) {
+                    assembler.onFinal(event.line).forEach(::closed)
+                    flushCandidates(lastEnd ?: 0)
+                }
             }
             is Event.Failed -> if (event.session == session) { error(); pauseCapture() }
             is Event.End -> if (event.session == session) {
@@ -143,7 +188,11 @@ class ConversationCaptureService : Service() {
                 // File source includes a 25 s silent drain. Wait for all closed candidates to finish first.
                 candidates?.close(); processJob?.join()
                 if (TalkRecDebug.enabled) TalkRecDebug.emit(TalkDebugEvent.SourceEnded)
-                pauseCapture()
+                if (temporarySource) {
+                    endInput()
+                    restoreDefaultSource()
+                    startInput()
+                } else pauseCapture()
             }
         }
     }
@@ -222,7 +271,10 @@ class ConversationCaptureService : Service() {
                 finally { try { judge?.close() } finally { queue.cancel() } }
             }
         }
-        val client = PleosSttClient(this, scope, active.options.locale) { dispatch(Event.Failed(id)) }
+        val client = PleosSttClient(this, scope, active.options.locale,
+            onStatus = { status -> TalkRec.mutableState.value = TalkRec.state.value.copy(sttStatus = status) },
+            onFailure = { dispatch(Event.Failed(id)) },
+        )
         stt = client
         lineJob = scope.launch { client.lines.collect { events.send(Event.Line(id, e, it)) } }
     }
@@ -232,12 +284,15 @@ class ConversationCaptureService : Service() {
             if (!frame.available) {
                 val current = TalkRec.state.value
                 TalkRec.mutableState.value = current.copy(unavailableFrameCount = current.unavailableFrameCount + 1)
+                // Missing input is never evidence of quiet.
+                TalkRec.mutableSpeech.value = SpeechActivity()
                 if (stt != null) { resetRecognition(); Log.i(TAG, "input unavailable") }
                 return
             }
             if (lastEnd != null && (frame.startMs != lastEnd || route != frame.routeId)) {
                 val current = TalkRec.state.value
                 TalkRec.mutableState.value = current.copy(discontinuityCount = current.discontinuityCount + 1)
+                TalkRec.mutableSpeech.value = SpeechActivity()
                 resetRecognition()
                 Log.i(TAG, "input discontinuity discarded")
             }
@@ -254,6 +309,11 @@ class ConversationCaptureService : Service() {
                 frameCount = current.frameCount + 1)
             val rms = frame.rms()
             if (TalkRecDebug.enabled) TalkRecDebug.level(rms, frame.endMs)
+            val speech = TalkRec.speech.value
+            TalkRec.mutableSpeech.value = SpeechActivity(
+                quietSinceMs = if (rms >= (request?.options?.silenceRms ?: 140.0)) null else speech.quietSinceMs ?: frame.startMs,
+                lastFrameEndMs = frame.endMs,
+            )
             assembler.onEnergy(frame.startMs, frame.endMs, rms).forEach(::closed)
             flushCandidates(frame.endMs)
             if (TalkRec.state.value.frameCount % 100 == 0L) {
@@ -278,6 +338,12 @@ class ConversationCaptureService : Service() {
             val closed = iterator.next()
             val block = closed.block
             if (audioUntil < block.endMs + 2000) continue
+            if (TalkRec.inNoRecord(block.startMs, block.endMs)) {
+                // Question check, question audio or its answer window (question-suggest DESIGN §6).
+                closed.trace?.finish(); iterator.remove()
+                Log.i(TAG, "block skipped reason=question_window")
+                continue
+            }
             val audio = ring.slice(block.startMs - 3000, block.endMs + 2000)
             if (candidates?.trySend(Candidate(closed, audio))?.isSuccess != true) {
                 audio.erase(); closed.trace?.finish(); dispatch(Event.Failed(session))
@@ -300,14 +366,31 @@ class ConversationCaptureService : Service() {
     }
 
     private suspend fun endInput() {
+        commandResult?.complete(false)
+        commandResult = null
+        TalkRec.mutableSpeech.value = SpeechActivity()
         session++
         sourceJob?.cancelAndJoin(); sourceJob = null
         resetRecognition()
         wake?.let { if (it.isHeld) it.release() }; wake = null
     }
-    private suspend fun pauseCapture() { endInput(); state(CaptureStatus.Paused) }
+    private fun restoreDefaultSource() {
+        if (temporarySource) {
+            temporarySource = false
+            factory = request?.options?.audioSource
+        }
+    }
+
+    private suspend fun pauseCapture() {
+        endInput()
+        restoreDefaultSource()
+        state(CaptureStatus.Paused)
+    }
+
     private fun state(status: CaptureStatus) {
-        TalkRec.mutableState.value = TalkRec.state.value.copy(status = status)
+        TalkRec.mutableState.value = TalkRec.state.value.copy(
+            status = status, usingTestAudio = status == CaptureStatus.On && temporarySource,
+        )
         if (status == CaptureStatus.On || status == CaptureStatus.Paused) {
             requireNotNull(getSystemService(NotificationManager::class.java)).notify(NOTIFICATION, notification(status == CaptureStatus.Paused))
         }
@@ -342,6 +425,7 @@ class ConversationCaptureService : Service() {
 
     override fun onDestroy() {
         TalkRec.switchSource = null
+        commandResult?.complete(false)
         scope.cancel(); events.cancel(); stt?.close(); candidates?.cancel()
         pending.forEach { it.trace?.finish() }; pending.clear(); assembler.reset(); ring.clear()
         debugTraces.forEach { it.finish() }; debugTraces.clear()

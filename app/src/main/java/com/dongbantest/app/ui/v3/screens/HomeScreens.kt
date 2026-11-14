@@ -1,5 +1,6 @@
 package com.dongbantest.app.ui.v3.screens
 
+import com.dongbantest.app.gleo.GleoRecordingAction
 import androidx.compose.foundation.layout.fillMaxSize
 import com.dongbantest.app.ui.v3.theme.AdaptiveLayout
 import androidx.compose.foundation.background
@@ -92,6 +93,7 @@ fun HomeScreen(
     onOpenPastTrip: (String) -> Unit = {},
     onOpenLiveTrip: () -> Unit = {},
     onPastLocked: () -> Unit = {},
+    onSettings: (() -> Unit)? = null,
 ) {
     // 받은 폭으로 Compact·Expanded·Full 을 먼저 정한다(아래에서 DbTheme.layout 을 읽음)
     AdaptiveLayout(Modifier.fillMaxSize()) {
@@ -99,7 +101,8 @@ fun HomeScreen(
             selectedTab = DbTab.Home,
             onTab = onTab,
             topBar = {
-                if (state.driving) DriveStatusBar(RecordingState.On, state.recordingText, stopped = false) else StoppedTopBar()
+                if (state.driving) DriveStatusBar(RecordingState.On, state.recordingText, stopped = false)
+                else StoppedTopBar(onSettings = onSettings)
             },
             verticalArrangement = HomeArrangement(),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -336,15 +339,19 @@ data class ConsentUiState(
     val subtitle: String = "여행 중 차 안의 대화를 듣다가, 남길 만한 이야기만 저장해요",
     val items: List<String> = listOf(
         "녹음 중에는 화면 위쪽에 항상 표시돼요",
-        "“녹음 잠시 멈춰”라고 말하면 언제든 멈춰요",
+        "“${GleoRecordingAction.PAUSE.example}”라고 말하면 녹음을 멈출 수 있어요",
         "남긴 대화는 정차 후 언제든 지울 수 있어요",
     ),
     /** (1) 여행 중 대화 기록 */
     val recordOption: String = "여행 중 대화 기록",
     val recordOptionSub: String = "상시 기록해요. 남길 것만 저장하고 나머지는 바로 지워요",
-    /** (2) 외부 AI 제목·태그 (1을 고른 경우에만 켤 수 있음) */
-    val aiOption: String = "전사 글을 외부 AI로 보내 제목·태그 만들기",
-    val aiOptionSub: String = "대화를 글로 옮긴 텍스트만 보내요. 음성, 이름, 위치는 보내지 않아요",
+    /**
+     * (2) 외부 AI 제목·태그 + 대화 질문 (1을 고른 경우에만 켤 수 있음).
+     * 기기 안 모델이 1차로 고른 이야기만 외부로 간다는 점을 앞세운다(question-suggest DESIGN §7.1). 최종 문구는 팀과 맞춘다.
+     */
+    val aiOption: String = "AI로 이야기 제목과 질문 만들기",
+    val aiOptionSub: String = "기기 안 모델이 먼저 고른 이야기의 글만 외부 AI로 보내 제목을 붙여요. " +
+        "조용할 때 건넬 질문은 대화 없이 목적지·지역 이름·날씨만 보내 만들어요. 음성과 이름은 보내지 않아요",
     /** (3) 녹음 없이 출발 */
     val noRecordOption: String = "녹음 없이 출발",
     val noRecordOptionSub: String = "질문만 함께해요",

@@ -12,6 +12,11 @@
     </queries>
 
     <application>
+        <activity
+            android:name=".debug.DebugGleoVoiceActivity"
+            android:exported="false"
+            android:theme="@style/Theme.DebugVoiceSession" />
+
         <!-- 에뮬레이터에서 내비 도착을 흉내 내는 테스트용 수신기 -->
         <receiver
             android:name=".navi.DebugArrivalReceiver"
@@ -56,12 +61,41 @@
             android:label="대화 요약 설정"
             android:theme="@style/Theme.Dongbantest" />
 
+        <!-- 지도 설정: Mapbox 공개 토큰을 빌드 없이 넣는다. 디버그 전용 -->
+        <activity
+            android:name=".debug.MapSettingsActivity"
+            android:exported="false"
+            android:taskAffinity="com.dongbantest.app.debugtools"
+            android:label="지도 설정"
+            android:theme="@style/Theme.Dongbantest" />
+
         <activity
             android:name=".debug.TalkRecLabActivity"
             android:exported="false"
             android:taskAffinity="com.dongbantest.app.debugtools"
             android:label="인식 실험실"
             android:theme="@style/Theme.Dongbantest" />
+
+        <activity
+            android:name=".debug.QuestionLabActivity"
+            android:exported="false"
+            android:taskAffinity="com.dongbantest.app.debugtools"
+            android:label="질문 실험실"
+            android:theme="@style/Theme.Dongbantest" />
+
+        <!-- 조용할 때 묻기(question-suggest)를 adb 로 흉내 내는 테스트용 수신기 -->
+        <receiver
+            android:name=".debug.DebugQuestionReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.dongbantest.app.debug.ASK_FORCE_QUIET" />
+                <action android:name="com.dongbantest.app.debug.ASK_FORCE_QUESTION" />
+                <action android:name="com.dongbantest.app.debug.ASK_REACTION" />
+                <action android:name="com.dongbantest.app.debug.ASK_SHORT_POLICY" />
+                <action android:name="com.dongbantest.app.debug.ASK_VOICE" />
+                <action android:name="com.dongbantest.app.debug.ASK_GLEO" />
+            </intent-filter>
+        </receiver>
 
         <!-- 개발 도구: 런처에 "동반차 디버그" 아이콘으로 따로 보인다.
              taskAffinity 를 따로 둬서, 디버그 화면을 연 뒤 "동반차" 아이콘을 눌러도 본 앱이 열리게 한다. -->

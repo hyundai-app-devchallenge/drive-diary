@@ -3,11 +3,12 @@ package com.drivediary.talkrec.summary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 
 /** This boundary intentionally carries no audio, trip, passenger, destination, or location data. */
 class PendingSummary(val id: Long, val transcript: String,
     val ids: List<Long> = listOf(id), val segments: List<String> = listOf(transcript),
-    val runId: String? = null, val ready: Boolean = true)
+    val runId: String? = null, val ready: Boolean = true, val tripId: Long? = null)
 
 interface SummaryTarget {
     /** Only PENDING saved clips; SKIPPED records must never be returned. */
@@ -49,14 +50,14 @@ class SummaryProcessor(
                 if (item.runId != null) {
                     val result = validatedStorySplit(StorySplitValidator(validator.allowedCategories), item.segments.size) {
                         if (!target.canSend(item)) throw NoLongerPending()
-                        selected.storySplit(item.segments)
+                        withContext(SummaryTripContext(item.tripId)) { selected.storySplit(item.segments) }
                     }
                     target.saveStories(item, result, selected.modelName)
                     continue
                 }
                 val result = validatedSummary(validator) {
                     if (!target.canSend(item.id)) throw NoLongerPending()
-                    selected.summarize(item.transcript)
+                    withContext(SummaryTripContext(item.tripId)) { selected.summarize(item.transcript) }
                 }
                 target.save(item.id, result, selected.modelName)
             } catch (cancelled: CancellationException) {

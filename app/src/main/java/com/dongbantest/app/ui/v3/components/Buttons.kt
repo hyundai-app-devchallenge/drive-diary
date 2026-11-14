@@ -1,5 +1,13 @@
 package com.dongbantest.app.ui.v3.components
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,6 +36,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.dongbantest.app.ui.v3.theme.DbIcons
 import com.dongbantest.app.ui.v3.theme.DbShapes
 import com.dongbantest.app.ui.v3.theme.DbTheme
 import com.dongbantest.app.ui.v3.theme.Spacing
@@ -49,6 +58,8 @@ fun DbButton(
     enabled: Boolean = true,
     /** 편집처럼 아직 안 되는 동작(.btn-off): 회색 글자, 누르지 않음 */
     off: Boolean = false,
+    /** 글자 앞 아이콘(20dp, 글자색) */
+    icon: ImageVector? = null,
 ) {
     val c = DbTheme.colors
     val source = remember { MutableInteractionSource() }
@@ -82,14 +93,18 @@ fun DbButton(
             .padding(horizontal = if (kind == ButtonKind.Plain) Spacing.sm else Spacing.lg),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text,
-            style = DbTheme.type.button.copy(
-                textDecoration = if (kind == ButtonKind.Text) TextDecoration.Underline else null,
-            ),
-            color = if (enabled) fg else fg.copy(alpha = 0.55f),
-            textAlign = TextAlign.Center,
-        )
+        val color = if (enabled) fg else fg.copy(alpha = 0.55f)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            if (icon != null) DbIcon(icon, 20.dp, color)
+            Text(
+                text,
+                style = DbTheme.type.button.copy(
+                    textDecoration = if (kind == ButtonKind.Text) TextDecoration.Underline else null,
+                ),
+                color = color,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
 
@@ -129,20 +144,30 @@ fun CircleIconButton(
     }
 }
 
-/** 다이어리 재생 버튼(.play): 48dp 채운 원 */
+/** 대화 재생·일시정지 버튼. */
 @Composable
 fun PlayButton(playing: Boolean, contentDescription: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val c = DbTheme.colors
+    val face by animateColorAsState(if (playing) c.actionPressed else c.action, tween(180), label = "Play button color")
     Box(
         modifier
             .size(48.dp)
             .clip(DbShapes.pill)
-            .background(if (playing) c.actionPressed else c.action)
+            .background(face)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center,
     ) {
-        DbIcon(if (playing) com.dongbantest.app.ui.v3.theme.DbIcons.Pause else com.dongbantest.app.ui.v3.theme.DbIcons.Play, 20.dp, c.accentInk)
+        AnimatedContent(
+            targetState = playing,
+            transitionSpec = {
+                (fadeIn(tween(180)) + scaleIn(tween(180), initialScale = 0.75f))
+                    .togetherWith(fadeOut(tween(120)) + scaleOut(tween(120), targetScale = 0.75f))
+            },
+            label = "Play and pause",
+        ) { showPause ->
+            DbIcon(if (showPause) DbIcons.Pause else DbIcons.Play, 20.dp, c.accentInk)
+        }
     }
 }
 
