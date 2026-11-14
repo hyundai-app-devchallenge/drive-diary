@@ -147,6 +147,45 @@ class TripRepository(
         }
     }
 
+    /** Import a finished fixture through the same file lock/rollback and Room transaction as clips. */
+    internal suspend fun saveSampleTalk(
+        tripId: Long,
+        meta: TalkMeta,
+        writeAudio: suspend (File) -> Long,
+    ): Long? = withContext(Dispatchers.IO) {
+        clips.locked {
+            recoverTalkClipsLocked()
+            if (!tripExists(tripId)) return@locked null
+            val trip = dao.getTrip(tripId) ?: return@locked null
+            require(trip.isSample && trip.endedAt != null)
+            require(meta.summaryStatus == SummaryStatus.DONE && meta.runClosed == true && meta.storyKeep == true)
+            require(meta.blockStartMs > trip.startedAt && meta.blockEndMs < trip.endedAt)
+            val file = files.sampleTalkVoiceFile(tripId, requireNotNull(meta.storyId))
+            if (clips.wasDeleted(file)) return@locked null
+            clips.save(file,
+                existing = { dao.getMemoryByPath(file.absolutePath)?.id },
+                write = { writeAudio(file) },
+                insert = { duration ->
+                    require(duration == meta.blockEndMs - meta.blockStartMs)
+                    if (!tripExists(tripId)) return@save null
+                    dao.insertTalkMemory(
+                        MemoryEntity(tripId = tripId, type = MemoryType.VOICE.name,
+                            createdAt = meta.blockEndMs, text = null, filePath = file.absolutePath,
+                            transcript = null, durationMs = duration),
+                        TalkMetaEntity(memoryId = 0, source = meta.source.name,
+                            blockStartMs = meta.blockStartMs, blockEndMs = meta.blockEndMs,
+                            keepScore = meta.keepScore, kind = meta.kind, title = meta.title,
+                            tags = meta.tags?.let { JSONArray(it).toString() },
+                            summaryStatus = meta.summaryStatus.name, summaryModel = meta.summaryModel,
+                            runId = meta.runId, closeReason = meta.closeReason, runClosed = meta.runClosed,
+                            storyId = meta.storyId, storyIndex = meta.storyIndex, storyKind = meta.storyKind,
+                            storyKeep = meta.storyKeep, storyReason = meta.storyReason),
+                    )
+                },
+            )
+        }
+    }
+
     suspend fun updateTalkSummary(
         memoryId: Long, status: SummaryStatus, title: String? = null, tags: List<String>? = null,
         kind: String? = null, model: String? = null,

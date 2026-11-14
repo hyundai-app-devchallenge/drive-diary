@@ -27,6 +27,10 @@ class MediaFileStore private constructor(private val rootDir: File, private val 
     fun talkVoiceFile(tripId: Long, blockId: String): File =
         File(voiceDir, "voice_talk_trip_${tripId}_${clipKey("$tripId:$blockId")}.m4a")
 
+    /** Debug fixtures use PCM WAV; keep the trip prefix for recovery and deletion. */
+    internal fun sampleTalkVoiceFile(tripId: Long, storyId: String): File =
+        File(voiceDir, "voice_talk_trip_${tripId}_sample_${clipKey(storyId)}.wav")
+
     internal val talkJournalDir = File(rootDir, "talkrec-journal")
 
     /** ClipWriter in :talkrec writes only here: final AAC and same-folder .part files.

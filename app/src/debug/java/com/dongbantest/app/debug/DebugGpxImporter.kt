@@ -4,7 +4,10 @@ import android.content.Context
 import android.util.Log
 import android.util.Xml
 import com.dongbantest.app.data.repository.TripRepository
+import com.dongbantest.app.domain.location.RoutePath
 import com.dongbantest.app.domain.model.LocationPoint
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParser
 import java.io.InputStream
 import java.time.Instant
@@ -53,12 +56,12 @@ class DebugGpxImporter(private val context: Context, private val repo: TripRepos
     suspend fun importSampleRoutes(): Int {
         val existing = repo.sampleTripTitles()
         var added = 0
-        sampleRoutes.filter { it.title !in existing }.forEach { r ->
+        sampleRoutes.forEachIndexed { index, r ->
+            if (r.title in existing) return@forEachIndexed
             val tripId = context.assets.open("gpx/${r.file}").use {
-                import(it, r.title, r.from, r.to, r.people, r.daysAgo)
+                import(it, r.title, r.from, r.to, r.people, r.daysAgo, sampleIndex = index)
             }
             if (tripId != null) {
-                repo.markSample(tripId)
                 added++
             }
         }
@@ -73,23 +76,41 @@ class DebugGpxImporter(private val context: Context, private val repo: TripRepos
         to: String,
         people: List<String>,
         daysAgo: Int,
+        sampleIndex: Int? = null,
     ): Long? {
         val points = parse(input)
         if (points.size < 2) {
-            Log.w(TAG, "점이 너무 적어요: $title (${points.size}개)")
+            Log.w(TAG, "GPX has too few points: count=${points.size}")
             return null
         }
         // GPX 의 첫 시각을 "days_ago 일 전 오전 9시"로 옮긴다. 점 사이 간격은 그대로 둔다.
         val start = startOfDay(daysAgo) + TimeUnit.HOURS.toMillis(9)
         val shift = start - points.first().time
         val tripId = repo.startTrip(title, to, people, odometer = null, odometerSource = null, now = start)
-        points.forEach { p ->
-            repo.addLocationPoint(LocationPoint(tripId, p.time + shift, p.lat, p.lng, accuracyMeters = 5f))
+        try {
+            val locations = points.map { p ->
+                LocationPoint(tripId, p.time + shift, p.lat, p.lng, accuracyMeters = 5f)
+            }
+            locations.forEach { repo.addLocationPoint(it) }
+            from?.let { repo.setStartPlace(tripId, it) }
+            repo.setEndPlace(tripId, to)
+            val end = locations.last().recordedAt
+            repo.endTrip(tripId, odometer = null, now = end)
+            if (sampleIndex != null) {
+                repo.markSample(tripId)
+                val pathTimes = RoutePath.segments(locations).flatten().map { it.recordedAt }
+                SampleTalks.plan(sampleIndex, start, end, pathTimes).forEachIndexed { index, talk ->
+                    checkNotNull(repo.saveSampleTalk(tripId, talk.metadata(tripId, index)) { file ->
+                        SampleTalks.writeAudio(file, talk.durationMs)
+                    }) { "Sample talk save was rejected" }
+                }
+            }
+        } catch (failure: Throwable) {
+            // Do not leave a partial fixture (or its audio) that subsequent imports would skip.
+            withContext(NonCancellable) { repo.deleteTrip(tripId) }
+            throw failure
         }
-        from?.let { repo.setStartPlace(tripId, it) }
-        repo.setEndPlace(tripId, to)
-        repo.endTrip(tripId, odometer = null, now = points.last().time + shift)
-        Log.i(TAG, "GPX 여행 넣기 완료: tripId=$tripId, $title, 점 ${points.size}개")
+        Log.i(TAG, "GPX import complete: tripId=$tripId, points=${points.size}")
         return tripId
     }
 
