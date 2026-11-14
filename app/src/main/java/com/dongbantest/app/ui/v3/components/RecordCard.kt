@@ -1,6 +1,18 @@
 package com.dongbantest.app.ui.v3.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -53,20 +65,24 @@ fun RecordCard(
 ) {
     val c = DbTheme.colors
     val t = DbTheme.type
+    // 고른 카드는 기록 색 테두리 대신 살짝 떠오르게(그림자) 하고, 테두리는 무채색으로 한 단계 진하게 남긴다.
+    // 색은 점·리본·지도 경로가 맡는다.
+    val lift by animateDpAsState(if (selected) 10.dp else 0.dp, tween(220), label = "Record card lift")
+    val edge by animateColorAsState(if (selected) c.muted.copy(alpha = 0.4f) else c.rule, tween(220), label = "Record card edge")
+    val fade by animateFloatAsState(if (dimmed) 0.55f else 1f, tween(220), label = "Record card dim")
+    // 누름 물결(ripple)이 펼쳐진 버튼 자리까지 번지도록 카드 전체를 누르는 면으로 둔다.
     Column(
         modifier
             .fillMaxWidth()
-            .alpha(if (dimmed) 0.5f else 1f)
+            .graphicsLayer { alpha = fade }
+            .shadow(lift, DbShapes.card, clip = false, ambientColor = c.shadow, spotColor = c.shadow)
             .clip(DbShapes.card)
-            .border(if (selected) 2.dp else 1.dp, if (selected) tone.color else c.rule, DbShapes.card)
-            .background(c.paper),
+            .background(c.paper)
+            .border(1.dp, edge, DbShapes.card)
+            .clickable(role = Role.Button, onClick = onOpen)
+            .semantics { contentDescription = openLabel; selectedSemantics = selected },
     ) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .clickable(role = Role.Button, onClick = onOpen)
-                .semantics { contentDescription = openLabel; selectedSemantics = selected },
-        ) {
+        Box(Modifier.fillMaxWidth()) {
             Row(
                 Modifier.fillMaxWidth().padding(Spacing.md),
                 verticalAlignment = Alignment.CenterVertically,
@@ -104,7 +120,11 @@ fun RecordCard(
                 )
             }
         }
-        AnimatedVisibility(selected && action != null) {
+        AnimatedVisibility(
+            selected && action != null,
+            enter = expandVertically(tween(240), expandFrom = Alignment.Top) + fadeIn(tween(200, delayMillis = 60)),
+            exit = shrinkVertically(tween(200), shrinkTowards = Alignment.Top) + fadeOut(tween(120)),
+        ) {
             Box(Modifier.fillMaxWidth().padding(start = Spacing.md, end = Spacing.md, bottom = Spacing.md)) { action?.invoke() }
         }
     }

@@ -367,7 +367,8 @@ private fun drawRoutes(style: Style, routes: List<MapRoute>, selected: Long? = n
         )
         Feature.fromGeometry(geometry).apply {
             addNumberProperty(PROP_TRIP, route.tripId)
-            addStringProperty(PROP_COLOR, route.color)
+            // 흐린 경로는 투명도 대신 회청색으로 바꾼다: 반투명 색이 지도와 섞이면 갈색·회갈색으로 탁해진다.
+            addStringProperty(PROP_COLOR, if (dim) RouteColors.DIMMED else route.color)
             addNumberProperty(PROP_OPACITY, if (dim) DIM_OPACITY else 1.0)
             addNumberProperty(PROP_GLOW_OPACITY, if (dim) 0.0 else if (selected != null) 0.28 else 0.16)
         }
@@ -615,7 +616,7 @@ private const val PROP_COLOR = "color"
 private const val PROP_OPACITY = "opacity"
 private const val PROP_GLOW_OPACITY = "glowOpacity"
 /** 다른 경로를 고른 동안 나머지 경로의 투명도 */
-private const val DIM_OPACITY = 0.22
+private const val DIM_OPACITY = 0.75
 private const val PROP_FILL = "fill"
 private const val PROP_STROKE = "stroke"
 private const val PROP_RADIUS = "radius"

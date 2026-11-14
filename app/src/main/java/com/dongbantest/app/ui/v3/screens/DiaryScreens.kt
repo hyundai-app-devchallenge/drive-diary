@@ -419,10 +419,14 @@ fun RecordMapScreen(
             scroll = !layout.wide,
         ) {
             if (layout.wide) {
-                Row(Modifier.fillMaxSize().padding(top = Spacing.xs), horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
+                // 목록 칸은 고른 카드의 그림자가 스크롤 경계에 잘리지 않게 안쪽 여백(xs)을 두고, 그만큼 칸 사이를 줄인다.
+                Row(Modifier.fillMaxSize().padding(top = Spacing.xs), horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
                     val (mapW, listW) = mapListWeights()
                     map(Modifier.weight(mapW).fillMaxHeight())
-                    Column(Modifier.weight(listW).fillMaxHeight().verticalScroll(rememberScrollState()).padding(end = Spacing.s2xs)) { head(); list() }
+                    Column(
+                        Modifier.weight(listW).fillMaxHeight().verticalScroll(rememberScrollState())
+                            .padding(start = Spacing.xs, end = Spacing.xs, bottom = Spacing.md),
+                    ) { head(); list() }
                 }
             } else {
                 head()

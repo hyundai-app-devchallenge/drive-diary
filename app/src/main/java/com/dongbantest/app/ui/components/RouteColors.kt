@@ -9,10 +9,13 @@ package com.dongbantest.app.ui.components
  */
 object RouteColors {
     private val palette = listOf(
-        "#002C5F", // 남색 (TripTone.Gangneung)
-        "#0A8F7A", // 청록 (TripTone.Jeju)
-        "#C26A00", // 주황 (TripTone.Yangpyeong)
+        "#2E66D0", // 파랑 (TripTone.Gangneung)
+        "#14917F", // 청록 (TripTone.Jeju)
+        "#D5801F", // 주황 (TripTone.Yangpyeong)
     )
+
+    /** 다른 기록을 고른 동안의 경로 색(DbColors.tripDimmed) */
+    const val DIMMED = "#B7C0CB"
 
     /** 여행 id → 0, 1, 2 중 하나 */
     fun toneIndex(tripId: Long): Int = Math.floorMod(tripId, palette.size.toLong()).toInt()
