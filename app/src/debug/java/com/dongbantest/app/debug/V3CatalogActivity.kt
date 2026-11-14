@@ -72,6 +72,14 @@ class V3CatalogActivity : ComponentActivity() {
                 }
                 HorizontalDivider()
                 Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("질문 실험실", style = MaterialTheme.typography.titleLarge)
+                    Text("지금 위치로 질문 만들기, Pleos TTS 읽기, 조용함 흉내·반응으로 질문 흐름 시험", style = MaterialTheme.typography.bodyMedium)
+                    Button(onClick = { startActivity(Intent(this@V3CatalogActivity, QuestionLabActivity::class.java)) }) {
+                        Text("질문 실험실 열기")
+                    }
+                }
+                HorizontalDivider()
+                Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("예시 여행 (실제 도로 경로)", style = MaterialTheme.typography.titleLarge)
                     Text(
                         "서울시립대학교에서 출발해 전국 13곳(부산, 대구, 경주, 여수, 전주, 강릉, 속초 등)으로 가는 여행을 기록에 넣어요. " +

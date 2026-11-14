@@ -26,11 +26,13 @@ mapbox = "11.34.2"
 onnxRuntime = "1.23.2"
 workManager = "2.12.0"
 pleosSpeechToText = "3.3.1"
+pleosTextToSpeech = "3.3.1"
 
 [libraries]
 onnxruntime-android = { group = "com.microsoft.onnxruntime", name = "onnxruntime-android", version.ref = "onnxRuntime" }
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workManager" }
 pleos-speech-to-text = { group = "ai.pleos.playground", name = "SpeechToText", version.ref = "pleosSpeechToText" }
+pleos-text-to-speech = { group = "ai.pleos.playground", name = "TextToSpeech", version.ref = "pleosTextToSpeech" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }

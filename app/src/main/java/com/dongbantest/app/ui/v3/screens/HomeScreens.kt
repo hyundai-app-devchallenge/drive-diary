@@ -345,9 +345,13 @@ data class ConsentUiState(
     /** (1) 여행 중 대화 기록 */
     val recordOption: String = "여행 중 대화 기록",
     val recordOptionSub: String = "상시 기록해요. 남길 것만 저장하고 나머지는 바로 지워요",
-    /** (2) 외부 AI 제목·태그 (1을 고른 경우에만 켤 수 있음) */
-    val aiOption: String = "전사 글을 외부 AI로 보내 제목·태그 만들기",
-    val aiOptionSub: String = "대화를 글로 옮긴 텍스트만 보내요. 음성, 이름, 위치는 보내지 않아요",
+    /**
+     * (2) 외부 AI 제목·태그 + 대화 질문 (1을 고른 경우에만 켤 수 있음).
+     * 기기 안 모델이 1차로 고른 이야기만 외부로 간다는 점을 앞세운다(question-suggest DESIGN §7.1). 최종 문구는 팀과 맞춘다.
+     */
+    val aiOption: String = "AI로 이야기 제목과 질문 만들기",
+    val aiOptionSub: String = "기기 안 모델이 먼저 고른 이야기의 글만 외부 AI로 보내 제목을 붙여요. " +
+        "조용할 때 건넬 질문은 대화 없이 목적지·지역 이름·날씨만 보내 만들어요. 음성과 이름은 보내지 않아요",
     /** (3) 녹음 없이 출발 */
     val noRecordOption: String = "녹음 없이 출발",
     val noRecordOptionSub: String = "질문만 함께해요",

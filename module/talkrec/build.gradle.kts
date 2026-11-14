@@ -51,6 +51,7 @@ dependencies {
     implementation(libs.onnxruntime.android)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.pleos.speech.to.text)
+    implementation(libs.pleos.text.to.speech)
     testImplementation(libs.junit)
     testImplementation("com.microsoft.onnxruntime:onnxruntime:${libs.versions.onnxRuntime.get()}")
     // Android's org.json is a stub on the host; use its JVM implementation in tests.

@@ -1,2 +1,3 @@
 # Keep the tested summary prompt byte-identical on Windows checkouts.
 module/talkrec/src/main/assets/prompts/summary.md text eol=lf
+module/talkrec/src/main/assets/prompts/question.md text eol=lf

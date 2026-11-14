@@ -365,7 +365,8 @@ fun VoiceGuideScreen(state: VoiceGuideUiState = VoiceGuideUiState(), events: Dri
 /* ───────── Q01 조용함 확인 / Q02 대화를 여는 질문 ───────── */
 
 data class QuietCheckUiState(
-    val speaker: String = "운전석 스피커로 작게 물어봤어요",
+    // 확인은 소리 없이 화면으로만 묻는다(question-suggest PLAN §2). 잠든 가족을 깨우지 않으려고.
+    val speaker: String = "자는 분이 깨지 않게 화면으로만 여쭤봐요",
     val title: String = "혹시 다들 자고 있나요?",
     val body: String = "깨어 있다면 이렇게 말해 보세요.",
     val say: String = "아니, 안 자",
@@ -380,7 +381,7 @@ fun QuietCheckScreen(state: QuietCheckUiState = QuietCheckUiState(), events: Dri
     DrivingLayout(state.background, events.copy(onBubble = null), overlay = {
         DbDialog(state.title, alert = true, belowBar = true) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.s2xs)) {
-                DbIcon(DbIcons.Volume1, 16.dp, c.muted)
+                DbIcon(DbIcons.Eye, 16.dp, c.muted)
                 Text(state.speaker, style = t.caption, color = c.muted)
             }
             Mascot(48.dp)

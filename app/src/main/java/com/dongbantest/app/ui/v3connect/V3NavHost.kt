@@ -65,7 +65,12 @@ import com.dongbantest.app.ui.v3.screens.DrivingLayout
 import com.dongbantest.app.ui.v3.screens.HomeScreen
 import com.dongbantest.app.ui.v3.screens.MakingDiaryScreen
 import com.dongbantest.app.ui.v3.screens.RecordMapScreen
+import com.dongbantest.app.ui.v3.screens.QuietCheckScreen
+import com.dongbantest.app.ui.v3.screens.QuietCheckUiState
 import com.dongbantest.app.ui.v3.screens.SettingsScreen
+import com.dongbantest.app.ui.v3.screens.SilenceQuestionScreen
+import com.dongbantest.app.ui.v3.screens.SilenceQuestionUiState
+import com.dongbantest.app.data.ask.QuestionOverlay
 import com.dongbantest.app.ui.v3.screens.StopNoticeScreen
 import com.dongbantest.app.ui.v3.screens.StopNoticeUiState
 import com.dongbantest.app.ui.v3.screens.TripEmptyScreen
@@ -195,10 +200,18 @@ fun V3NavHost(
         composable(V3Routes.SETTINGS) {
             val settings = container.recordingSettingsStore
             val micBoostEnabled by settings.micBoostEnabled.collectAsStateWithLifecycle()
+            val questions = container.questionSettingsStore
+            val questionsEnabled by questions.enabled.collectAsStateWithLifecycle()
+            val answerWindow by questions.answerWindowSeconds.collectAsStateWithLifecycle()
+            fun stopped() = homeVm.uiState.value.safety?.isRestricted != true
             SettingsScreen(
                 micBoostEnabled = micBoostEnabled,
                 restricted = restricted,
-                onMicBoostChange = { if (homeVm.uiState.value.safety?.isRestricted != true) settings.setMicBoostEnabled(it) },
+                onMicBoostChange = { if (stopped()) settings.setMicBoostEnabled(it) },
+                questionsEnabled = questionsEnabled,
+                onQuestionsEnabledChange = { if (stopped()) questions.setEnabled(it) },
+                answerWindowSeconds = answerWindow,
+                onAnswerWindowChange = { if (stopped()) questions.setAnswerWindowSeconds(it) },
                 onBack = { navController.popBackStack() },
                 onTab = onTab,
             )
@@ -309,6 +322,9 @@ fun V3NavHost(
                     recordingToggleBlocked = false
                 }
             }
+            // 조용할 때만 건네는 대화 질문(question-suggest): 이 여행의 질문 상태
+            val questionUi by container.questionCoordinator.ui.collectAsStateWithLifecycle()
+            val question = questionUi.takeIf { it.tripId == tripId }
             val driving = remember(state, now, capture, talks) { state.toDriving(now, capture, talks) }
                 .copy(
                     playback = playback?.toUi(talks),
@@ -316,6 +332,7 @@ fun V3NavHost(
                     momentDone = momentDone,
                     recordingToggleEnabled = !recordingToggleBlocked,
                 )
+                .withQuestion(question)
             val events = DrivingEvents(
                 onPlayStory = { id -> talks.firstOrNull { it.talk.id == id }?.paths?.let(vm::toggleStory) },
                 onSeekStory = { id, position ->
@@ -337,7 +354,18 @@ fun V3NavHost(
                         vm.toggleRecordingWhileStopped(resume = text == RESUME_TEXT)
                     }
                 },
-                onVoiceExample = vm::onVoiceExampleTapped,
+                onVoiceExample = { say ->
+                    // 대화 질문: Q01 예시("아니, 안 자")는 수락, "질문 그만"은 이번 여행 먼저 묻지 않기(정차 중 탭)
+                    when {
+                        restricted -> Unit
+                        say == QuietCheckUiState().say -> container.questionCoordinator.acceptFromScreen()
+                        else -> {
+                            if (say == "질문 그만") container.questionCoordinator.mute()
+                            if (say == "다른 질문 해 줘") container.questionCoordinator.unmute()
+                            vm.onVoiceExampleTapped(say)
+                        }
+                    }
+                },
                 onToastSay = vm::onVoiceExampleTapped,
                 // 진행 알약을 누르면 여행을 직접 끝낼 수 있다(정차 중일 때만). 도착 자동 종료가 안 될 때를 위한 길.
                 onTripPill = { if (!restricted) confirmEnd = true },
@@ -353,6 +381,20 @@ fun V3NavHost(
                             vm.onScreenShown(context.hasMic())
                         },
                     )
+                    question?.overlay == QuestionOverlay.Check -> QuietCheckScreen(
+                        state = QuietCheckUiState(background = driving),
+                        events = events,
+                    )
+                    question?.overlay is QuestionOverlay.Asking -> {
+                        val asking = question.overlay as QuestionOverlay.Asking
+                        SilenceQuestionScreen(
+                            state = SilenceQuestionUiState(
+                                tag = "가족", question = asking.question, hint = asking.hint,
+                                background = driving,
+                            ),
+                            events = events,
+                        )
+                    }
                     confirmEnd -> DrivingLayout(driving, events, overlay = {
                         EndTripDialog(
                             onEnd = {

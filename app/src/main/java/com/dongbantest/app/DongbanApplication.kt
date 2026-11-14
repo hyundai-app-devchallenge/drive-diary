@@ -2,7 +2,10 @@ package com.dongbantest.app
 
 import android.app.Application
 import android.content.Context
+import com.dongbantest.app.data.ask.QuestionCoordinator
+import com.dongbantest.app.data.ask.QuestionSettingsStore
 import com.dongbantest.app.data.local.DongbanDatabase
+import com.drivediary.talkrec.ask.PleosQuestionSpeaker
 import com.dongbantest.app.data.repository.MediaFileStore
 import com.dongbantest.app.data.repository.TripRepository
 import com.dongbantest.app.data.repository.RecordingConsentStore
@@ -58,6 +61,15 @@ class AppContainer(context: Context) : SummaryWorkerDependencies {
             tripPlaceRecorder, ArrivalNotifier(context), appScope,
         )
     }
+    // 조용할 때만 건네는 대화 질문 (talk-rec/docs/question-suggest)
+    val questionSettingsStore by lazy { QuestionSettingsStore(context) }
+    val questionSpeaker by lazy { PleosQuestionSpeaker(context) }
+    val questionCoordinator by lazy {
+        QuestionCoordinator(
+            context, appScope, tripRepository, recordingConsentStore, summarySettingsStore, questionSettingsStore,
+            naviMonitor, arrivalManager, locationTracker, questionSpeaker,
+        )
+    }
 
     fun startSummaries(context: Context) {
         appScope.launch {
@@ -89,5 +101,6 @@ class DongbanApplication : Application(), SummaryWorkerOwner {
         container = AppContainer(this)
         container.startNavi()
         container.startSummaries(this)
+        container.questionCoordinator.start()
     }
 }

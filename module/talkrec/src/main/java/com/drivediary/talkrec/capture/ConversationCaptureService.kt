@@ -151,6 +151,11 @@ class ConversationCaptureService : Service() {
                     catch (_: RuntimeException) { false }
                 val current = TalkRec.state.value
                 TalkRec.mutableState.value = current.copy(finalCount = current.finalCount + 1)
+                // A finalized line is speech evidence for the question feature, even when RMS stayed low.
+                TalkRec.mutableSpeech.value = TalkRec.speech.value.copy(quietSinceMs = null)
+                if (!handled) {
+                    try { TalkRec.reactionTap?.invoke(event.line.text) } catch (_: RuntimeException) { /* No text in logs. */ }
+                }
                 if (handled) {
                     flushCandidates(lastEnd ?: 0)
                     val result = commandResult
@@ -274,12 +279,15 @@ class ConversationCaptureService : Service() {
             if (!frame.available) {
                 val current = TalkRec.state.value
                 TalkRec.mutableState.value = current.copy(unavailableFrameCount = current.unavailableFrameCount + 1)
+                // Missing input is never evidence of quiet.
+                TalkRec.mutableSpeech.value = SpeechActivity()
                 if (stt != null) { resetRecognition(); Log.i(TAG, "input unavailable") }
                 return
             }
             if (lastEnd != null && (frame.startMs != lastEnd || route != frame.routeId)) {
                 val current = TalkRec.state.value
                 TalkRec.mutableState.value = current.copy(discontinuityCount = current.discontinuityCount + 1)
+                TalkRec.mutableSpeech.value = SpeechActivity()
                 resetRecognition()
                 Log.i(TAG, "input discontinuity discarded")
             }
@@ -296,6 +304,11 @@ class ConversationCaptureService : Service() {
                 frameCount = current.frameCount + 1)
             val rms = frame.rms()
             if (TalkRecDebug.enabled) TalkRecDebug.level(rms, frame.endMs)
+            val speech = TalkRec.speech.value
+            TalkRec.mutableSpeech.value = SpeechActivity(
+                quietSinceMs = if (rms >= (request?.options?.silenceRms ?: 140.0)) null else speech.quietSinceMs ?: frame.startMs,
+                lastFrameEndMs = frame.endMs,
+            )
             assembler.onEnergy(frame.startMs, frame.endMs, rms).forEach(::closed)
             flushCandidates(frame.endMs)
             if (TalkRec.state.value.frameCount % 100 == 0L) {
@@ -320,6 +333,12 @@ class ConversationCaptureService : Service() {
             val closed = iterator.next()
             val block = closed.block
             if (audioUntil < block.endMs + 2000) continue
+            if (TalkRec.inNoRecord(block.startMs, block.endMs)) {
+                // Question check, question audio or its answer window (question-suggest DESIGN §6).
+                closed.trace?.finish(); iterator.remove()
+                Log.i(TAG, "block skipped reason=question_window")
+                continue
+            }
             val audio = ring.slice(block.startMs - 3000, block.endMs + 2000)
             if (candidates?.trySend(Candidate(closed, audio))?.isSuccess != true) {
                 audio.erase(); closed.trace?.finish(); dispatch(Event.Failed(session))
@@ -344,6 +363,7 @@ class ConversationCaptureService : Service() {
     private suspend fun endInput() {
         commandResult?.complete(false)
         commandResult = null
+        TalkRec.mutableSpeech.value = SpeechActivity()
         session++
         sourceJob?.cancelAndJoin(); sourceJob = null
         resetRecognition()

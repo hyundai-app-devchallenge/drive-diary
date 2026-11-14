@@ -7,6 +7,7 @@ import com.drivediary.talkrec.capture.CaptureBudget
 import com.drivediary.talkrec.capture.CaptureState
 import com.drivediary.talkrec.capture.ConversationCaptureService
 import com.drivediary.talkrec.capture.MicAudioSource
+import com.drivediary.talkrec.capture.SpeechActivity
 import com.drivediary.talkrec.policy.AppSignals
 import com.drivediary.talkrec.sink.TalkSink
 import java.util.Locale
@@ -76,6 +77,33 @@ object TalkRec {
         val app = application ?: return
         app.startService(Intent(app, ConversationCaptureService::class.java).setAction(action))
     }
+
+    internal val mutableSpeech = MutableStateFlow(SpeechActivity())
+    /** Quiet tracking for the question feature. Only times, never text. */
+    val speech: StateFlow<SpeechActivity> = mutableSpeech.asStateFlow()
+
+    /**
+     * Set only while the question check (Q01) waits for a spoken reaction; null otherwise.
+     * Called on the capture service's main coroutine with each finalized line. The receiver must not store it.
+     */
+    @Volatile var reactionTap: ((text: String) -> Unit)? = null
+
+    private val noRecordWindows = mutableListOf<LongRange>()
+
+    /** Blocks overlapping [fromMs, untilMs] (epoch ms) are dropped: not judged, saved or summarized. */
+    fun markNoRecord(fromMs: Long, untilMs: Long) {
+        require(untilMs >= fromMs)
+        synchronized(noRecordWindows) {
+            noRecordWindows.removeAll { it.last < fromMs - WINDOW_KEEP_MS }
+            noRecordWindows += fromMs..untilMs
+        }
+    }
+
+    internal fun inNoRecord(startMs: Long, endMs: Long): Boolean = synchronized(noRecordWindows) {
+        noRecordWindows.any { startMs <= it.last && endMs >= it.first }
+    }
+
+    private const val WINDOW_KEEP_MS = 30 * 60_000L
 
     /** Debug receiver's in-process seam. It cannot be invoked through a release exported component. */
     internal var switchSource: ((factory: (() -> AudioSource)?, tripId: Long?, commandResult: CompletableDeferred<Boolean>?) -> Unit)? = null
