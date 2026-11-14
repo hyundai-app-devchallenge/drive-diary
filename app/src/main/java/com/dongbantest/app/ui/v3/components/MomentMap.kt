@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.VectorPainter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -206,7 +207,7 @@ private fun DrawScope.talkPin(at: Offset, sel: Boolean, tone: Color, paper: Colo
     drawCircle(shadow, r + 3.dp.toPx(), at + Offset(0f, 1.5f.dp.toPx()))
     drawCircle(paper, r + 2.5f.dp.toPx(), at)
     drawCircle(tone, r, at)
-    pinIcon(icon, at, 14.dp * s, paper)
+    pinIcon(icon, at, 14.dp, paper, s)
 }
 
 private fun DrawScope.songPin(at: Offset, sel: Boolean, ring: Color, ink: Color, paper: Color, shadow: Color, icon: VectorPainter) {
@@ -215,13 +216,19 @@ private fun DrawScope.songPin(at: Offset, sel: Boolean, ring: Color, ink: Color,
     drawCircle(shadow, r + 2.dp.toPx(), at + Offset(0f, 1.dp.toPx()))
     drawCircle(if (sel) ring else paper, r, at)
     drawCircle(ring, r, at, style = Stroke((if (sel) 2.5f else 1.5f).dp.toPx()))
-    pinIcon(icon, at, 12.dp * s, if (sel) paper else ink)
+    pinIcon(icon, at, 12.dp, if (sel) paper else ink, s)
 }
 
-private fun DrawScope.pinIcon(painter: VectorPainter, center: Offset, size: Dp, color: Color) {
+/**
+ * 아이콘을 늘 같은 크기로 그리고, 고른 핀은 [scale] 로 키운다.
+ * 한 painter 를 크기를 바꿔 가며 그리면 캐시된 그림 크기가 어긋나 아이콘이 잘려 보인다.
+ */
+private fun DrawScope.pinIcon(painter: VectorPainter, center: Offset, size: Dp, color: Color, scale: Float = 1f) {
     val px = size.toPx()
     translate(center.x - px / 2, center.y - px / 2) {
-        with(painter) { draw(Size(px, px), colorFilter = ColorFilter.tint(color)) }
+        scale(scale, pivot = Offset(px / 2, px / 2)) {
+            with(painter) { draw(Size(px, px), colorFilter = ColorFilter.tint(color)) }
+        }
     }
 }
 
@@ -240,7 +247,7 @@ private fun DrawScope.bubble(
 
 /**
  * 출발~도착 시간을 가로로 편 띠. 막대나 마커를 누르면 onSelect(id). 고른 순간 자리에는 세로선이 선다.
- * - 이야기만 있으면(노래 기록을 쓰지 않음) 한 줄: 이야기 길이만큼의 막대 위, 시작 자리에 이야기 마커(말풍선 원).
+ * - 이야기만 있으면(노래 기록을 쓰지 않음) 한 줄: 출발(빈 원)–도착(찬 원) 길 위에 이야기 길이만큼의 캡슐. 고른 이야기는 크게.
  * - 노래도 있으면 두 줄: 위 줄은 이야기(여행 색), 아래 줄은 노래(베리색).
  * ticks: (0–1 비율, "10:30") 사이 눈금. 양 끝은 startLabel / endLabel.
  */
@@ -261,7 +268,6 @@ fun MomentTimeline(
     val songs = pins.count { it.kind == MomentKind.Song }
     val twoLanes = songs > 0
     val labelStyle = if (twoLanes) t.caption else t.bodySm.copy(fontWeight = FontWeight.Medium)
-    val talkIcon = rememberVectorPainter(DbIcons.MessageCircle)
     Column(modifier, verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         BoxWithConstraints(Modifier.fillMaxWidth().height(if (twoLanes) 18.dp else 22.dp)) {
             val w = maxWidth
@@ -283,25 +289,27 @@ fun MomentTimeline(
         Canvas(
             Modifier
                 .fillMaxWidth()
-                .height(if (twoLanes) 48.dp else 72.dp)
-                .clip(DbShapes.button)
-                .background(c.paper2)
+                .height(if (twoLanes) 48.dp else 40.dp)
+                .then(if (twoLanes) Modifier.clip(DbShapes.button).background(c.paper2) else Modifier)
                 .semantics { contentDescription = if (twoLanes) "시간 띠: 이야기 ${talks}개, 노래 ${songs}곡" else "시간 띠: 이야기 ${talks}개" }
                 .pointerInput(pins, twoLanes) {
                     detectTapGestures { p ->
                         val w = size.width.toFloat()
                         val kind = if (!twoLanes || p.y < size.height / 2f) MomentKind.Talk else MomentKind.Song
-                        val slop = if (twoLanes) 8.dp.toPx() else MARKER_R.dp.toPx() + 4.dp.toPx()
+                        // 한 줄 띠는 양 끝 원 자리만큼 안쪽에서 시작한다(그리는 쪽과 같은 셈).
+                        val pad = if (twoLanes) 0f else END_R.dp.toPx() + 2.dp.toPx()
+                        val span = w - 2 * pad
+                        val slop = if (twoLanes) 8.dp.toPx() else 14.dp.toPx()
                         val hit = pins.filter { it.kind == kind }
-                            .filter { p.x in (it.start * w - slop)..(maxOf(it.end * w, it.start * w) + slop) }
-                            .minByOrNull { abs(p.x - it.start * w) }
+                            .filter { p.x in (pad + it.start * span - slop)..(pad + maxOf(it.end, it.start) * span + slop) }
+                            .minByOrNull { abs(p.x - (pad + it.start * span)) }
                         onSelect(hit?.id)
                     }
                 },
         ) {
             val w = size.width
-            ticks.forEach { (f, _) -> drawLine(c.rule, Offset(f * w, 0f), Offset(f * w, size.height), 1.dp.toPx()) }
             if (twoLanes) {
+                ticks.forEach { (f, _) -> drawLine(c.rule, Offset(f * w, 0f), Offset(f * w, size.height), 1.dp.toPx()) }
                 val lane = 13.dp.toPx()
                 val minW = 6.dp.toPx()
                 pins.forEach { pin ->
@@ -325,34 +333,40 @@ fun MomentTimeline(
                     drawLine(c.ink, Offset(x, 0f), Offset(x, size.height), 2.dp.toPx())
                 }
             } else {
-                // 한 줄: 가운데 길(옅은 선) 위에 이야기 길이 막대, 시작 자리에 이야기 마커
+                // 한 줄: 지도의 경로처럼 출발(빈 원)–도착(찬 원) 길 위에 이야기 길이만큼 캡슐.
+                // 아이콘은 지도 핀에만 쓰고 여기선 색과 길이로만 보여 준다.
+                val pad = END_R.dp.toPx() + 2.dp.toPx()
+                val x0 = pad
+                val x1 = w - pad
+                val span = x1 - x0
                 val cy = size.height / 2f
-                val bar = 10.dp.toPx()
-                drawLine(c.rule, Offset(0f, cy), Offset(w, cy), 2.dp.toPx(), StrokeCap.Round)
-                val r = MARKER_R.dp.toPx()
+                drawLine(c.ruleSoft, Offset(x0, cy), Offset(x1, cy), 4.dp.toPx(), StrokeCap.Round)
+                ticks.forEach { (f, _) ->
+                    val x = x0 + f * span
+                    drawLine(c.rule, Offset(x, cy - 7.dp.toPx()), Offset(x, cy + 7.dp.toPx()), 1.dp.toPx(), StrokeCap.Round)
+                }
+                val endR = END_R.dp.toPx()
+                // 양 끝은 회색으로 낮춰 이야기 캡슐(기록 색)만 눈에 띄게.
+                drawCircle(c.paper, endR, Offset(x0, cy))
+                drawCircle(c.muted, endR, Offset(x0, cy), style = Stroke(2.dp.toPx()))
+                drawCircle(c.muted, endR, Offset(x1, cy))
                 val talkPins = pins.filter { it.kind == MomentKind.Talk }
-                talkPins.forEach { pin ->
-                    val sel = pin.id == selected
-                    val x0 = pin.start * w
-                    val bw = maxOf((pin.end - pin.start) * w, 6.dp.toPx())
-                    drawRoundRect(
-                        if (selected == null || sel) tone else tone.copy(alpha = 0.35f),
-                        Offset(x0, cy - bar / 2), Size(bw, bar), CornerRadius(bar / 2),
-                    )
-                }
-                pins.firstOrNull { it.id == selected }?.let { pin ->
-                    val x = pin.start * w
-                    drawLine(c.ink, Offset(x, 0f), Offset(x, size.height), 2.dp.toPx())
-                }
-                // 마커는 막대·세로선 위에. 고른 것을 맨 위에.
+                // 고른 것을 맨 위에.
                 talkPins.sortedBy { it.id == selected }.forEach { pin ->
                     val sel = pin.id == selected
-                    val s = if (sel) 1.2f else 1f
-                    val at = Offset((pin.start * w).coerceIn(r * s + 2f, w - r * s - 2f), cy)
-                    drawCircle(c.shadow, r * s + 2.dp.toPx(), at + Offset(0f, 1.dp.toPx()))
-                    drawCircle(if (sel) c.ink else c.paper, r * s + 2.dp.toPx(), at)
-                    drawCircle(if (selected == null || sel) tone else tone.copy(alpha = 0.55f), r * s, at)
-                    pinIcon(talkIcon, at, (13 * s).dp, c.paper)
+                    val h = (if (sel) 18 else 12).dp.toPx()
+                    // 짧은 이야기도 양 끝 점과 헷갈리지 않게 캡슐 모양(폭 ≥ 높이의 2배)으로.
+                    val bw = maxOf((pin.end - pin.start) * span, h * 2)
+                    val left = (x0 + pin.start * span - h / 2).coerceIn(0f, w - bw)
+                    val top = Offset(left, cy - h / 2)
+                    if (sel) {
+                        drawRoundRect(c.shadow, top + Offset(-2.dp.toPx(), -1.dp.toPx()), Size(bw + 4.dp.toPx(), h + 4.dp.toPx()), CornerRadius(h))
+                        drawRoundRect(c.paper, top - Offset(2.dp.toPx(), 2.dp.toPx()), Size(bw + 4.dp.toPx(), h + 4.dp.toPx()), CornerRadius(h))
+                    }
+                    drawRoundRect(
+                        if (selected == null || sel) tone else tone.copy(alpha = 0.3f),
+                        top, Size(bw, h), CornerRadius(h / 2),
+                    )
                 }
             }
         }
@@ -373,8 +387,8 @@ fun MomentTimeline(
     }
 }
 
-/** 한 줄 시간 띠의 이야기 마커 반지름(dp) */
-private const val MARKER_R = 14f
+/** 한 줄 시간 띠 양 끝(출발·도착) 원 반지름(dp) */
+private const val END_R = 5f
 
 @Composable
 private fun Legend(text: String, swatch: @Composable () -> Unit) {

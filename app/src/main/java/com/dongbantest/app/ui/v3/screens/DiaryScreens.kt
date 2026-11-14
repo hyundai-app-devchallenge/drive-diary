@@ -70,6 +70,14 @@ import com.dongbantest.app.ui.v3.theme.DbShapes
 import com.dongbantest.app.ui.v3.theme.DbTheme
 import com.dongbantest.app.ui.v3.theme.Spacing
 
+/**
+ * 기록 지도·기록 상세의 지도 : 목록 폭 비율.
+ * Full 은 3 : 2. Expanded(약 680dp)에서 3 : 2 면 목록이 260dp 남짓이라 장소 이름·이야기 제목이 꺾이므로 1 : 1.
+ */
+@Composable
+internal fun mapListWeights(): Pair<Float, Float> =
+    if (DbTheme.layout == DbLayout.Full) 3f to 2f else 1f to 1f
+
 /* ───────── S12 다이어리 만드는 중 ───────── */
 
 enum class StepState { Done, Active, Pending }
@@ -273,7 +281,7 @@ internal fun DiaryTopBar(state: DiaryUiState, onBack: () -> Unit, onNextPage: ()
             } else {
                 DbButton(state.edit, onEdit ?: {}, ButtonKind.Plain, off = onEdit == null)
             }
-            DbButton(state.next, onNextPage, ButtonKind.Plain)
+            // "다음 장" 버튼은 뺐다(기록은 지도에서 골라 연다). onNextPage 는 호출하는 쪽 호환을 위해 남겨 둔다.
         }
     }
 }
@@ -412,9 +420,9 @@ fun RecordMapScreen(
         ) {
             if (layout.wide) {
                 Row(Modifier.fillMaxSize().padding(top = Spacing.xs), horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
-                    // 지도 : 목록 = 3 : 2
-                    map(Modifier.weight(3f).fillMaxHeight())
-                    Column(Modifier.weight(2f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(end = Spacing.s2xs)) { head(); list() }
+                    val (mapW, listW) = mapListWeights()
+                    map(Modifier.weight(mapW).fillMaxHeight())
+                    Column(Modifier.weight(listW).fillMaxHeight().verticalScroll(rememberScrollState()).padding(end = Spacing.s2xs)) { head(); list() }
                 }
             } else {
                 head()

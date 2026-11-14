@@ -133,13 +133,14 @@ internal fun MomentDiary(
             scroll = !wide,
         ) {
             if (wide) {
-                // 지도 : 이야기 = 3 : 2 (기록 지도와 같은 비율)
+                // 지도 : 이야기 비율은 기록 지도와 같다(mapListWeights).
+                val (mapW, listW) = mapListWeights()
                 Row(Modifier.fillMaxSize().padding(top = Spacing.xs), horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
-                    Column(Modifier.weight(3f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                    Column(Modifier.weight(mapW).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
                         map(Modifier.weight(1f).fillMaxWidth())
                         strip(Modifier.fillMaxWidth())
                     }
-                    Column(Modifier.weight(2f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(end = Spacing.s2xs)) {
+                    Column(Modifier.weight(listW).fillMaxHeight().verticalScroll(rememberScrollState()).padding(end = Spacing.s2xs)) {
                         DiarySummary(state)
                         DiaryStories(state, selected, pick, play, onSeek, Modifier.padding(top = Spacing.lg))
                     }
@@ -271,12 +272,14 @@ private fun StoryRow(
         if (!narrow) {
             Text(talk.time, style = t.bodySm, color = c.muted, modifier = Modifier.width(48.dp).align(Alignment.Top).padding(top = Spacing.s3xs))
         }
-        // 시간 띠·지도와 같은 이야기 마커
-        Box(
-            Modifier.align(Alignment.Top).size(28.dp).clip(DbShapes.pill)
-                .background(tone.copy(alpha = if (talk.hidden) 0.4f else 1f)),
-            contentAlignment = Alignment.Center,
-        ) { DbIcon(DbIcons.MessageCircle, 14.dp, c.paper) }
+        // 기록 색 점. 말풍선 아이콘은 지도 핀에만 쓰고, 목록·시간 띠는 색으로만 이어 준다.
+        // 제목 첫 줄(16sp × 1.3 ≈ 21dp) 가운데에 맞춘다.
+        Box(Modifier.align(Alignment.Top).padding(top = 5.dp).size(10.dp), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier.size(if (on) 10.dp else 8.dp).clip(DbShapes.pill)
+                    .background(tone.copy(alpha = if (talk.hidden) 0.4f else 1f)),
+            )
+        }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s3xs)) {
             Text(
                 talk.title, style = t.title.copy(fontWeight = if (on) FontWeight.Bold else FontWeight.SemiBold), color = c.ink,
@@ -303,7 +306,7 @@ private fun StoryRow(
         }
         if (state.playbackEnabled) {
             val playing = active?.isPlaying == true
-            PlayButton(playing, "${talk.title} ${if (playing) "일시정지" else "재생"}", { onPlay(talk) }, Modifier.align(Alignment.Top))
+            PlayButton(playing, "${talk.title} ${if (playing) "일시정지" else "재생"}", { onPlay(talk) }, Modifier.align(Alignment.Top), compact = true)
         }
     }
 }
