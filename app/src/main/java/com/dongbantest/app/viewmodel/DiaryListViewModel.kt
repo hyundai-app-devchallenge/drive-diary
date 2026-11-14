@@ -3,6 +3,7 @@ package com.dongbantest.app.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dongbantest.app.data.repository.TripRepository
+import com.dongbantest.app.data.demo.DemoSeeder
 import com.dongbantest.app.domain.model.LocationPoint
 import com.dongbantest.app.domain.model.Trip
 import com.dongbantest.app.navi.NaviMonitor
@@ -30,6 +31,7 @@ class DiaryListViewModel(
     private val tripRepository: TripRepository,
     safetyMonitor: DrivingSafetyMonitor,
     naviMonitor: NaviMonitor,
+    private val demoSeeder: DemoSeeder,
 ) : ViewModel() {
 
     val uiState: StateFlow<DiaryListUiState> = combine(
@@ -48,6 +50,6 @@ class DiaryListViewModel(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DiaryListUiState())
 
-    fun addSamples() = viewModelScope.launch { tripRepository.seedSampleTrips() }
+    fun addSamples() = viewModelScope.launch { demoSeeder.seed() }
     fun clearSamples() = viewModelScope.launch { tripRepository.clearSampleTrips() }
 }

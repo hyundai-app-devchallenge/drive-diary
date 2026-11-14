@@ -1,0 +1,250 @@
+{
+  "note": "공모전 제출용 데모 여행 3개. 원본: 동반차_데모데이터.html, 데모 대본 원본.txt. 시각(at)은 출발일 기준 HH:MM. 음성은 생성한 음성(tools/demo/import_demo_audio.py 로 넣음).",
+  "trips": [
+    {
+      "key": "A",
+      "title": "딸들이랑 나들이",
+      "gpx": "uos-suwon.gpx",
+      "from": "서울시립대학교",
+      "to": "수원 화성행궁",
+      "companions": [
+        "아빠",
+        "서윤",
+        "서아"
+      ],
+      "driver": "아빠",
+      "date": "2026-07-18",
+      "daysAgo": 120,
+      "photos": [
+        {
+          "file": "photos/A_car.jpg",
+          "at": "09:00"
+        },
+        {
+          "file": "photos/A_arrive.jpg",
+          "at": "09:44"
+        }
+      ],
+      "items": [
+        {
+          "type": "clip",
+          "at": "09:06",
+          "title": "서로가 고민이라는 자매",
+          "tags": [
+            "아이의 하루",
+            "고민",
+            "언니"
+          ],
+          "kind": "story",
+          "keep": true,
+          "durationMs": 39729
+        },
+        {
+          "type": "clip",
+          "at": "09:12",
+          "title": "집에 있는 책을 다 읽은 아이",
+          "tags": [
+            "아이의 하루",
+            "책",
+            "도서관"
+          ],
+          "kind": "story",
+          "keep": true,
+          "durationMs": 42446
+        },
+        {
+          "type": "clip",
+          "at": "09:22",
+          "title": "아빠 옆모습만 보인다는 투정",
+          "tags": [
+            "가족 이야기",
+            "핸드폰",
+            "머리카락"
+          ],
+          "kind": "moment",
+          "keep": true,
+          "durationMs": 25797
+        },
+        {
+          "type": "question",
+          "at": "09:28",
+          "text": "요즘 제일 재밌었던 일 하나만 얘기해 줄래?"
+        },
+        {
+          "type": "clip",
+          "at": "09:31",
+          "title": "물총놀이하다 물이 떨어진 날",
+          "tags": [
+            "놀이",
+            "물총",
+            "물뿌리개"
+          ],
+          "kind": "story",
+          "keep": true,
+          "durationMs": 49342
+        }
+      ],
+      "arrival": "수원 화성행궁에 도착했어요. 44분 함께 달렸어요."
+    },
+    {
+      "key": "B",
+      "title": "할머니 태우고 첫 장거리 운전",
+      "gpx": "uos-nami.gpx",
+      "from": "서울시립대학교",
+      "to": "남이섬 선착장",
+      "companions": [
+        "할머니",
+        "엄마",
+        "이모",
+        "지민"
+      ],
+      "driver": "지민",
+      "date": "2026-10-03",
+      "daysAgo": 43,
+      "photos": [
+        {
+          "file": "photos/B_car.jpg",
+          "at": "09:30"
+        },
+        {
+          "file": "photos/B_arrive.jpg",
+          "at": "10:06"
+        }
+      ],
+      "items": [
+        {
+          "type": "clip",
+          "at": "09:28",
+          "title": "손녀 운전하는 차에 탄 할머니",
+          "tags": [
+            "가족 이야기",
+            "초보운전"
+          ],
+          "kind": "moment",
+          "keep": true,
+          "durationMs": 22616
+        },
+        {
+          "type": "clip",
+          "at": "09:38",
+          "title": "여유 생긴 운전자를 놀린 엄마",
+          "tags": [
+            "노래·웃음",
+            "손장난"
+          ],
+          "kind": "moment",
+          "keep": true,
+          "durationMs": 18111
+        },
+        {
+          "type": "clip",
+          "at": "10:02",
+          "title": "혼자 운전은 아직 무섭다는 이야기",
+          "tags": [
+            "가족 이야기",
+            "내비"
+          ],
+          "kind": "moment",
+          "keep": true,
+          "durationMs": 23661
+        }
+      ],
+      "arrival": "남이섬 선착장에 도착했어요. 1시간 6분 함께 달렸어요."
+    },
+    {
+      "key": "C",
+      "title": "내 차로 친구들이랑 첫 바다",
+      "gpx": "uos-eurwangni.gpx",
+      "from": "서울시립대학교",
+      "to": "을왕리해수욕장",
+      "companions": [
+        "수아",
+        "예린",
+        "하윤"
+      ],
+      "driver": "수아",
+      "date": "2026-11-07",
+      "daysAgo": 8,
+      "photos": [
+        {
+          "file": "photos/C_car.jpg",
+          "at": "09:00"
+        },
+        {
+          "file": "photos/C_arrive.jpg",
+          "at": "10:12"
+        }
+      ],
+      "items": [
+        {
+          "type": "question",
+          "at": "09:15",
+          "text": "요즘 각자 제일 달라진 거 하나씩 말해 볼까?"
+        },
+        {
+          "type": "clip",
+          "at": "09:18",
+          "title": "친구끼리 남편 보는 눈이 닮는다는 말",
+          "tags": [
+            "친구 이야기",
+            "남편",
+            "사주"
+          ],
+          "kind": "story",
+          "keep": true,
+          "durationMs": 32275
+        },
+        {
+          "type": "clip",
+          "at": "09:26",
+          "title": "남편이 몰래 차를 계약한 이야기",
+          "tags": [
+            "친구 이야기",
+            "계약"
+          ],
+          "kind": "story",
+          "keep": true,
+          "durationMs": 15487
+        },
+        {
+          "type": "clip",
+          "at": "09:34",
+          "title": "학생 때 친구가 운전하는 게 신기한 날",
+          "tags": [
+            "친구 이야기",
+            "유턴",
+            "운전"
+          ],
+          "kind": "story",
+          "keep": true,
+          "durationMs": 34365
+        },
+        {
+          "type": "clip",
+          "at": "09:41",
+          "title": "드라마 궁금해서 화장실 참은 친구",
+          "tags": [
+            "노래·웃음",
+            "드라마"
+          ],
+          "kind": "story",
+          "keep": true,
+          "durationMs": 26377
+        },
+        {
+          "type": "clip",
+          "at": "10:10",
+          "title": "이제 어디든 갈 수 있겠다는 한마디",
+          "tags": [
+            "노래·웃음",
+            "운전"
+          ],
+          "kind": "moment",
+          "keep": true,
+          "durationMs": 13258
+        }
+      ],
+      "arrival": "을왕리해수욕장에 도착했어요. 1시간 12분 함께 달렸어요."
+    }
+  ]
+}

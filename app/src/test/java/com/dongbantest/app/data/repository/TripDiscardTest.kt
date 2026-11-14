@@ -135,7 +135,7 @@ class TripDiscardTest {
         assertTrue(memories.isEmpty())
     }
 
-    @Test fun clearSamplesRemovesWavClipsAndOrphansAndPreservesUserTrips() = runBlocking {
+    @Test fun clearSamplesRemovesSampleClipsAndOrphansAndPreservesUserTrips() = runBlocking {
         addTrip(7); addTrip(8)
         trips[7] = trips.getValue(7).copy(isSample = true, endedAt = 60_000)
         val files = MediaFileStore(temp.root)

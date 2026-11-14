@@ -9,6 +9,14 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TripDao {
+    /** Insert a demo already finished, without closing any real ongoing trip. */
+    @Transaction
+    suspend fun insertFinishedSample(trip: TripEntity, points: List<LocationPointEntity>): Long {
+        val id = insertTrip(trip)
+        points.forEach { insertLocationPoint(it.copy(tripId = id)) }
+        return id
+    }
+
     @Query("UPDATE talk_meta SET runClosed = 1 WHERE runId = :runId AND memoryId IN (SELECT id FROM memories WHERE tripId = :tripId)")
     suspend fun markTalkRunClosed(tripId: Long, runId: String)
 

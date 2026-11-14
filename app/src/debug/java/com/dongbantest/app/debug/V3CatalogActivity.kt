@@ -33,12 +33,11 @@ import kotlinx.coroutines.withContext
 
 /**
  * 디버그 빌드에만 들어가는 개발 도구 화면 (런처 이름 "동반차 디버그").
- * 요약 설정, 인식 실험실, 예시 여행 넣기·지우기 (경로 목록은 [DebugGpxImporter.sampleRoutes]).
+ * 요약 설정, 인식 실험실, 예시 여행 넣기·지우기.
  */
 class V3CatalogActivity : ComponentActivity() {
     private val container get() = (application as DongbanApplication).container
     private val repo get() = container.tripRepository
-    private val importer by lazy { DebugGpxImporter(application, repo) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -88,7 +87,7 @@ class V3CatalogActivity : ComponentActivity() {
                 Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("예시 여행 (실제 도로 경로)", style = MaterialTheme.typography.titleLarge)
                     Text(
-                        "서울시립대학교에서 출발해 전국 13곳(부산, 대구, 경주, 여수, 전주, 강릉, 속초 등)으로 가는 여행을 기록에 넣어요. " +
+                        "공모전 데모 여행 3개(수원 화성행궁, 남이섬, 을왕리)를 기록에 넣어요. " +
                             "경로: © OpenStreetMap contributors, OSRM",
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -97,7 +96,7 @@ class V3CatalogActivity : ComponentActivity() {
                             busy = true
                             status = "넣는 중… (몇 초 걸려요)"
                             scope.launch {
-                                val n = withContext(Dispatchers.IO) { importer.importSampleRoutes() }
+                                val n = withContext(Dispatchers.IO) { container.demoSeeder.seed() }
                                 status = if (n > 0) "예시 여행 ${n}개를 넣었어요. 동반차 앱의 기록 탭에서 확인하세요." else "이미 들어 있어요."
                                 busy = false
                             }
