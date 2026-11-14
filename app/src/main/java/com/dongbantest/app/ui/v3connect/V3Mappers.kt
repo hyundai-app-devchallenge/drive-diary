@@ -31,6 +31,7 @@ import com.dongbantest.app.ui.v3.components.TripTone
 import com.dongbantest.app.ui.v3.components.VoiceToastUi
 import com.dongbantest.app.ui.v3.screens.ArrivalUiState
 import com.dongbantest.app.ui.v3.screens.DiaryReadyUiState
+import com.dongbantest.app.ui.v3.screens.PhotoUi
 import com.dongbantest.app.ui.v3.screens.DrivingCard
 import com.dongbantest.app.ui.v3.screens.DrivingStates
 import com.dongbantest.app.ui.v3.screens.DrivingUiState
@@ -352,7 +353,7 @@ fun TripWithMemories.toRecord(talks: List<TalkWithPath> = talks()): TripRecordUi
         to = t.endPlace ?: t.destination.ifBlank { "도착" },
         arriveTime = end?.let { hhmm(it) } ?: "진행 중",
         duration = formatElapsed((end ?: System.currentTimeMillis()) - t.startedAt),
-        photos = memories.filter { it.type == MemoryType.PHOTO }.map { hhmm(it.createdAt) },
+        photos = memories.filter { it.type == MemoryType.PHOTO }.map { PhotoUi(it.id.toString(), hhmm(it.createdAt), it.filePath) },
         talks = talks.map { it.talk.copy(span = w.span(it.startMs, it.startMs + it.durationMs)) },
     )
 }

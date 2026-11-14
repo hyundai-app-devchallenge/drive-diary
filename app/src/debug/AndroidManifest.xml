@@ -44,6 +44,15 @@
             </intent-filter>
         </receiver>
 
+        <!-- 다이어리 사진 칸 확인용: 기록에 예시 사진을 붙이는 테스트용 수신기 (adb 로 쓸 때) -->
+        <receiver
+            android:name=".debug.DebugPhotoReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.dongbantest.app.DEBUG_ADD_PHOTOS" />
+            </intent-filter>
+        </receiver>
+
         <!-- GPX 경로 파일을 끝난 여행으로 넣는 테스트용 수신기 (adb 로 쓸 때) -->
         <receiver
             android:name=".debug.DebugGpxImportReceiver"

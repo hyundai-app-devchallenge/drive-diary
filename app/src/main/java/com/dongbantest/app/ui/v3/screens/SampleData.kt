@@ -46,6 +46,13 @@ data class SongUi(
 /** 노래 기록 권한 상태. Off 면 노래 탭이 설정 안내를 보인다. */
 enum class SongAccess { On, Off }
 
+/**
+ * 기록에 붙인 사진 한 장.
+ * @param path 앱 저장소의 사진 파일. null 이면 사진 자리(예시 화면).
+ * @param aspect 가로/세로 비율. 사진 파일이 있으면 파일에서 다시 읽는다(예시 화면은 이 값으로 그린다).
+ */
+data class PhotoUi(val id: String, val time: String, val path: String? = null, val caption: String = "", val aspect: Float = 1f)
+
 /** 기록(여행) 한 건. 웹 data-v3.ts 의 TripRecord 와 같은 필드. */
 data class TripRecordUi(
     val id: String,
@@ -60,7 +67,7 @@ data class TripRecordUi(
     val to: String,
     val arriveTime: String,
     val duration: String,
-    val photos: List<String>,
+    val photos: List<PhotoUi>,
     val talks: List<TalkUi>,
     val songs: List<SongUi> = emptyList(),
     val songAccess: SongAccess = SongAccess.On,
@@ -129,7 +136,15 @@ object Sample {
         id = "gangneung", title = TRIP_TITLE, dateLabel = "2026년 10월 10일 토요일", dateShort = "2026.10.10",
         tone = TripTone.Gangneung, people = listOf("민지", "서준", "하린", "나"), relation = RELATION,
         from = FROM, startTime = START, to = TO, arriveTime = ARRIVE, duration = TOTAL,
-        photos = listOf("경포에서 넷이", "호두과자 논쟁"),
+        photos = listOf(
+            PhotoUi("p1", "09:41", caption = "출발 전 넷이", aspect = 4f / 3f),
+            PhotoUi("p2", "09:55", caption = "호두과자 논쟁", aspect = 3f / 4f),
+            PhotoUi("p3", "10:31", caption = "대관령 터널 지나서", aspect = 16f / 9f),
+            PhotoUi("p4", "11:20", caption = "경포 바다", aspect = 1f),
+            PhotoUi("p5", "11:24", caption = "모래사장 발자국", aspect = 3f / 4f),
+            PhotoUi("p6", "11:32", caption = "경포에서 넷이", aspect = 4f / 3f),
+            PhotoUi("p7", "11:40", caption = "커피 거리", aspect = 2f / 3f),
+        ),
         talks = listOf(
             TalkUi("09:52", "휴게소 호두과자 논쟁", "0:48", false, tags = listOf("음식", "웃음"), id = "t1", span = gn(9, 52)..gn(9, 52, 48)),
             TalkUi("10:05", "운전 교대 가위바위보", "1:05", false, tags = listOf("게임"), id = "t2", span = gn(10, 5)..gn(10, 6, 5)),
@@ -150,14 +165,14 @@ object Sample {
         id = "jeju", title = "제주 가족 여행", dateLabel = "2026년 10월 3일 토요일", dateShort = "2026.10.03",
         tone = TripTone.Jeju, people = listOf("엄마", "아빠", "지우", "나"), relation = "가족",
         from = "제주공항", startTime = "10:10", to = "성산일출봉", arriveTime = "11:25", duration = "1시간 15분",
-        photos = listOf("성산에서 넷이", "귤밭 앞에서"),
+        photos = listOf(PhotoUi("p1", "11:20", caption = "성산에서 넷이", aspect = 4f / 3f), PhotoUi("p2", "11:30", caption = "귤밭 앞에서", aspect = 3f / 4f)),
         talks = listOf(TalkUi("10:24", "창밖 말 세기", "0:52", false), TalkUi("10:58", "귤 따기 노래", "1:30", true)),
     )
     val YANGPYEONG = TripRecordUi(
         id = "yangpyeong", title = "양평 드라이브", dateLabel = "2026년 9월 21일 월요일", dateShort = "2026.09.21",
         tone = TripTone.Yangpyeong, people = listOf("유진", "나"), relation = "연인",
         from = "서울 마포", startTime = "14:00", to = "양평 두물머리", arriveTime = "15:05", duration = "1시간 5분",
-        photos = listOf("두물머리 산책", "연잎 핫도그"),
+        photos = listOf(PhotoUi("p1", "14:50", caption = "두물머리 산책", aspect = 16f / 9f), PhotoUi("p2", "15:00", caption = "연잎 핫도그", aspect = 1f)),
         talks = listOf(TalkUi("14:20", "첫 데이트 장소", "2:10", true), TalkUi("14:45", "플레이리스트 고르기", "0:40", false)),
     )
     /** 최신순 */
