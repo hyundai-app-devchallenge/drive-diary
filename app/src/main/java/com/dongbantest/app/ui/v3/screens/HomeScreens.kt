@@ -6,6 +6,7 @@ import com.dongbantest.app.ui.v3.theme.AdaptiveLayout
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -61,6 +62,7 @@ import com.dongbantest.app.ui.v3.components.DriveStatusBar
 import com.dongbantest.app.ui.v3.components.Mascot
 import com.dongbantest.app.ui.v3.components.OutlineButton
 import com.dongbantest.app.ui.v3.components.PhotoSlot
+import com.dongbantest.app.ui.v3.components.PhotoImage
 import com.dongbantest.app.ui.v3.components.PrimaryButton
 import com.dongbantest.app.ui.v3.components.RecordingState
 import com.dongbantest.app.ui.v3.components.RoadRibbon
@@ -74,7 +76,14 @@ import com.dongbantest.app.ui.v3.theme.Spacing
 
 /* ───────── S01 홈 ───────── */
 
-data class PastTripUi(val id: String, val title: String, val date: String, val tone: com.dongbantest.app.ui.v3.components.TripTone)
+data class PastTripUi(
+    val id: String,
+    val title: String,
+    val date: String,
+    val tone: com.dongbantest.app.ui.v3.components.TripTone,
+    /** 여행 대표 사진(첫 사진) 파일 경로. 없으면 "사진 자리"를 보인다. */
+    val photo: String? = null,
+)
 
 data class HomeUiState(
     /** 주행 중 홈(보기 전용): 시작 알약 자리에 진행 중 여행 면, 지난 여행은 한 줄로 접는다 */
@@ -205,7 +214,12 @@ fun HomeBody(
                             .semantics(mergeDescendants = true) { contentDescription = "${p.title} 다이어리 열기, ${p.date}" },
                         verticalArrangement = Arrangement.spacedBy(Spacing.s2xs),
                     ) {
-                        PhotoSlot(state.photoPlaceholder, aspect = if (full) 16f / 9f else 4f / 3f)
+                        val aspect = if (full) 16f / 9f else 4f / 3f
+                        if (p.photo != null) {
+                            PhotoImage(p.photo, null, Modifier.fillMaxWidth().aspectRatio(aspect).clip(DbShapes.card), maxPx = 960)
+                        } else {
+                            PhotoSlot(state.photoPlaceholder, aspect = aspect)
+                        }
                         // 웹: 제목 줄 위 8 + 제목 글자 위 12(점은 줄 가운데)
                         Row(
                             Modifier.padding(top = Spacing.xs),

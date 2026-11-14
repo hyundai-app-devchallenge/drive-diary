@@ -145,7 +145,7 @@ fun recordingChip(state: TripUiState, now: Long, capture: CaptureState = Capture
 fun AppHomeUiState.toV3(): HomeUiState {
     val ongoing = ongoingTrip
     val past = pastTrips.take(2).map {
-        PastTripUi(it.id.toString(), it.title, formatShortDate(it.startedAt), toneOf(it.id))
+        PastTripUi(it.id.toString(), it.title, formatShortDate(it.startedAt), toneOf(it.id), it.coverPhotoPath)
     }
     return HomeUiState(
         driving = safety?.isRestricted == true && ongoing != null,
