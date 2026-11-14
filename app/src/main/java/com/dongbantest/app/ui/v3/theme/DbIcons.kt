@@ -26,6 +26,7 @@ object DbIcons {
     val Check: ImageVector by lazy { lucide("Check", "M20 6 9 17l-5-5") }
     val Navigation: ImageVector by lazy { lucide("Navigation", "M3 11L22 2L13 21L11 13L3 11Z") }
     val Image: ImageVector by lazy { lucide("Image", "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2z", "M7 9a2 2 0 1 0 4 0a2 2 0 1 0 -4 0", "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21") }
+    val Cloud: ImageVector by lazy { lucide("Cloud", "M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z") }
     val Lock: ImageVector by lazy { lucide("Lock", "M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-7a2 2 0 0 1 2 -2z", "M7 11V7a5 5 0 0 1 10 0v4") }
     val MapPin: ImageVector by lazy { lucide("MapPin", "M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0", "M9 10a3 3 0 1 0 6 0a3 3 0 1 0 -6 0") }
     val Minus: ImageVector by lazy { lucide("Minus", "M5 12h14") }

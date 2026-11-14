@@ -207,18 +207,19 @@ class QuestionCoordinator(
         val now = clock()
         // 반응 창 동안 시작된 대화는 남기지 않는다(PLAN §6).
         TalkRec.markNoRecord(now, now + watcher.policy.reactionWindowMs)
-        TalkRec.reactionTap = { text ->
-            val reaction = ReactionClassifier.classify(text)
-            scope.launch { react(reaction, "voice") }
+        TalkRec.reactionTap = reaction@{ text ->
+            val classification = ReactionClassifier.classifyWithReason(text) ?: return@reaction
+            scope.launch { react(classification.reaction, "voice", classification) }
         }
         setOverlay(QuestionOverlay.Check)
     }
 
     private fun endCheck() { TalkRec.reactionTap = null }
 
-    private fun react(reaction: Reaction, source: String) {
+    private fun react(reaction: Reaction, source: String, classification: ReactionClassifier.Classification? = null) {
         val id = tripId ?: return
-        note("반응 $reaction ($source)")
+        val reason = classification?.let { ", rule=${it.rule.logValue}, len=${it.normalizedLength}" }.orEmpty()
+        note("반응 $reaction ($source$reason)")
         watcher.onReaction(reaction, clock())?.let { handle(it, id) }
     }
 

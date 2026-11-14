@@ -150,7 +150,7 @@ class ConversationCaptureService : Service() {
                 if (active) startInput()
             }
             is Event.Audio -> if (event.session == session) consume(event.frame) else event.frame.pcm.fill(0)
-            is Event.Line -> if (event.session == session && event.epoch == epoch) {
+            is Event.Line -> if (event.session == session && event.epoch == epoch && event.line.text.isNotBlank()) {
                 val handled = try { request?.options?.voiceCommand?.invoke(event.line.text) == true }
                     catch (_: RuntimeException) { false }
                 val consumed = !handled && try { request?.options?.consumeCommand?.invoke(event.line.text) == true }
