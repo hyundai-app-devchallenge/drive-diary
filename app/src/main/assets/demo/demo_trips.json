@@ -1,5 +1,5 @@
 {
-  "note": "공모전 제출용 데모 여행 3개. 원본: 동반차_데모데이터.html, 데모 대본 원본.txt. 시각(at)은 출발일 기준 HH:MM. 음성은 생성한 음성(tools/demo/import_demo_audio.py 로 넣음).",
+  "note": "공모전 제출용 데모 여행 3개. 원본: 동반차_데모데이터_최종.html, 데모 대본 원본.txt. 시각(at)은 출발일 기준 HH:MM. 음성은 생성한 음성(tools/demo/import_demo_audio.py 로 넣음). 사진은 출발 전이면 출발 시각으로 당기고, 도착 후 사진은 그 시각 그대로 둔다.",
   "trips": [
     {
       "key": "A",
@@ -23,6 +23,14 @@
         {
           "file": "photos/A_arrive.jpg",
           "at": "09:44"
+        },
+        {
+          "file": "photos/A_pizza.jpg",
+          "at": "12:10"
+        },
+        {
+          "file": "photos/A_library.jpg",
+          "at": "14:30"
         }
       ],
       "items": [
@@ -107,8 +115,16 @@
           "at": "09:30"
         },
         {
+          "file": "photos/B_restarea.jpg",
+          "at": "09:40"
+        },
+        {
           "file": "photos/B_arrive.jpg",
           "at": "10:06"
+        },
+        {
+          "file": "photos/B_selfie.jpg",
+          "at": "11:40"
         }
       ],
       "items": [
@@ -173,6 +189,14 @@
         {
           "file": "photos/C_arrive.jpg",
           "at": "10:12"
+        },
+        {
+          "file": "photos/C_clam.jpg",
+          "at": "17:00"
+        },
+        {
+          "file": "photos/C_jump.jpg",
+          "at": "17:30"
         }
       ],
       "items": [

@@ -62,7 +62,7 @@ class DemoSeeder(context: Context, private val repo: TripRepository, private val
                         val file = app.assets.open("demo/${photo.file}").use { files.copyDemoPhoto(it) }
                         try {
                             check(repo.addMemory(id, MemoryType.PHOTO, filePath = file.absolutePath,
-                                createdAt = DemoTime.clamped(start, end, photo.at)) > 0)
+                                createdAt = DemoTime.photoAt(start, photo.at)) > 0)
                         } catch (failure: Throwable) {
                             withContext(NonCancellable) { files.delete(file.absolutePath) }
                             throw failure

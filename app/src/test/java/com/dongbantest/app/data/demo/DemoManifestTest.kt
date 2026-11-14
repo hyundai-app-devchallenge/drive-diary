@@ -40,6 +40,7 @@ class DemoManifestTest {
     }
 
     @Test fun photoFilesExist() {
+        assertEquals(12, trips.sumOf { it.photos.size })
         trips.forEach { t -> t.photos.forEach { assertTrue(File(assets, it.file).isFile) } }
     }
 
@@ -60,6 +61,8 @@ class DemoManifestTest {
         assertEquals(start, DemoTime.clamped(start, end, "08:59"))
         assertEquals(end, DemoTime.clamped(start, end, "09:44"))
         assertEquals(start + 60_000L, DemoTime.clamped(start, end, "09:01"))
+        assertEquals(start, DemoTime.photoAt(start, "08:50"))
+        assertEquals(start + (5 * 60 + 10) * 60_000L, DemoTime.photoAt(start, "14:10"))
     }
 
     @Test fun allTripsFitTheirRealGpxDurationWithoutOverlap() {
@@ -77,7 +80,9 @@ class DemoManifestTest {
                 assertEquals(m.kind, m.storyKind)
                 assertEquals(m.storyKeep == true, m.keepScore == 1.0)
             }
-            t.photos.forEach { assertTrue(DemoTime.clamped(start, end, it.at) in start..end) }
+            val shots = t.photos.map { DemoTime.photoAt(start, it.at) }
+            assertTrue(shots.all { it >= start })
+            assertEquals(shots.sorted(), shots)
         }
     }
 

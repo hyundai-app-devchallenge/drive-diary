@@ -88,6 +88,9 @@ internal object DemoTime {
     fun clamped(startedAt: Long, endedAt: Long, clock: String) =
         at(startedAt, clock).coerceIn(startedAt, endedAt)
 
+    /** Photos may be taken after arrival (lunch, sunset), so only an early time is pulled in. */
+    fun photoAt(startedAt: Long, clock: String) = at(startedAt, clock).coerceAtLeast(startedAt)
+
     fun start(daysAgo: Int, now: Long = System.currentTimeMillis()): Long = Calendar.getInstance().apply {
         timeInMillis = now
         add(Calendar.DAY_OF_YEAR, -daysAgo)
