@@ -61,6 +61,8 @@ fun RecordCard(
     selected: Boolean = false,
     dimmed: Boolean = false,
     action: (@Composable () -> Unit)? = null,
+    /** 대표 사진 파일. null 이면 사진 자리 아이콘. */
+    photo: String? = null,
 ) {
     val c = DbTheme.colors
     val t = DbTheme.type
@@ -112,9 +114,8 @@ fun RecordCard(
                     RoadRibbon(if (live) livePercent else 100, tone.color, from, to, car = live)
                 }
                 if (!live) {
-                    Box(Modifier.size(64.dp).clip(DbShapes.button).background(c.paper2), contentAlignment = Alignment.Center) {
-                        DbIcon(DbIcons.Image, 20.dp, c.muted)
-                    }
+                    // 대표 사진(기록의 첫 사진). 없으면 사진 자리 아이콘.
+                    PhotoImage(photo, null, Modifier.size(64.dp).clip(DbShapes.button))
                 }
             }
             if (live) {

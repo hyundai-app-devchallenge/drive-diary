@@ -408,6 +408,7 @@ fun RecordMapScreen(
                             selected = on,
                             dimmed = selected != null && !on,
                             action = { PrimaryButton(state.openRecord, { onOpenRecord(r.id) }) },
+                            photo = r.photos.firstOrNull()?.path,
                         )
                     }
                 }

@@ -360,6 +360,8 @@ fun TripWithMemories.toRecord(talks: List<TalkWithPath> = talks()): TripRecordUi
 
 /** 기록 목록 카드에만 쓰는 가벼운 변환 (메모 없이 여행 정보만) */
 fun Trip.toRecordCard(): TripRecordUi = TripWithMemories(this, emptyList()).toRecord()
+    // 목록 카드 오른쪽 사진 칸: 기록의 첫 사진(대표 사진)
+    .copy(photos = listOfNotNull(coverPhotoPath?.let { PhotoUi("cover", "", it) }))
 
 /* ───────── S11 도착 ───────── */
 
