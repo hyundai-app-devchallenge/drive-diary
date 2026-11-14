@@ -43,6 +43,11 @@ object DbIcons {
     val MessageCircle: ImageVector by lazy { lucide("MessageCircle", "M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719") }
     val Route: ImageVector by lazy { lucide("Route", "M3 19a3 3 0 1 0 6 0a3 3 0 1 0 -6 0", "M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15", "M15 5a3 3 0 1 0 6 0a3 3 0 1 0 -6 0") }
     val ArrowLeft: ImageVector by lazy { lucide("ArrowLeft", "m12 19-7-7 7-7", "M19 12H5") }
+    val X: ImageVector by lazy { lucide("X", "M18 6 6 18", "m6 6 12 12") }
+    val ChevronLeft: ImageVector by lazy { lucide("ChevronLeft", "m15 18-6-6 6-6") }
+    val ChevronRight: ImageVector by lazy { lucide("ChevronRight", "m9 18 6-6-6-6") }
+    val ChevronDown: ImageVector by lazy { lucide("ChevronDown", "m6 9 6 6 6-6") }
+    val ChevronUp: ImageVector by lazy { lucide("ChevronUp", "m18 15-6-6-6 6") }
 
     private fun lucide(name: String, vararg paths: String): ImageVector {
         val b = ImageVector.Builder(

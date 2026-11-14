@@ -25,7 +25,7 @@ object AppViewModelProvider {
     val DiaryList: ViewModelProvider.Factory = viewModelFactory {
         initializer {
             val c = container()
-            DiaryListViewModel(c.tripRepository, c.drivingSafetyMonitor, c.naviMonitor)
+            DiaryListViewModel(c.tripRepository, c.drivingSafetyMonitor, c.naviMonitor, c.demoSeeder)
         }
     }
 

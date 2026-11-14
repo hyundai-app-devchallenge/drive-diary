@@ -6,7 +6,8 @@ import androidx.compose.ui.unit.dp
 
 /**
  * 화면 영역 폭으로 정하는 레이아웃(웹과 같은 규칙, 웹 px 1 = dp 1).
- * Compact < 640 ≤ Expanded < 1100 ≤ Full. Pleos 창 기준 Compact 420dp, Expanded 850dp, Full 1280dp(밀도 2.0).
+ * Compact < 640 ≤ Expanded < 1100 ≤ Full. DongbanchaV3Theme 이 창 크기로 밀도를 다시 정하므로(높이 606dp 기준)
+ * 기기 밀도와 무관하게 Pleos 창은 Compact 420dp, Expanded 850dp, Full 1280dp 로 보인다.
  */
 enum class DbLayout {
     Compact, Expanded, Full;

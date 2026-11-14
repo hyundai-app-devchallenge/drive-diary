@@ -126,6 +126,8 @@ fun DriveStatusBar(
     drivingLabel: String = "주행 중",
     stoppedLabel: String = "정차 중",
     onChipTap: (() -> Unit)? = null,
+    /** 녹음 칩 왼쪽에 둘 작은 동작(주행 화면의 "여행 끝내기"). */
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val c = DbTheme.colors
     TopBarFrame(modifier, divider = true) {
@@ -133,6 +135,7 @@ fun DriveStatusBar(
             DbIcon(if (stopped) DbIcons.SquareParking else DbIcons.Car, 20.dp, c.ink)
             Text(if (stopped) stoppedLabel else drivingLabel, style = DbTheme.type.status.copy(fontWeight = FontWeight.Bold), color = c.ink)
         }
+        trailing?.invoke()
         RecordingChip(recording, recordingText, onTap = onChipTap)
     }
 }

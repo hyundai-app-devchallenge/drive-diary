@@ -74,6 +74,7 @@ import com.dongbantest.app.ui.v3.screens.StopNoticeUiState
 import com.dongbantest.app.ui.v3.screens.TripEmptyScreen
 import com.dongbantest.app.ui.v3.screens.TripSetupScreen
 import com.dongbantest.app.ui.v3.screens.TripSetupUiState
+import com.dongbantest.app.ui.v3.screens.withPerson
 import com.dongbantest.app.ui.v3.screens.VoiceGuideScreen
 import com.dongbantest.app.ui.v3.screens.VoiceGuideUiState
 import com.dongbantest.app.ui.v3.theme.DbTheme
@@ -224,8 +225,14 @@ fun V3NavHost(
             var tripTitle by rememberSaveable { mutableStateOf("") }
             // 목적지는 직접 쓰지 않고 내비에 찍힌 곳을 쓴다. 아직 안 찍었으면 null.
             val naviDestination = home.route?.destinationName?.takeIf { it.isNotBlank() }
-            var companion by rememberSaveable { mutableStateOf("가족") }
-            var headcount by rememberSaveable { mutableIntStateOf(2) }
+            // 함께 가는 사람 이름 목록. "나"는 늘 맨 앞. 기록 탭 "함께한 사람"에 이 이름들이 그대로 보인다.
+            var people by rememberSaveable { mutableStateOf(listOf("엄마", "아빠")) }
+            var newName by rememberSaveable { mutableStateOf("") }
+            fun addPerson(raw: String) {
+                // 같은 이름을 또 넣으면 "친구1, 친구2"처럼 번호가 붙는다(withPerson).
+                people = withPerson(people, raw)
+                newName = ""
+            }
             var askConsent by rememberSaveable { mutableStateOf(false) }
             val homeBackground = home.toV3()
 
@@ -233,8 +240,6 @@ fun V3NavHost(
                 val dest = naviDestination ?: "어딘가 멋진 곳"
                 // 제목을 비워 두면 목적지로 "○○ 여행"을 만든다.
                 val title = tripTitle.trim().ifBlank { naviDestination?.let { "$it 여행" } ?: "우리의 여행" }
-                // v3 는 이름 대신 관계와 인원만 받는다. 다이어리 "함께한 사람" 칸에는 나 + 관계 번호로 남긴다.
-                val people = listOf("나") + (1 until headcount).map { "$companion$it" }
                 homeVm.startTrip(title = title, destination = dest, companions = people) { id ->
                     RecordingConsentStore(context).set(id, consent, sendToAi)
                     navController.go(V3Routes.trip(id, guide = true))
@@ -254,14 +259,15 @@ fun V3NavHost(
                     state = TripSetupUiState(
                         tripTitle = tripTitle,
                         naviDestination = naviDestination,
-                        selectedCompanion = companion,
-                        headcount = headcount,
+                        people = people,
+                        newName = newName,
                         home = homeBackground,
                     ),
                     onTab = onTab,
                     onTripTitleChange = { tripTitle = it },
-                    onCompanionSelect = { companion = it },
-                    onHeadcountChange = { headcount = it.coerceIn(1, 9) },
+                    onNewNameChange = { newName = it },
+                    onAddPerson = ::addPerson,
+                    onRemovePerson = { i -> if (people.size > 1) people = people.filterIndexed { j, _ -> j != i } },
                     onStart = { askConsent = true },
                     onLater = { navController.popBackStack() },
                 )
@@ -317,14 +323,6 @@ fun V3NavHost(
                 }
             }
 
-            // "이 순간 담기": 누른 뒤 2초간 막고 완료 문구를 보인다.
-            var momentDone by remember { mutableStateOf(false) }
-            LaunchedEffect(momentDone) {
-                if (momentDone) {
-                    delay(2_000)
-                    momentDone = false
-                }
-            }
             // 터치 직후 모드가 바뀌어도 1.5초 동안 연속 전환을 막는다.
             var recordingToggleBlocked by remember(tripId) { mutableStateOf(false) }
             LaunchedEffect(recordingToggleBlocked) {
@@ -340,23 +338,18 @@ fun V3NavHost(
                 .copy(
                     playback = playback?.toUi(talks),
                     showTitlesWhileDriving = summarySettings.showTitlesWhileDriving,
-                    momentDone = momentDone,
                     recordingToggleEnabled = !recordingToggleBlocked,
                 )
                 .withQuestion(question)
-            val events = DrivingEvents(
+            // 재생 위치·녹음 상태가 바뀔 때마다 새 람다를 만들면 주행 화면 전체가 다시 그려진다.
+            // 이벤트 묶음은 람다가 읽는 값(talks·now·restricted)이 바뀔 때만 새로 만든다.
+            // recordingToggleBlocked·confirmEnd 는 상태 위임이라 누를 때의 최신 값을 읽는다.
+            val events = remember(talks, now, restricted) { DrivingEvents(
                 onPlayStory = { id -> talks.firstOrNull { it.talk.id == id }?.paths?.let(vm::toggleStory) },
                 onSeekStory = { id, position ->
                     talks.firstOrNull { it.talk.id == id }?.let { vm.seekStory(it.paths, position) }
                 },
                 onTab = onTab,
-                onMoment = {
-                    if (!momentDone && !recordingToggleBlocked && vm.uiState.value.toDriving(now, TalkRec.state.value).momentButton) {
-                        momentDone = true
-                        vm.startRecording()
-                        vm.showMessage("지금 나눈 대화를 담았어요")
-                    }
-                },
                 onRecordingToggle = {
                     val current = vm.uiState.value
                     val text = current.toDriving(now, TalkRec.state.value).recordingToggleText
@@ -379,7 +372,7 @@ fun V3NavHost(
                 // 진행 알약을 누르면 여행을 직접 끝낼 수 있다(정차 중일 때만). 도착 자동 종료가 안 될 때를 위한 길.
                 onTripPill = { if (!restricted) confirmEnd = true },
                 onEndTrip = { if (!restricted) confirmEnd = true },
-            )
+            ) }
             WithMessages(state.message, vm::consumeMessage) {
                 when {
                     showGuide -> VoiceGuideScreen(
@@ -507,11 +500,18 @@ fun V3NavHost(
                 // 기록 지도에서 연 다이어리는 뒤로 가기로 기록 지도에 돌아온다.
                 onOpenRecord = { id -> id.toLongOrNull()?.let { navController.navigate(V3Routes.diary(it)) { launchSingleTop = true } } },
                 onOpenLiveTrip = { state.ongoingTrip?.let { navController.go(V3Routes.trip(it.id)) } },
-                realMap = { m ->
+                // 경로를 누르면 바로 열지 않고 고른다(그 경로만 진하게, 목록 카드 아래 "기록 보기").
+                realMap = { m, selected, onSelect ->
+                    // 경로를 고를 때마다 새 목록을 만들면 지도가 수만 개 점을 다시 견준다. 경로가 바뀔 때만 만든다.
+                    val routes = remember(state.routes) {
+                        state.routes.map { (id, segments) -> RealMapRoute(id, RouteColors.forTrip(id), segments) }
+                    }
                     RouteMap(
-                        routes = state.routes.map { (id, segments) -> RealMapRoute(id, RouteColors.forTrip(id), segments) },
+                        routes = routes,
                         modifier = m,
-                        onRouteClick = { navController.navigate(V3Routes.diary(it)) { launchSingleTop = true } },
+                        onRouteClick = { onSelect(it.toString()) },
+                        selectedRoute = selected?.toLongOrNull(),
+                        onBlankClick = { onSelect(null) },
                     )
                 },
             )
@@ -541,6 +541,17 @@ fun V3NavHost(
                     playbackEnabled = !restricted,
                     recordingText = "여행 기록 중",
                 ),
+                momentMap = { m, pins, selected, onSelect ->
+                    val moments = remember(data, pins) { data.mapMoments(pins) }
+                    RouteMap(
+                        routes = listOf(RealMapRoute(tripId, RouteColors.forTrip(tripId), data.drive.path, data.drive.timeline)),
+                        modifier = m,
+                        moments = moments,
+                        selectedMoment = selected,
+                        onMomentClick = onSelect,
+                        momentTone = record.tone.color,
+                    )
+                },
                 onTab = onTab,
                 onBack = { if (!navController.popBackStack()) onTab(DbTab.Record) },
                 onNextPage = {
@@ -554,12 +565,6 @@ fun V3NavHost(
                 onPlay = { talk -> talks.firstOrNull { it.talk.id == talk.id }?.paths?.let(vm::toggleStory) },
                 onSeek = { talk, position ->
                     talks.firstOrNull { it.talk.id == talk.id }?.let { vm.seekStory(it.paths, position) }
-                },
-                map = { m ->
-                    RouteMap(
-                        routes = listOf(RealMapRoute(tripId, RouteColors.forTrip(tripId), data.drive.path, data.drive.timeline)),
-                        modifier = m,
-                    )
                 },
                 // 끝난 여행만 편집할 수 있다. 진행 중인 여행은 편집 버튼 자리에 녹음 칩이 나온다.
                 onEdit = if (data.trip.isOngoing) null else { { editStep = 1 } },

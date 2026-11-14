@@ -147,6 +147,45 @@ class TripRepository(
         }
     }
 
+    /** Import a finished fixture through the same file lock/rollback and Room transaction as clips. */
+    internal suspend fun saveSampleTalk(
+        tripId: Long,
+        meta: TalkMeta,
+        writeAudio: suspend (File) -> Long,
+    ): Long? = withContext(Dispatchers.IO) {
+        clips.locked {
+            recoverTalkClipsLocked()
+            if (!tripExists(tripId)) return@locked null
+            val trip = dao.getTrip(tripId) ?: return@locked null
+            require(trip.isSample && trip.endedAt != null)
+            require(meta.summaryStatus == SummaryStatus.DONE && meta.runClosed == true && meta.storyKeep != null)
+            require(meta.blockStartMs >= trip.startedAt && meta.blockEndMs <= trip.endedAt && meta.blockEndMs > meta.blockStartMs)
+            val file = files.sampleTalkVoiceFile(tripId, requireNotNull(meta.storyId))
+            if (clips.wasDeleted(file)) return@locked null
+            clips.save(file,
+                existing = { dao.getMemoryByPath(file.absolutePath)?.id },
+                write = { writeAudio(file) },
+                insert = { duration ->
+                    require(duration == meta.blockEndMs - meta.blockStartMs)
+                    if (!tripExists(tripId)) return@save null
+                    dao.insertTalkMemory(
+                        MemoryEntity(tripId = tripId, type = MemoryType.VOICE.name,
+                            createdAt = meta.blockEndMs, text = null, filePath = file.absolutePath,
+                            transcript = null, durationMs = duration),
+                        TalkMetaEntity(memoryId = 0, source = meta.source.name,
+                            blockStartMs = meta.blockStartMs, blockEndMs = meta.blockEndMs,
+                            keepScore = meta.keepScore, kind = meta.kind, title = meta.title,
+                            tags = meta.tags?.let { JSONArray(it).toString() },
+                            summaryStatus = meta.summaryStatus.name, summaryModel = meta.summaryModel,
+                            runId = meta.runId, closeReason = meta.closeReason, runClosed = meta.runClosed,
+                            storyId = meta.storyId, storyIndex = meta.storyIndex, storyKind = meta.storyKind,
+                            storyKeep = meta.storyKeep, storyReason = meta.storyReason),
+                    )
+                },
+            )
+        }
+    }
+
     suspend fun updateTalkSummary(
         memoryId: Long, status: SummaryStatus, title: String? = null, tags: List<String>? = null,
         kind: String? = null, model: String? = null,
@@ -344,13 +383,18 @@ class TripRepository(
         }
     }
 
-    suspend fun seedSampleTrips() {
-        if (dao.getSampleTrips().isNotEmpty()) return
-        SampleData.trips().forEach { sample ->
-            val id = dao.insertTrip(sample.trip)
-            sample.memories.forEach { dao.insertMemory(it.copy(tripId = id)) }
-            sample.route.forEach { dao.insertLocationPoint(it.copy(tripId = id)) }
-        }
+    internal suspend fun createFinishedSample(
+        title: String, from: String, to: String, companions: List<String>,
+        start: Long, end: Long, points: List<LocationPoint>,
+    ): Long = clips.locked {
+        require(end > start && points.size >= 2)
+        dao.insertFinishedSample(
+            TripEntity(title = title, destination = to, companions = companions.joinToString(","),
+                startedAt = start, endedAt = end, startOdometer = null, endOdometer = null,
+                odometerSource = null, isSample = true, startPlace = from, endPlace = to),
+            points.map { LocationPointEntity(tripId = 0, recordedAt = it.recordedAt,
+                latitude = it.latitude, longitude = it.longitude, accuracyMeters = it.accuracyMeters) },
+        )
     }
 
     suspend fun clearSampleTrips() {
@@ -367,12 +411,13 @@ class TripRepository(
     /** 이미 들어 있는 예시 여행 제목들 (같은 예시를 두 번 넣지 않으려고 쓴다) */
     suspend fun sampleTripTitles(): Set<String> = dao.getSampleTrips().map { it.title }.toSet()
 
-    private suspend fun addMemory(
+    internal suspend fun addMemory(
         tripId: Long,
         type: MemoryType,
         text: String? = null,
         filePath: String? = null,
         durationMs: Long? = null,
+        createdAt: Long = System.currentTimeMillis(),
     ): Long = clips.locked {
         if (!tripExists(tripId)) {
             files.delete(filePath)
@@ -382,7 +427,7 @@ class TripRepository(
             MemoryEntity(
                 tripId = tripId,
                 type = type.name,
-                createdAt = System.currentTimeMillis(),
+                createdAt = createdAt,
                 text = text,
                 filePath = filePath,
                 transcript = null, // 수동 메모 등 기존 경로는 전사 없이 저장한다.

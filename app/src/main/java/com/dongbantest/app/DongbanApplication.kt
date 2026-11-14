@@ -2,6 +2,8 @@ package com.dongbantest.app
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
+import com.dongbantest.app.data.demo.DemoSeeder
 import com.dongbantest.app.data.ask.QuestionCoordinator
 import com.dongbantest.app.data.ask.QuestionSettingsStore
 import com.dongbantest.app.data.local.DongbanDatabase
@@ -33,6 +35,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
 
 /** 간단한 수동 DI 컨테이너. */
 class AppContainer(context: Context) : SummaryWorkerDependencies {
@@ -40,6 +44,7 @@ class AppContainer(context: Context) : SummaryWorkerDependencies {
     private val database by lazy { DongbanDatabase.create(context) }
     val mediaFileStore by lazy { MediaFileStore(context) }
     val tripRepository by lazy { TripRepository(database.tripDao(), mediaFileStore) }
+    val demoSeeder by lazy { DemoSeeder(context, tripRepository, mediaFileStore) }
     val mapboxTokenStore by lazy { MapboxTokenStore(context) }
     val recordingConsentStore by lazy { RecordingConsentStore(context) }
     val recordingSettingsStore by lazy { RecordingSettingsStore(context) }
@@ -97,7 +102,16 @@ class AppContainer(context: Context) : SummaryWorkerDependencies {
             talkRecording.finishTrip(it)
         }
         appScope.launch {
+            tripRepository.recoverTalkClips()
             tripRepository.reconcileOngoingTrips()
+            try {
+                withContext(Dispatchers.IO) { demoSeeder.seedOnce() }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                // No manifest text, story titles, or audio content in startup logs.
+                Log.e("DemoSeeder", "Demo seeding failed: ${failure.javaClass.simpleName}")
+            }
             talkRecording.observeStops(appScope)
             talkRecording.onQuestionCommand = { command ->
                 when (command) {

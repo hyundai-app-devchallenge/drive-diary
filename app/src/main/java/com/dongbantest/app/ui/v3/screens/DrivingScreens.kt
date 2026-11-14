@@ -1,40 +1,56 @@
 package com.dongbantest.app.ui.v3.screens
 
-import com.dongbantest.app.ui.v3.theme.AdaptiveLayout
-import com.dongbantest.app.gleo.GleoRecordingAction
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.background
-import androidx.compose.ui.draw.clip
-import com.dongbantest.app.ui.v3.theme.DbShapes
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import com.dongbantest.app.ui.v3.components.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import com.dongbantest.app.gleo.GleoRecordingAction
+import com.dongbantest.app.gleo.VoiceCommands
 import com.dongbantest.app.ui.v3.components.AppShell
 import com.dongbantest.app.ui.v3.components.AskedItem
 import com.dongbantest.app.ui.v3.components.AskedPanel
 import com.dongbantest.app.ui.v3.components.AskedSummary
 import com.dongbantest.app.ui.v3.components.Badge
+import com.dongbantest.app.ui.v3.components.ButtonKind
 import com.dongbantest.app.ui.v3.components.ButtonRow
 import com.dongbantest.app.ui.v3.components.DbBottomSheet
+import com.dongbantest.app.ui.v3.components.DbButton
 import com.dongbantest.app.ui.v3.components.DbDialog
 import com.dongbantest.app.ui.v3.components.DbIcon
 import com.dongbantest.app.ui.v3.components.DbTab
@@ -54,18 +70,23 @@ import com.dongbantest.app.ui.v3.components.SayDensity
 import com.dongbantest.app.ui.v3.components.SayList
 import com.dongbantest.app.ui.v3.components.StateChip
 import com.dongbantest.app.ui.v3.components.Tag
+import com.dongbantest.app.ui.v3.components.Text
 import com.dongbantest.app.ui.v3.components.ToastKind
+import com.dongbantest.app.ui.v3.components.TripProgressPill
 import com.dongbantest.app.ui.v3.components.VoiceToast
 import com.dongbantest.app.ui.v3.components.VoiceToastUi
 import com.dongbantest.app.ui.v3.components.quoted
+import com.dongbantest.app.ui.v3.theme.AdaptiveLayout
 import com.dongbantest.app.ui.v3.theme.DbIcons
 import com.dongbantest.app.ui.v3.theme.DbLayout
+import com.dongbantest.app.ui.v3.theme.DbShapes
 import com.dongbantest.app.ui.v3.theme.DbTheme
 import com.dongbantest.app.ui.v3.theme.Spacing
 
 /* ───────── 주행 화면 공통(S04–S11, B01, Q01·Q02·P01·P02의 배경) ───────── */
 
 /** 질문 카드 자리에 무엇을 보일지: 질문 카드 또는 조용히 듣는 면 */
+@Immutable
 sealed interface DrivingCard {
     data class Question(
         val question: String,
@@ -84,6 +105,7 @@ sealed interface DrivingCard {
     ) : DrivingCard
 }
 
+@Immutable
 data class DrivingUiState(
     val tripTitle: String = Sample.TRIP_TITLE,
     val recording: RecordingState = RecordingState.On,
@@ -108,9 +130,6 @@ data class DrivingUiState(
     val toast: VoiceToastUi? = null,
     // 설정 "주행 중 제목 보이기"가 꺼져 있으면 주행 중에 제목을 숨긴다.
     val showTitlesWhileDriving: Boolean = true,
-    // "이 순간 담기" 버튼: 기록 동의 여행에서 주행 중에만 보인다. 누른 직후 잠깐은 눌림 막음 + 완료 문구.
-    val momentButton: Boolean = false,
-    val momentDone: Boolean = false,
     /** 정차 중이고 녹음에 동의한 진행 중 여행에 표시한다. */
     val recordingToggleText: String? = null,
     val recordingToggleEnabled: Boolean = true,
@@ -123,6 +142,7 @@ private fun DrivingUiState.hideTitles() = !stopped && !showTitlesWhileDriving
 private fun DrivingUiState.visibleAsked() = if (stopped) asked else asked.take(3)
 
 /** 주행 화면 이벤트. 음성 예시·녹음 칩·말풍선·진행 알약은 데모 지름길(버튼 모양 없음). */
+@Immutable
 data class DrivingEvents(
     val onTab: (DbTab) -> Unit = {},
     /** 음성 예시를 누르면 그 말을 한 것으로 본다 */
@@ -132,14 +152,32 @@ data class DrivingEvents(
     val onTripPill: (() -> Unit)? = null,
     /** 확인 알림의 "아니야" 버튼 */
     val onToastSay: (String) -> Unit = {},
-    /** "이 순간 담기" 탭 */
-    val onMoment: () -> Unit = {},
     val onRecordingToggle: () -> Unit = {},
-    /** 맨 아래 "여행 끝내기". null 이면 버튼을 그리지 않는다(디자인 카탈로그·미리보기). 정차 중에만 눌린다. */
+    /** "여행 끝내기". null 이면 버튼을 그리지 않는다(디자인 카탈로그·미리보기). 정차 중에만 보인다. */
     val onEndTrip: (() -> Unit)? = null,
     val onPlayStory: (String) -> Unit = {},
     val onSeekStory: (String, Long) -> Unit = { _, _ -> },
 )
+
+/**
+ * 정차 중에만 보이는 여행 조작(녹음 멈추기/다시 녹음하기, 여행 끝내기).
+ * 넓은 화면은 위 상태 줄의 녹음 칩 옆, 폰은 카드 아래 한 줄에 둔다. 주행 중에는 하나도 없다.
+ */
+private class TripControls(
+    val toggleText: String?,
+    val toggleEnabled: Boolean,
+    val onToggle: () -> Unit,
+    val onEndTrip: (() -> Unit)?,
+) {
+    val resume get() = toggleText != null && toggleText != "녹음 멈추기"
+    val isEmpty get() = toggleText == null && onEndTrip == null
+}
+
+private fun tripControls(state: DrivingUiState, events: DrivingEvents): TripControls? {
+    if (!state.stopped) return null
+    return TripControls(state.recordingToggleText, state.recordingToggleEnabled, events.onRecordingToggle, events.onEndTrip)
+        .takeIf { !it.isEmpty }
+}
 
 /** 주행 화면 틀. overlay 로 시트·대화상자를 얹는다. */
 @Composable
@@ -154,31 +192,40 @@ fun DrivingLayout(
         val toast = state.toast
         // talk-rec 연동: 제목 숨김이면 "지금: 제목" 줄도 숨긴다(직접 준 nowText 는 유지)
         val now = state.nowText ?: if (state.hideTitles()) null else state.asked.firstOrNull { it.now }?.title
+        val controls = tripControls(state, events)
         AppShell(
             selectedTab = DbTab.Trip,
             onTab = events.onTab,
-            topBar = { DriveStatusBar(state.recording, state.recordingText, state.stopped, onChipTap = events.onRecordingChip) },
+            topBar = {
+                DriveStatusBar(
+                    state.recording, state.recordingText, state.stopped, onChipTap = events.onRecordingChip,
+                    trailing = controls?.takeIf { layout.wide }?.let { { BarControls(it) } },
+                )
+            },
             scroll = false,
-            bodyPadding = if (layout.wide) PaddingValues(start = Spacing.xl, end = Spacing.xl, bottom = Spacing.md)
+            // 넓은 화면: 위 상태 줄 구분선에 두 열이 붙지 않게 위에도 띄운다.
+            bodyPadding = if (layout.wide) PaddingValues(start = Spacing.xl, end = Spacing.xl, top = Spacing.md, bottom = Spacing.md)
             else PaddingValues(start = Spacing.md, end = Spacing.md, bottom = Spacing.s2xs),
             phoneSummary = { AskedSummary("${state.askedCountLabel} ${state.asked.size}개", now?.let { "지금: $it" }) },
             phoneToast = toast?.let { { VoiceToast(it, onSay = events.onToastSay) } },
             overlay = overlay,
         ) {
-            AdaptiveDrivingBody(state, events)
+            AdaptiveDrivingBody(state, events, controls)
         }
     }
 }
 
 @Composable
-private fun AdaptiveDrivingBody(state: DrivingUiState, events: DrivingEvents) {
+private fun AdaptiveDrivingBody(state: DrivingUiState, events: DrivingEvents, controls: TripControls?) {
     val layout = DbTheme.layout
     if (!layout.wide) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            DrivingLeft(state, events)
+            DrivingHeader(state, events)
+            DrivingCardSlot(state, events)
+            controls?.let { PhoneControls(it) }
             if (state.stopped) AskedPanel(
                 state.askedTitle, "${state.asked.size}개", state.asked,
-                modifier = Modifier.fillMaxWidth().height(400.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = Spacing.md).height(400.dp),
                 onPlayStory = events.onPlayStory,
                 playback = state.playback,
                 onSeekStory = events.onSeekStory,
@@ -188,7 +235,12 @@ private fun AdaptiveDrivingBody(state: DrivingUiState, events: DrivingEvents) {
     }
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
         val left = if (layout == DbLayout.Full) Modifier.width(600.dp) else Modifier.weight(1.4f)
-        Column(left.fillMaxHeight().verticalScroll(rememberScrollState())) { DrivingLeft(state, events) }
+        FillBelowColumn(
+            modifier = left.fillMaxHeight(),
+            // 아래 카드가 남은 높이를 채워 오른쪽 패널과 같은 바닥선에서 끝난다.
+            top = { DrivingHeader(state, events) },
+            below = { DrivingCardSlot(state, events) },
+        )
         AskedPanel(
             title = state.askedTitle,
             countText = "${state.asked.size}개",
@@ -214,25 +266,76 @@ private fun AdaptiveDrivingBody(state: DrivingUiState, events: DrivingEvents) {
     }
 }
 
+/**
+ * 위 칸과 아래 칸을 세로로 놓는다. 높이가 남으면 아래 칸을 늘려 열 바닥까지 채운다.
+ * 두 칸이 보이는 높이를 넘을 때만 전체가 스크롤된다.
+ */
 @Composable
-private fun DrivingLeft(state: DrivingUiState, events: DrivingEvents) {
+private fun FillBelowColumn(
+    modifier: Modifier,
+    top: @Composable ColumnScope.() -> Unit,
+    below: @Composable () -> Unit,
+) {
+    BoxWithConstraints(modifier) {
+        val viewport = constraints.maxHeight
+        Layout(
+            contents = listOf(
+                { Column(content = top) },
+                { Box(propagateMinConstraints = true) { below() } },
+            ),
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+        ) { (topM, belowM), cs ->
+            val w = cs.maxWidth
+            val free = Constraints(minWidth = w, maxWidth = w)
+            val t = topM.first().measure(free)
+            val bounded = viewport != Constraints.Infinity
+            val rest = if (bounded) (viewport - t.height).coerceAtLeast(0) else 0
+            val b = belowM.first().measure(free.copy(minHeight = rest))
+            layout(w, t.height + b.height) {
+                t.place(0, 0)
+                b.place(0, t.height)
+            }
+        }
+    }
+}
+
+/**
+ * 왼쪽 열 위쪽: 여행 제목, 진행 알약과 길 리본, 동반이 말풍선.
+ * 블록 사이는 12dp(sm)로 맞춘다. 주행·정차 모두 같은 모양이라 기어를 바꿔도 아래가 움직이지 않는다.
+ */
+@Composable
+private fun DrivingHeader(state: DrivingUiState, events: DrivingEvents) {
     val c = DbTheme.colors
     val t = DbTheme.type
     val wide = DbTheme.layout.wide
-    // 넓은 화면: 제목 윗변을 오른쪽 "지금까지 나눈 대화" 패널 윗변에 맞춘다(위 여백 없음).
+    // 넓은 화면: 위 12dp 를 띄워 제목 줄을 오른쪽 패널의 "지금까지 나눈 대화" 제목 줄과 같은 높이에 둔다.
     Text(
         state.tripTitle,
         style = if (wide) t.titleLg else t.status,
         color = if (wide) c.ink else c.muted,
-        modifier = Modifier.padding(top = if (wide) 0.dp else Spacing.s2xs, bottom = Spacing.sm).semantics { heading() },
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.padding(top = if (wide) Spacing.sm else Spacing.s2xs, bottom = Spacing.sm).semantics { heading() },
     )
-    TripProgress(state, events)
-    // 길 리본 아래 이름표와 동반이가 붙지 않게 띄운다.
-    DongbaniBubble(state.bubble, Modifier.padding(top = Spacing.sm), onBubbleTap = events.onBubble)
-    TripActions(state, events)
+    TripProgressPill(
+        title = state.pillTitle, sub = state.pillSub, people = state.people, percent = state.progress,
+        from = state.from, to = state.to, paused = state.recording == RecordingState.Paused, onTap = events.onTripPill,
+    )
+    // 질문 카드가 떠 있으면 동반이는 질문으로 말하니 말풍선을 숨기고 그 높이를 카드에 준다.
+    // DongbaniBubble 은 안쪽 위 여백(넓은 화면 4dp)이 있어 바깥 8dp 와 합쳐 12dp.
+    if (state.card !is DrivingCard.Question) {
+        DongbaniBubble(state.bubble, Modifier.padding(top = Spacing.xs), onBubbleTap = events.onBubble)
+    }
+}
+
+/** 질문 카드 또는 조용히 듣는 면. 카드 안쪽 위 여백 8dp 에 4dp 를 더해 위 블록과 12dp 띄운다. */
+@Composable
+private fun DrivingCardSlot(state: DrivingUiState, events: DrivingEvents) {
+    val gap = Modifier.padding(top = Spacing.s2xs)
     when (val card = state.card) {
         is DrivingCard.Question -> QuestionCard(
             tag = card.tag, question = card.question, hint = card.hint, sayLabel = card.sayLabel, say = card.say,
+            modifier = gap,
             pauseCaption = card.pauseCaption,
             density = when (state.toast?.kind) {
                 null -> SayDensity.Normal
@@ -241,85 +344,90 @@ private fun DrivingLeft(state: DrivingUiState, events: DrivingEvents) {
             },
             onSay = events.onVoiceExample.takeIf { state.stopped },
         )
-        is DrivingCard.Quiet -> QuietFace(card.title, card.body, card.pauseHint)
+        is DrivingCard.Quiet -> QuietFace(card.title, card.body, card.pauseHint, gap)
     }
-    events.onEndTrip?.let { EndTripButton(state.stopped, it) }
 }
 
 /**
- * 왼쪽 열 맨 아래 "여행 끝내기". 도착 자동 종료를 기다리지 않고 직접 끝내는 길.
- * 주행 중에는 흐리게 두고 이유를 한 줄로 알린다(누르면 저장·버리기를 묻는 창).
+ * 넓은 화면 위 상태 줄의 여행 조작: [여행 끝내기] [녹음 멈추기 | 다시 녹음하기] 다음에 녹음 칩.
+ * 녹음 조작을 녹음 상태 칩 바로 옆에 둬서 무엇을 멈추는지 한눈에 보이게 한다.
  */
 @Composable
-private fun EndTripButton(stopped: Boolean, onEndTrip: () -> Unit) {
+private fun BarControls(controls: TripControls) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        controls.onEndTrip?.let { BarButton(DbIcons.Flag, "여행 끝내기", it) }
+        controls.toggleText?.let { text ->
+            BarButton(
+                icon = if (controls.resume) DbIcons.Mic else DbIcons.Pause,
+                text = text,
+                onClick = controls.onToggle,
+                enabled = controls.toggleEnabled,
+                primary = controls.resume,
+            )
+        }
+    }
+}
+
+/**
+ * 상태 줄 알약 버튼. 보이는 높이는 녹음 칩과 같은 32dp, 누르는 영역은 48dp.
+ * primary = 채운 버튼(녹음이 멈춰 있을 때 "다시 녹음하기"), 그 밖에는 테두리 버튼.
+ */
+@Composable
+private fun BarButton(icon: ImageVector, text: String, onClick: () -> Unit, enabled: Boolean = true, primary: Boolean = false) {
     val c = DbTheme.colors
-    val t = DbTheme.type
-    Column(
-        Modifier.fillMaxWidth().padding(top = Spacing.lg, bottom = Spacing.sm),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(Spacing.s2xs),
-    ) {
-        com.dongbantest.app.ui.v3.components.DbButton(
-            text = "여행 끝내기",
-            onClick = onEndTrip,
-            kind = com.dongbantest.app.ui.v3.components.ButtonKind.Outline,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-            block = true, capWide = false,
-            enabled = stopped,
-            icon = DbIcons.Flag,
-        )
-        if (!stopped) Text("정차 중에만 끝낼 수 있어요", style = t.caption, color = c.muted)
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val fg = if (primary) c.accentInk else c.ink
+    val bg = when {
+        primary -> if (pressed) c.actionPressed else c.action
+        pressed -> c.paper3
+        else -> c.paper
     }
-}
-
-/**
- * 녹음 멈추기/다시 녹음하기 + 이 순간 담기. 둘 다 있으면 한 줄에 반씩, 하나면 열 폭을 채운다.
- * 녹음 조작은 정차 중에만. 녹음이 멈춰 있으면 "다시 녹음하기"가 주 동작이고,
- * 녹음 중이면 "이 순간 담기"가 주 동작, "녹음 멈추기"는 테두리 버튼이다.
- * 주행 중에는 한눈에 누를 수 있게 높이 76dp, 정차 중 64dp.
- */
-@Composable
-private fun TripActions(state: DrivingUiState, events: DrivingEvents) {
-    val toggleText = state.recordingToggleText?.takeIf { state.stopped }
-    if (!state.momentButton && toggleText == null) return
-    val height = if (state.stopped) 64.dp else 76.dp
-    val resume = toggleText != null && toggleText != "녹음 멈추기"
-    Row(
-        Modifier.fillMaxWidth().padding(top = Spacing.md, bottom = Spacing.md),
-        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+    Box(
+        Modifier
+            .heightIn(min = 48.dp)
+            .clickable(interactionSource = source, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
+            .alpha(if (enabled) 1f else 0.5f),
+        contentAlignment = Alignment.Center,
     ) {
-        if (toggleText != null) {
-            com.dongbantest.app.ui.v3.components.DbButton(
-                text = toggleText,
-                onClick = events.onRecordingToggle,
-                kind = if (resume) com.dongbantest.app.ui.v3.components.ButtonKind.Primary
-                else com.dongbantest.app.ui.v3.components.ButtonKind.Outline,
-                modifier = Modifier.weight(1f).heightIn(min = height),
-                block = true, capWide = false,
-                enabled = state.recordingToggleEnabled,
-                icon = if (resume) DbIcons.Mic else DbIcons.Pause,
-            )
-        }
-        if (state.momentButton) {
-            com.dongbantest.app.ui.v3.components.DbButton(
-                text = if (state.momentDone) "담았어요" else "이 순간 담기",
-                onClick = events.onMoment,
-                kind = com.dongbantest.app.ui.v3.components.ButtonKind.Primary,
-                modifier = Modifier.weight(1f).heightIn(min = height),
-                block = true, capWide = false,
-                enabled = !state.momentDone,
-                icon = if (state.momentDone) DbIcons.Check else DbIcons.BookmarkPlus,
-            )
+        Row(
+            Modifier
+                .height(32.dp)
+                .clip(DbShapes.pill)
+                .background(bg)
+                .then(if (primary) Modifier else Modifier.border(1.dp, c.rule, DbShapes.pill))
+                .padding(horizontal = Spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s2xs),
+        ) {
+            DbIcon(icon, 16.dp, fg)
+            Text(text, style = DbTheme.type.status, color = fg, maxLines = 1)
         }
     }
 }
 
+/** 폰 화면: 카드 아래 한 줄에 녹음 조작과 여행 끝내기를 반씩 둔다(상태 줄에 자리가 없다). */
 @Composable
-private fun TripProgress(state: DrivingUiState, events: DrivingEvents) {
-    com.dongbantest.app.ui.v3.components.TripProgressPill(
-        title = state.pillTitle, sub = state.pillSub, people = state.people, percent = state.progress,
-        from = state.from, to = state.to, paused = state.recording == RecordingState.Paused, onTap = events.onTripPill,
-    )
+private fun PhoneControls(controls: TripControls) {
+    Row(Modifier.fillMaxWidth().padding(top = Spacing.md), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        controls.toggleText?.let { text ->
+            DbButton(
+                text = text,
+                onClick = controls.onToggle,
+                kind = if (controls.resume) ButtonKind.Primary else ButtonKind.Outline,
+                modifier = Modifier.weight(1f),
+                block = true, capWide = false,
+                enabled = controls.toggleEnabled,
+                icon = if (controls.resume) DbIcons.Mic else DbIcons.Pause,
+            )
+        }
+        controls.onEndTrip?.let {
+            DbButton(
+                text = "여행 끝내기", onClick = it, kind = ButtonKind.Outline,
+                modifier = Modifier.weight(1f), block = true, capWide = false, icon = DbIcons.Flag,
+            )
+        }
+    }
 }
 
 /* 화면별 기본 상태(웹 DRIVE 표와 같음) */
@@ -332,11 +440,10 @@ object DrivingStates {
     val B01 = DrivingUiState(card = DrivingCard.Quiet(), asked = Sample.ASKED_QUIET, nowText = "듣는 중")
     /** Q01 무응답·‘질문 그만’ 뒤의 B01: 먼저 묻지 않는다 */
     val B01_QUIET = DrivingUiState(
-        card = DrivingCard.Quiet("이번 여행에서는 먼저 묻지 않을게요", "이야기가 필요하면 ‘${com.dongbantest.app.gleo.VoiceCommands.ASK_NEXT}’라고 말해 주세요."),
+        card = DrivingCard.Quiet("이번 여행에서는 먼저 묻지 않을게요", "이야기가 필요하면 ‘${VoiceCommands.ASK_NEXT}’라고 말해 주세요."),
         asked = Sample.ASKED_QUIET, nowText = "조용히 듣는 중",
     )
     val S05 = DrivingUiState()
-    val S05_MOMENT = DrivingUiState(momentButton = true)
     /** Q02 에서 온 S05: 질문 카드와 나눈 대화 첫 줄이 여행지 질문 */
     val S05_SILENCE = DrivingUiState(
         card = DrivingCard.Question(Sample.Q_SILENCE, Sample.SAY_ON, pauseCaption = Sample.PAUSE_CAPTION),
@@ -388,7 +495,7 @@ data class VoiceGuideUiState(
     val commands: List<VoiceCommandUi> = listOf(
         VoiceCommandUi(GleoRecordingAction.PAUSE.example, "녹음 중에 말하면 여행 녹음을 잠깐 멈춰요"),
         VoiceCommandUi(GleoRecordingAction.RESUME.example, "글레오를 부른 뒤 말하면 멈춘 녹음을 이어가요"),
-        VoiceCommandUi(com.dongbantest.app.gleo.VoiceCommands.STOP_ASKING, "녹음 중에 말하면 이번 여행에서는 동반이가 먼저 묻지 않아요"),
+        VoiceCommandUi(VoiceCommands.STOP_ASKING, "녹음 중에 말하면 이번 여행에서는 동반이가 먼저 묻지 않아요"),
     ),
     val primary: String = "알겠어요, 출발",
     val background: DrivingUiState = DrivingStates.S04,
@@ -597,7 +704,7 @@ private fun StopSheet(state: StopNoticeUiState, onContinue: () -> Unit, onClose:
 @Composable
 private fun StopIcon(stopped: Boolean) {
     val c = DbTheme.colors
-    androidx.compose.foundation.layout.Box(
+    Box(
         Modifier.size(56.dp).clip(DbShapes.pill).background(c.accentSoft),
         contentAlignment = Alignment.Center,
     ) {

@@ -144,20 +144,23 @@ fun CircleIconButton(
     }
 }
 
-/** 대화 재생·일시정지 버튼. */
+/**
+ * 대화 재생·일시정지 버튼.
+ * compact = 목록 줄 안(다이어리 이야기 줄): 누르는 자리는 48dp 그대로, 보이는 원만 36dp 로 줄여 28dp 이야기 마커·16sp 제목과 무게를 맞춘다.
+ */
 @Composable
-fun PlayButton(playing: Boolean, contentDescription: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun PlayButton(playing: Boolean, contentDescription: String, onClick: () -> Unit, modifier: Modifier = Modifier, compact: Boolean = false) {
     val c = DbTheme.colors
     val face by animateColorAsState(if (playing) c.actionPressed else c.action, tween(180), label = "Play button color")
     Box(
         modifier
             .size(48.dp)
             .clip(DbShapes.pill)
-            .background(face)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center,
     ) {
+        Box(Modifier.size(if (compact) 36.dp else 48.dp).clip(DbShapes.pill).background(face))
         AnimatedContent(
             targetState = playing,
             transitionSpec = {
@@ -166,7 +169,7 @@ fun PlayButton(playing: Boolean, contentDescription: String, onClick: () -> Unit
             },
             label = "Play and pause",
         ) { showPause ->
-            DbIcon(if (showPause) DbIcons.Pause else DbIcons.Play, 20.dp, c.accentInk)
+            DbIcon(if (showPause) DbIcons.Pause else DbIcons.Play, if (compact) 16.dp else 20.dp, c.accentInk)
         }
     }
 }

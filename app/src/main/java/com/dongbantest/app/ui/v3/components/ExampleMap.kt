@@ -56,7 +56,8 @@ data class MapLabel(val text: String, val at: Offset, val dx: Float, val dy: Flo
 @Immutable
 data class MapLive(val routeId: String, val progress: Float, val label: String)
 
-private fun ctrl(r: MapRoute, w: Float, h: Float): Triple<Offset, Offset, Offset> {
+/** 예시 경로의 2차 곡선 점(출발, 조절점, 도착). MomentMap 도 같은 곡선 위에 핀을 놓는다. */
+internal fun ctrl(r: MapRoute, w: Float, h: Float): Triple<Offset, Offset, Offset> {
     val p0 = Offset(r.from.x * w, r.from.y * h)
     val p2 = Offset(r.to.x * w, r.to.y * h)
     val dx = p2.x - p0.x
@@ -65,7 +66,7 @@ private fun ctrl(r: MapRoute, w: Float, h: Float): Triple<Offset, Offset, Offset
 }
 
 private fun lerp(a: Offset, b: Offset, t: Float) = Offset(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)
-private fun quad(p0: Offset, c: Offset, p2: Offset, t: Float) = lerp(lerp(p0, c, t), lerp(c, p2, t), t)
+internal fun quad(p0: Offset, c: Offset, p2: Offset, t: Float) = lerp(lerp(p0, c, t), lerp(c, p2, t), t)
 
 /**
  * 예시 지도(웹 SVG를 Canvas로). 외부 타일 없이 땅·바다·길과 기록 경로를 그린다.
@@ -82,6 +83,12 @@ fun ExampleMap(
     description: String = "기록 경로 예시 지도",
     onOpen: ((String) -> Unit)? = null,
     onLive: (() -> Unit)? = null,
+    /** 고른 기록. 있으면 그 경로만 진하게, 나머지는 흐리게 */
+    selected: String? = null,
+    /** 경로·라벨이 없는 곳을 누름 */
+    onBlank: (() -> Unit)? = null,
+    /** 경로 끝 도착 표시(원 + 깃발). 기록 탭 전체 지도는 끈다. */
+    endMarkers: Boolean = true,
 ) {
     val c = DbTheme.colors
     val labelStyle = DbTheme.type.label.copy(color = c.ink)
@@ -99,7 +106,7 @@ fun ExampleMap(
         Canvas(
             Modifier
                 .fillMaxSize()
-                .pointerInput(routes, live, onOpen, onLive) {
+                .pointerInput(routes, live, onOpen, onLive, onBlank) {
                     if (onOpen == null && onLive == null) return@pointerInput
                     detectTapGestures { p ->
                         val w = size.width.toFloat()
@@ -126,7 +133,7 @@ fun ExampleMap(
                             }
                         }
                         when (best) {
-                            null -> Unit
+                            null -> onBlank?.invoke()
                             "live" -> onLive?.invoke()
                             else -> onOpen?.invoke(best!!)
                         }
@@ -157,13 +164,15 @@ fun ExampleMap(
                     c.mapRoad, style = road,
                 )
             }
-            routes.forEach { r ->
-                val color = routeColors.getValue(r.id)
+            routes.sortedBy { if (it.id == selected) 1 else 0 }.forEach { r ->
+                val color = routeColors.getValue(r.id).let { if (selected != null && r.id != selected) it.copy(alpha = 0.22f) else it }
                 val (p0, k, p2) = ctrl(r, w, h)
                 drawPath(Path().apply { moveTo(p0.x, p0.y); quadraticTo(k.x, k.y, p2.x, p2.y) }, color, style = Stroke(5.dp.toPx(), cap = StrokeCap.Round))
                 ring(p0, 5f, c.paper, color)
-                ring(p2, 13f, c.paper, color)
-                icon(flag, p2, color)
+                if (endMarkers) {
+                    ring(p2, 13f, c.paper, color)
+                    icon(flag, p2, color)
+                }
             }
             if (live != null && liveRoute != null) {
                 val (p0, k, p2) = ctrl(liveRoute, w, h)

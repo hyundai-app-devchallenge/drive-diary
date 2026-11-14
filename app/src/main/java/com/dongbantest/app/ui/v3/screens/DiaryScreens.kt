@@ -26,6 +26,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,6 +70,14 @@ import com.dongbantest.app.ui.v3.theme.DbShapes
 import com.dongbantest.app.ui.v3.theme.DbTheme
 import com.dongbantest.app.ui.v3.theme.Spacing
 
+/**
+ * 기록 지도·기록 상세의 지도 : 목록 폭 비율.
+ * Full 은 3 : 2. Expanded(약 680dp)에서 3 : 2 면 목록이 260dp 남짓이라 장소 이름·이야기 제목이 꺾이므로 1 : 1.
+ */
+@Composable
+internal fun mapListWeights(): Pair<Float, Float> =
+    if (DbTheme.layout == DbLayout.Full) 3f to 2f else 1f to 1f
+
 /* ───────── S12 다이어리 만드는 중 ───────── */
 
 enum class StepState { Done, Active, Pending }
@@ -83,7 +96,7 @@ data class MakingDiaryUiState(
 
 /** 넓은 화면 .lead.measure: 560(Full 640) 가운데 */
 @Composable
-private fun leadWidth(): Modifier = when (DbTheme.layout) {
+internal fun leadWidth(): Modifier = when (DbTheme.layout) {
     DbLayout.Compact -> Modifier.fillMaxWidth()
     DbLayout.Expanded -> Modifier.widthIn(max = 560.dp).fillMaxWidth()
     DbLayout.Full -> Modifier.widthIn(max = 640.dp).fillMaxWidth()
@@ -227,11 +240,20 @@ data class DiaryUiState(
     val talksTitle: String = "나눈 이야기",
     val fromQuestionTag: String = "동반이 질문",
     val photoPlaceholder: String = "사진 자리",
+    val photosTitle: String = "사진",
+    val photosMore: String = "더보기",
+    val photosLess: String = "접기",
     val playback: PlaybackUi? = null,
     val playbackEnabled: Boolean = true,
     val recordingText: String = Sample.REC_ON,
+    val momentHint: String = "지도나 시간 띠에서 이야기를 고르면 그 자리를 함께 보여 줘요.",
+    val talksEmpty: String = "이번 여행에선 나눈 이야기가 없어요.",
 )
 
+/**
+ * S14 다이어리 한 장: 지도·시간 띠·이야기 목록을 한 화면에.
+ * 지도 핀, 시간 띠 막대, 목록 줄 어디서 골라도 같은 이야기가 함께 강조되고, 목록 줄에서 바로 재생한다.
+ */
 @Composable
 fun DiaryScreen(
     state: DiaryUiState = DiaryUiState(),
@@ -240,43 +262,31 @@ fun DiaryScreen(
     onNextPage: () -> Unit = {},
     onPlay: (TalkUi) -> Unit = {},
     onSeek: (TalkUi, Long) -> Unit = { _, _ -> },
-    /** 지도 칸. null 이면 예시 지도(ExampleMap). 팀 앱은 실제 경로 지도(MapLibre)를 넣는다. */
-    map: (@Composable (Modifier) -> Unit)? = null,
     /** "편집" 버튼. null 이면 비활성(확정안 기본). */
     onEdit: (() -> Unit)? = null,
+    /** 지도 칸. null 이면 예시 지도(MomentMap). 앱은 이야기 핀을 얹은 실제 지도(RouteMap)를 넣는다. */
+    momentMap: MomentMapSlot? = null,
 ) {
-    // 받은 폭으로 Compact·Expanded·Full 을 먼저 정한다(아래에서 DbTheme.layout 을 읽음)
-    AdaptiveLayout(Modifier.fillMaxSize()) {
-        val layout = DbTheme.layout
-        AppShell(
-            selectedTab = DbTab.Record, onTab = onTab,
-            topBar = { DiaryTopBar(state, onBack, onNextPage, onEdit) },
-            scroll = !layout.wide,
-        ) {
-            if (layout.wide) {
-                Row(Modifier.fillMaxSize().padding(top = Spacing.xs), horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
-                    val left = if (layout == DbLayout.Full) Modifier.width(560.dp) else Modifier.weight(1f)
-                    Column(left.fillMaxHeight().verticalScroll(rememberScrollState()).padding(end = Spacing.s2xs)) { DiaryInfo(state, map) }
-                    Column(
-                        Modifier.weight(1f).fillMaxHeight().clip(DbShapes.card).border(1.dp, DbTheme.colors.rule, DbShapes.card)
-                            .background(DbTheme.colors.paper).verticalScroll(rememberScrollState())
-                            .padding(horizontal = Spacing.lg, vertical = Spacing.md),
-                    ) { DiaryTalks(state, onPlay, onSeek) }
-                }
-            } else {
-                DiaryInfo(state, map)
-                Column(Modifier.padding(top = Spacing.xl)) { DiaryTalks(state, onPlay, onSeek) }
-            }
-        }
-    }
+    MomentDiary(state, onTab, onBack, onNextPage, onPlay, onSeek, onEdit, momentMap)
 }
 
 @Composable
-private fun DiaryTopBar(state: DiaryUiState, onBack: () -> Unit, onNextPage: () -> Unit, onEdit: (() -> Unit)? = null) {
+internal fun DiaryTopBar(state: DiaryUiState, onBack: () -> Unit, onNextPage: () -> Unit, onEdit: (() -> Unit)? = null) {
     val c = DbTheme.colors
+    val t = DbTheme.type
+    val r = state.record
     TopBarFrame {
-        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        // 날짜·제목을 맨 위 줄로 올려 아래 칸(사진·이야기) 자리를 넓힌다.
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             CircleIconButton(DbIcons.ArrowLeft, "뒤로", onBack)
+            Column(Modifier.weight(1f)) {
+                Text(r.dateLabel, style = t.caption, color = c.muted, maxLines = 1)
+                Text(
+                    r.title, style = t.titleLg, color = c.ink, maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.semantics { heading() },
+                )
+            }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (state.live) Spacing.xs else Spacing.s2xs)) {
             if (state.live) {
@@ -285,47 +295,14 @@ private fun DiaryTopBar(state: DiaryUiState, onBack: () -> Unit, onNextPage: () 
             } else {
                 DbButton(state.edit, onEdit ?: {}, ButtonKind.Plain, off = onEdit == null)
             }
-            DbButton(state.next, onNextPage, ButtonKind.Plain)
-        }
-    }
-}
-
-@Composable
-private fun ColumnScope.DiaryInfo(state: DiaryUiState, map: (@Composable (Modifier) -> Unit)? = null) {
-    val c = DbTheme.colors
-    val t = DbTheme.type
-    val r = state.record
-    Text(r.dateLabel, style = t.bodySm.copy(fontWeight = FontWeight.Medium, lineHeight = t.bodySm.fontSize * 1.4f), color = c.muted, modifier = Modifier.padding(top = Spacing.xs))
-    Text(r.title, style = t.display, color = c.ink, modifier = Modifier.padding(top = Spacing.s2xs, bottom = Spacing.md).semantics { heading() })
-    FlowPeople(r.people, Modifier.semantics { contentDescription = "${state.peopleLabel}: ${r.people.joinToString()}" })
-    val mapModifier = Modifier.padding(top = Spacing.md).fillMaxWidth().height(if (map != null) 200.dp else 120.dp).clip(DbShapes.card)
-    if (map != null) {
-        map(mapModifier)
-    } else {
-        ExampleMap(
-            routes = listOf(SampleMap.route(r)),
-            labels = SampleMap.labelsFor(r),
-            modifier = mapModifier,
-        )
-    }
-    Column(Modifier.padding(top = Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.s2xs)) {
-        Text(state.durationLabel, style = t.caption, color = c.muted)
-        Text(r.duration, style = t.display.copy(lineHeight = t.display.fontSize * 1.2f), color = c.ink, modifier = Modifier.padding(bottom = Spacing.xs))
-        RoadRibbon(100, r.tone.color, "${r.from} ${r.startTime}", "${r.to} ${r.arriveTime}", Modifier.fillMaxWidth())
-    }
-    Row(Modifier.padding(top = Spacing.lg).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        r.photos.forEach { cap ->
-            Column(Modifier.weight(1f)) {
-                PhotoSlot(state.photoPlaceholder, tile = true)
-                Text(cap, style = t.bodySm, color = c.muted, modifier = Modifier.padding(top = Spacing.xs))
-            }
+            // "다음 장" 버튼은 뺐다(기록은 지도에서 골라 연다). onNextPage 는 호출하는 쪽 호환을 위해 남겨 둔다.
         }
     }
 }
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun FlowPeople(people: List<String>, modifier: Modifier = Modifier) {
+internal fun FlowPeople(people: List<String>, modifier: Modifier = Modifier) {
     val c = DbTheme.colors
     val t = DbTheme.type
     androidx.compose.foundation.layout.FlowRow(
@@ -347,58 +324,6 @@ private fun FlowPeople(people: List<String>, modifier: Modifier = Modifier) {
     }
 }
 
-@Composable
-private fun DiaryTalks(state: DiaryUiState, onPlay: (TalkUi) -> Unit, onSeek: (TalkUi, Long) -> Unit) {
-    val c = DbTheme.colors
-    val t = DbTheme.type
-    Text(state.talksTitle, style = t.titleLg, color = c.ink, modifier = Modifier.padding(bottom = Spacing.xs).semantics { heading() })
-    var hiddenExpanded by remember(state.record.id) { mutableStateOf(false) }
-    val hidden = state.record.talks.filter { it.hidden }
-    val visible = state.record.talks.filter { !it.hidden }
-    val shown = visible + if (hiddenExpanded) hidden else emptyList()
-    shown.forEachIndexed { index, talk ->
-        if (index == visible.size && hiddenExpanded) {
-            OutlineButton("숨긴 대화 ${hidden.size}개 접기", { hiddenExpanded = false })
-        }
-        val active = state.playback?.takeIf { state.playbackEnabled && it.id == talk.id }
-        Row(
-            Modifier.fillMaxWidth().topRule(if (DbTheme.layout.wide) c.ruleSoft else c.ruleSoft).padding(vertical = Spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
-        ) {
-            Text(talk.time, style = t.bodySm, color = c.muted, modifier = Modifier.width(52.dp).align(Alignment.Top).padding(top = Spacing.s3xs))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s3xs)) {
-                Text(talk.title, style = t.title, color = c.ink, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                if (active != null && active.durationMs > 0) {
-                    PlaybackBar(active) { onSeek(talk, it) }
-                } else {
-                    Text("음성 ${talk.audio} · 클립 ${talk.clipCount}개" + when (talk.kind) {
-                        "story" -> " · 이야기"
-                        "moment" -> " · 순간"
-                        else -> ""
-                    }, style = t.bodySm, color = c.muted)
-                }
-                // talk-rec 연동: 태그 칩(작은 Tag 재사용). 동반이 질문 표시와 같은 줄에 둔다.
-                if (talk.fromQuestion || talk.tags.isNotEmpty()) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                        if (talk.fromQuestion) Tag(state.fromQuestionTag, small = true)
-                        talk.tags.take(3).forEachIndexed { index, tag ->
-                            Tag(tag, small = true, category = index == 0 && tag == talk.category)
-                        }
-                    }
-                }
-            }
-            if (state.playbackEnabled) {
-                val playing = active?.isPlaying == true
-                val action = if (playing) "일시정지" else "재생"
-                PlayButton(playing, "${talk.title} $action", { onPlay(talk) }, Modifier.align(Alignment.Top))
-            }
-        }
-    }
-    if (hidden.isNotEmpty() && !hiddenExpanded) {
-        OutlineButton("숨긴 대화 ${hidden.size}개", { hiddenExpanded = true })
-    }
-}
 
 /* ───────── R01 기록 지도 ───────── */
 
@@ -416,7 +341,14 @@ data class RecordMapUiState(
     val liveOpen: String = "여행 화면으로",
     val savedChip: String = "기록 3개 저장됨",
     val recordingText: String = Sample.REC_ON,
+    /** 지도에서 경로를 고른 카드 아래에 뜨는 버튼 */
+    val openRecord: String = "기록 보기",
 )
+
+/**
+ * 기록 지도 칸. 받은 고른 기록 id 로 그 경로만 진하게 그리고, 경로를 누르면 onSelect(id), 빈 곳은 onSelect(null).
+ */
+typealias RecordMapSlot = @Composable (modifier: Modifier, selected: String?, onSelect: (String?) -> Unit) -> Unit
 
 @Composable
 fun RecordMapScreen(
@@ -424,9 +356,13 @@ fun RecordMapScreen(
     onTab: (DbTab) -> Unit = {},
     onOpenRecord: (String) -> Unit = {},
     onOpenLiveTrip: () -> Unit = {},
-    /** 지도 칸. null 이면 예시 지도(ExampleMap). 팀 앱은 실제 경로 지도(MapLibre)를 넣는다. */
-    realMap: (@Composable (Modifier) -> Unit)? = null,
+    /** 지도 칸. null 이면 예시 지도(ExampleMap). 앱은 실제 경로 지도(RouteMap)를 넣는다. */
+    realMap: RecordMapSlot? = null,
 ) {
+    // 경로나 카드를 누르면 그 기록을 고른다: 지도는 그 경로만 진하게, 목록은 그 카드만 강조하고 아래에 "기록 보기".
+    // 같은 것을 다시 누르면 푼다.
+    var selected by rememberSaveable { mutableStateOf<String?>(null) }
+    val pick: (String?) -> Unit = { id -> selected = if (id == selected) null else id }
     // 받은 폭으로 Compact·Expanded·Full 을 먼저 정한다(아래에서 DbTheme.layout 을 읽음)
     AdaptiveLayout(Modifier.fillMaxSize()) {
         val c = DbTheme.colors
@@ -434,17 +370,22 @@ fun RecordMapScreen(
         val layout = DbTheme.layout
         val liveRecord = if (state.live) state.records.firstOrNull { it.id == state.liveId } else null
         val past = if (liveRecord != null) state.records.filter { it.id != liveRecord.id } else state.records
+        // 지운 기록이 골라져 있으면 푼다.
+        if (selected != null && past.none { it.id == selected }) selected = null
         val map: @Composable (Modifier) -> Unit = { m ->
             if (realMap != null) {
-                realMap(m.clip(DbShapes.card))
+                realMap(m.clip(DbShapes.card), selected, pick)
             } else {
                 ExampleMap(
                     routes = past.map { SampleMap.route(it) },
                     labels = SampleMap.labels(live = liveRecord != null),
                     live = liveRecord?.let { SampleMap.LIVE.copy(progress = state.liveProgress / 100f) },
                     liveRoute = liveRecord?.let { SampleMap.route(it) },
-                    onOpen = onOpenRecord,
+                    onOpen = pick,
                     onLive = onOpenLiveTrip,
+                    selected = selected,
+                    onBlank = { selected = null },
+                    endMarkers = false,
                     modifier = m,
                 )
             }
@@ -466,7 +407,21 @@ fun RecordMapScreen(
             Column(Modifier.padding(top = if (layout.wide) Spacing.md else Spacing.lg)) {
                 Text(state.listTitle, style = t.title, color = c.ink, modifier = Modifier.semantics { heading() })
                 Column(Modifier.padding(top = Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    past.forEach { r -> RecordCard(r.title, r.dateShort, r.tone, r.from, r.to, { onOpenRecord(r.id) }) }
+                    past.forEach { r ->
+                        val on = r.id == selected
+                        val bring = remember { BringIntoViewRequester() }
+                        // 지도에서 고르면 목록이 그 카드(아래 버튼까지)를 보이는 곳으로 굴린다.
+                        LaunchedEffect(on) { if (on) { delay(220); bring.bringIntoView() } }
+                        RecordCard(
+                            r.title, r.dateShort, r.tone, r.from, r.to, { pick(r.id) },
+                            Modifier.bringIntoViewRequester(bring),
+                            openLabel = "${r.title} 경로 보기",
+                            selected = on,
+                            dimmed = selected != null && !on,
+                            action = { PrimaryButton(state.openRecord, { onOpenRecord(r.id) }) },
+                            photo = r.photos.firstOrNull()?.path,
+                        )
+                    }
                 }
             }
         }
@@ -479,14 +434,14 @@ fun RecordMapScreen(
             scroll = !layout.wide,
         ) {
             if (layout.wide) {
-                Row(Modifier.fillMaxSize().padding(top = Spacing.xs), horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
-                    if (layout == DbLayout.Full) {
-                        map(Modifier.weight(1f).fillMaxHeight())
-                        Column(Modifier.width(360.dp).fillMaxHeight().verticalScroll(rememberScrollState())) { head(); list() }
-                    } else {
-                        map(Modifier.weight(58f).fillMaxHeight())
-                        Column(Modifier.weight(42f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(end = Spacing.s2xs)) { head(); list() }
-                    }
+                // 목록 칸은 고른 카드의 그림자가 스크롤 경계에 잘리지 않게 안쪽 여백(xs)을 두고, 그만큼 칸 사이를 줄인다.
+                Row(Modifier.fillMaxSize().padding(top = Spacing.xs), horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+                    val (mapW, listW) = mapListWeights()
+                    map(Modifier.weight(mapW).fillMaxHeight())
+                    Column(
+                        Modifier.weight(listW).fillMaxHeight().verticalScroll(rememberScrollState())
+                            .padding(start = Spacing.xs, end = Spacing.xs, bottom = Spacing.md),
+                    ) { head(); list() }
                 }
             } else {
                 head()

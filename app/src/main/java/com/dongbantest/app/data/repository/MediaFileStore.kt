@@ -27,6 +27,21 @@ class MediaFileStore private constructor(private val rootDir: File, private val 
     fun talkVoiceFile(tripId: Long, blockId: String): File =
         File(voiceDir, "voice_talk_trip_${tripId}_${clipKey("$tripId:$blockId")}.m4a")
 
+    /** Bundled demos use the same AAC container and trip prefix as real talk clips. */
+    internal fun sampleTalkVoiceFile(tripId: Long, storyId: String): File =
+        File(voiceDir, "voice_talk_trip_${tripId}_sample_${clipKey(storyId)}.m4a")
+
+    internal suspend fun copyDemoPhoto(input: java.io.InputStream): File = withContext(Dispatchers.IO) {
+        val target = File(photoDir, "photo_${UUID.randomUUID()}.jpg")
+        try {
+            target.outputStream().use { input.copyTo(it) }
+            target
+        } catch (failure: Throwable) {
+            target.delete()
+            throw failure
+        }
+    }
+
     internal val talkJournalDir = File(rootDir, "talkrec-journal")
 
     /** ClipWriter in :talkrec writes only here: final AAC and same-folder .part files.

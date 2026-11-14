@@ -1,0 +1,74 @@
+[
+  {
+    "asset": "A_0.m4a",
+    "source": "A1_차량소음.m4a",
+    "durationMs": 39729,
+    "bytes": 498287
+  },
+  {
+    "asset": "A_1.m4a",
+    "source": "A2_차량소음.m4a",
+    "durationMs": 42446,
+    "bytes": 534238
+  },
+  {
+    "asset": "A_2.m4a",
+    "source": "A3_차량소음.m4a",
+    "durationMs": 25797,
+    "bytes": 324606
+  },
+  {
+    "asset": "A_4.m4a",
+    "source": "A4_차량소음.m4a",
+    "durationMs": 49342,
+    "bytes": 626512
+  },
+  {
+    "asset": "B_0.m4a",
+    "source": "B1_차량소음.m4a",
+    "durationMs": 22616,
+    "bytes": 284914
+  },
+  {
+    "asset": "B_1.m4a",
+    "source": "B2_차량소음.m4a",
+    "durationMs": 18111,
+    "bytes": 229408
+  },
+  {
+    "asset": "B_2.m4a",
+    "source": "B3_차량소음.m4a",
+    "durationMs": 23661,
+    "bytes": 299694
+  },
+  {
+    "asset": "C_1.m4a",
+    "source": "C1_차량소음.m4a",
+    "durationMs": 32275,
+    "bytes": 408126
+  },
+  {
+    "asset": "C_2.m4a",
+    "source": "C2_차량소음.m4a",
+    "durationMs": 15487,
+    "bytes": 195531
+  },
+  {
+    "asset": "C_3.m4a",
+    "source": "C3_차량소음.m4a",
+    "durationMs": 34365,
+    "bytes": 431327
+  },
+  {
+    "asset": "C_4.m4a",
+    "source": "C4_차량소음.m4a",
+    "durationMs": 26377,
+    "bytes": 332160
+  },
+  {
+    "asset": "C_5.m4a",
+    "source": "C5_브레이크.m4a",
+    "durationMs": 13258,
+    "bytes": 164614
+  }
+]

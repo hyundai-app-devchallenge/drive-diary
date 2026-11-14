@@ -6,7 +6,7 @@
 
 | 소스 묶음 | 내용 |
 |---|---|
-| `src/main` | 캡처·묶음·정책·판정·조각 저장·요약 (패키지 구성은 [루트 README](../../README.md#대화-기록-모듈talkrec-안)) |
+| `src/main` | 캡처·묶음·정책·판정·조각 저장·요약 (패키지 구성은 [루트 README](../../README.md#3-프로젝트-구조)) |
 | `src/debug` | ADB 디버그 수신기·시작 Activity, 시험용 agy 중계 요약 제공자 |
 | `src/release` | 요약 제공자 목록(Cloudflare / Fake만) |
 | `src/test`, `testDebug`, `testRelease` | JVM 단위 테스트. `talkrec.assetsDir`로 실제 assets를 읽는다 |

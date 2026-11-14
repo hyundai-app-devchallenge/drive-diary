@@ -14,6 +14,10 @@ import com.drivediary.talkrec.capture.CaptureStatus
 import com.dongbantest.app.domain.model.RouteRibbon
 import com.dongbantest.app.domain.model.Trip
 import com.dongbantest.app.domain.model.TripWithMemories
+import com.dongbantest.app.domain.model.LocationPoint
+import com.dongbantest.app.ui.components.MapMoment
+import com.dongbantest.app.ui.v3.components.MomentPin
+import kotlin.math.abs
 import com.dongbantest.app.navi.NaviRoute
 import com.dongbantest.app.ui.components.RouteColors
 import com.dongbantest.app.ui.components.formatDuration
@@ -27,6 +31,7 @@ import com.dongbantest.app.ui.v3.components.TripTone
 import com.dongbantest.app.ui.v3.components.VoiceToastUi
 import com.dongbantest.app.ui.v3.screens.ArrivalUiState
 import com.dongbantest.app.ui.v3.screens.DiaryReadyUiState
+import com.dongbantest.app.ui.v3.screens.PhotoUi
 import com.dongbantest.app.ui.v3.screens.DrivingCard
 import com.dongbantest.app.ui.v3.screens.DrivingStates
 import com.dongbantest.app.ui.v3.screens.DrivingUiState
@@ -140,7 +145,7 @@ fun recordingChip(state: TripUiState, now: Long, capture: CaptureState = Capture
 fun AppHomeUiState.toV3(): HomeUiState {
     val ongoing = ongoingTrip
     val past = pastTrips.take(2).map {
-        PastTripUi(it.id.toString(), it.title, formatShortDate(it.startedAt), toneOf(it.id))
+        PastTripUi(it.id.toString(), it.title, formatShortDate(it.startedAt), toneOf(it.id), it.coverPhotoPath)
     }
     return HomeUiState(
         driving = safety?.isRestricted == true && ongoing != null,
@@ -192,8 +197,8 @@ fun TripUiState.toDriving(
     }?.let { if (rec == RecordingState.Paused) "글레오에게 “$it”" else "“$it”" }
     val bubble = when (recordingMode) {
         RecordingMode.ON -> "$to 가는 길, 모두의 이야기를 담고 있어요."
-        RecordingMode.PAUSED -> "녹음을 잠시 멈췄어요. 질문은 계속할 수 있어요."
-        RecordingMode.OFF -> "이번 여행은 녹음 없이 질문만 함께해요."
+        RecordingMode.PAUSED -> "녹음을 잠시 멈췄어요. 다시 켜면 질문도 이어갈게요."
+        RecordingMode.OFF -> "이번 여행은 녹음 없이 조용히 함께해요."
         RecordingMode.READY -> "출발하면 모두의 이야기를 담기 시작할게요."
     }
     val people = trip.companions.size
@@ -203,7 +208,8 @@ fun TripUiState.toDriving(
         recordingText = recText,
         stopped = !safety.isRestricted,
         pillTitle = pillTitle,
-        pillSub = listOf(hhmm(trip.startedAt), ribbon?.originName ?: trip.startPlace, "출발").filterNotNull().joinToString(" "),
+        // 출발지는 진행 카드 안 길 리본 왼쪽 아래에 나오니 여기서는 시각만 쓴다.
+        pillSub = "${hhmm(trip.startedAt)} 출발",
         people = if (people > 0) "함께 ${people}명" else "",
         progress = if (ended) 100 else percentOf(ribbon?.progress),
         from = from,
@@ -223,8 +229,6 @@ fun TripUiState.toDriving(
         asked = asked,
         nowText = if (quiet) "조용히 듣는 중" else null,
         toast = voiceFeedback?.toToast()?.let { if (safety.isRestricted) it.copy(say = null) else it },
-        // 모드와 실제 캡처가 모두 녹음 중일 때만 저장 동작을 제공한다.
-        momentButton = !ended && recordingMode == RecordingMode.ON && capture.status == CaptureStatus.On,
         recordingToggleText = if (ended || safety.isRestricted) null else when (recordingMode) {
             // 모드는 ON이어도 캡처가 스스로 멈출 수 있다(음성 인식 오류 등). 그때는 다시 켜는 버튼을 준다.
             RecordingMode.ON -> if (capture.status == CaptureStatus.Paused) RESUME_TEXT else "녹음 멈추기"
@@ -255,7 +259,7 @@ private const val TALK_SAVED_LABEL = "대화 저장됨"
 
 /** 이야기 한 줄과 그 음성 파일 경로 (재생할 때 쓴다) */
 data class TalkWithPath(val talk: TalkUi, val paths: List<String>, val startMs: Long,
-    val drivingTitle: String = talk.title) {
+    val drivingTitle: String = talk.title, val durationMs: Long = 0L) {
     val path: String? get() = paths.firstOrNull()
 }
 
@@ -288,6 +292,7 @@ fun TripWithMemories.talks(): List<TalkWithPath> {
                 ),
                 ordered.mapNotNull { it.filePath }, clipStart,
                 if (pendingRun) "이야기 정리 중" else m.talk?.title?.takeIf { it.isNotBlank() } ?: TALK_SAVED_LABEL,
+                clips.sumOf { it.durationMs ?: 0L },
             )
         }.sortedBy { it.startMs }
 }
@@ -297,9 +302,43 @@ fun VoicePlayback.toUi(talks: List<TalkWithPath>): PlaybackUi? {
     return PlaybackUi(id, isPlaying, positionMs, durationMs)
 }
 
+/** 여행 시간 창(출발 → 도착, 진행 중이면 지금). 지도·타임라인 띠의 0–1 비율 기준. */
+private fun TripWithMemories.window(): LongRange {
+    val a = trip.startedAt
+    return a..maxOf(trip.endedAt ?: System.currentTimeMillis(), a + 1)
+}
+
+private fun LongRange.frac(t: Long): Float = ((t - first).toFloat() / (last - first)).coerceIn(0f, 1f)
+
+private fun LongRange.span(a: Long, b: Long): ClosedFloatingPointRange<Float> = frac(a)..maxOf(frac(a), frac(b))
+
+/**
+ * 핀(0–1 비율)을 실제 지도 위 자리로 옮긴다: 그 시각에 가장 가까운 위치 기록.
+ * 2분 안에 위치 기록이 없으면(터널, GPS 끊김) 지도에는 놓지 않고 시간 띠·목록에만 남는다.
+ */
+fun TripWithMemories.mapMoments(pins: List<MomentPin>): List<MapMoment> {
+    val points = drive.path.flatten().sortedBy { it.recordedAt }
+    if (points.isEmpty()) return emptyList()
+    val w = window()
+    return pins.mapNotNull { pin ->
+        val at = w.first + ((w.last - w.first) * pin.start).toLong()
+        nearestPoint(points, at)?.let { MapMoment(pin, it.latitude, it.longitude) }
+    }
+}
+
+private fun nearestPoint(sorted: List<LocationPoint>, at: Long): LocationPoint? {
+    val i = sorted.binarySearch { it.recordedAt.compareTo(at) }.let { if (it >= 0) it else -it - 1 }
+    return listOfNotNull(sorted.getOrNull(i - 1), sorted.getOrNull(i))
+        .minByOrNull { abs(it.recordedAt - at) }
+        ?.takeIf { abs(it.recordedAt - at) <= NEAREST_POINT_MS }
+}
+
+private const val NEAREST_POINT_MS = 2 * 60_000L
+
 fun TripWithMemories.toRecord(talks: List<TalkWithPath> = talks()): TripRecordUi {
     val t = trip
     val end = t.endedAt
+    val w = window()
     return TripRecordUi(
         id = t.id.toString(),
         title = t.title,
@@ -313,13 +352,15 @@ fun TripWithMemories.toRecord(talks: List<TalkWithPath> = talks()): TripRecordUi
         to = t.endPlace ?: t.destination.ifBlank { "도착" },
         arriveTime = end?.let { hhmm(it) } ?: "진행 중",
         duration = formatElapsed((end ?: System.currentTimeMillis()) - t.startedAt),
-        photos = memories.filter { it.type == MemoryType.PHOTO }.map { hhmm(it.createdAt) },
-        talks = talks.map { it.talk },
+        photos = memories.filter { it.type == MemoryType.PHOTO }.map { PhotoUi(it.id.toString(), hhmm(it.createdAt), it.filePath) },
+        talks = talks.map { it.talk.copy(span = w.span(it.startMs, it.startMs + it.durationMs)) },
     )
 }
 
 /** 기록 목록 카드에만 쓰는 가벼운 변환 (메모 없이 여행 정보만) */
 fun Trip.toRecordCard(): TripRecordUi = TripWithMemories(this, emptyList()).toRecord()
+    // 목록 카드 오른쪽 사진 칸: 기록의 첫 사진(대표 사진)
+    .copy(photos = listOfNotNull(coverPhotoPath?.let { PhotoUi("cover", "", it) }))
 
 /* ───────── S11 도착 ───────── */
 
