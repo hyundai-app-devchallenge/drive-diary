@@ -75,4 +75,14 @@ class VoiceCommandsTest {
         assertEquals(QuestionCommand.STOP_ASKING, parseQuestionCommand(VoiceCommands.STOP_ASKING))
         assertNull(parseQuestionCommand("동반차 녹음 멈춰"))
     }
+
+    @Test fun stopAskingAcknowledgementCannotBeRecognizedAsAnAppVoiceCommand() {
+        val notice = VoiceCommands.STOP_ASKING_ACKNOWLEDGEMENT
+        listOf(notice, "$notice.", "  “$notice!”  ", notice.replace(" ", "")).forEach { text ->
+            assertFalse(isStopAskingCommand(text))
+            assertFalse(isAskNextCommand(text))
+            assertFalse(isPauseRecordingCommand(text))
+            assertNull(parseQuestionCommand(text))
+        }
+    }
 }

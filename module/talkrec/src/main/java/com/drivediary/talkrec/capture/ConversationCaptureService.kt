@@ -127,7 +127,10 @@ class ConversationCaptureService : Service() {
             is Event.Control -> when (event.action) {
                 STOP -> { endInput(); debugStopped(); state(CaptureStatus.Off); TalkRec.finished(request); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
                 PAUSE -> pauseCapture()
-                RESUME -> if (request != null && TalkRec.state.value.status == CaptureStatus.Paused) startInput()
+                RESUME -> if (request != null && TalkRec.state.value.status == CaptureStatus.Paused) {
+                    request?.options?.beforeResume?.invoke()
+                    startInput()
+                }
                 MARK -> if (TalkRec.state.value.status == CaptureStatus.On) {
                     assembler.forceClose(System.currentTimeMillis())?.let { closed(it) }
                     flushCandidates(lastEnd ?: 0)
@@ -338,14 +341,14 @@ class ConversationCaptureService : Service() {
         while (iterator.hasNext()) {
             val closed = iterator.next()
             val block = closed.block
-            if (audioUntil < block.endMs + 2000) continue
+            if (audioUntil < block.endMs + NoRecordWindows.CLIP_TAIL_MS) continue
             if (TalkRec.inNoRecord(block.startMs, block.endMs)) {
-                // Question check, question audio or its answer window (question-suggest DESIGN §6).
+                // Question/notice audio and grace windows, including the clip's PCM padding.
                 closed.trace?.finish(); iterator.remove()
                 Log.i(TAG, "block skipped reason=question_window")
                 continue
             }
-            val audio = ring.slice(block.startMs - 3000, block.endMs + 2000)
+            val audio = ring.slice(block.startMs - NoRecordWindows.CLIP_LEAD_MS, block.endMs + NoRecordWindows.CLIP_TAIL_MS)
             if (candidates?.trySend(Candidate(closed, audio))?.isSuccess != true) {
                 audio.erase(); closed.trace?.finish(); dispatch(Event.Failed(session))
             }

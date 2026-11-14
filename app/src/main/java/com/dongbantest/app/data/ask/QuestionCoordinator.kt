@@ -7,6 +7,7 @@ import com.dongbantest.app.data.repository.QuestionBank
 import com.dongbantest.app.data.repository.RecordingConsentStore
 import com.dongbantest.app.data.repository.TripRepository
 import com.dongbantest.app.domain.model.MemoryType
+import com.dongbantest.app.gleo.VoiceCommands
 import com.dongbantest.app.location.LocationTracker
 import com.dongbantest.app.navi.ArrivalManager
 import com.dongbantest.app.navi.NaviMonitor
@@ -36,6 +37,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -47,7 +49,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import java.util.concurrent.atomic.AtomicInteger
 
 /** 화면에 띄울 질문 알림 */
 sealed interface QuestionOverlay {
@@ -118,11 +119,12 @@ class QuestionCoordinator(
     private var preparing: Deferred<GeneratedQuestion>? = null
     private var overlayJob: Job? = null
     private var questionJob: Job? = null
+    private var pauseSpeechJob: Job? = null
     private var questionTripId: Long? = null
     private val gleoPlayback = GleoPlaybackWait(context)
     private var started = false
-    /** 직접 요청한 질문의 대기·생성·읽기 동안 > 0. 조용함 감시가 해당 작업을 끊지 않는다. */
-    private val onDemandSpeaking = AtomicInteger(0)
+    private val speechOwnership = QuestionSpeechOwnership()
+    private val stopAskingFeedback = StopAskingFeedback(clock, TalkRec::beginNoRecord)
 
     fun start() {
         if (started) return
@@ -148,7 +150,7 @@ class QuestionCoordinator(
         val capture = TalkRec.state.value
         val id = tripId ?: return
         if (!tripRepository.isTripOngoing(id)) { cancelForTrip(id); return }
-        if (onDemandSpeaking.get() > 0) return
+        if (speechOwnership.onDemandSpeaking) return
         val now = clock()
         val speech = TalkRec.speech.value
         watcher.policy = policy()
@@ -165,7 +167,7 @@ class QuestionCoordinator(
 
     private suspend fun switchTrip(next: Long?) {
         endCheck()
-        cancelQuestion()
+        cancelQuestion(force = speechOwnership.pauseTripId != next)
         prepared = null; preparing?.cancel(); preparing = null
         watcher = QuietWatcher(policy())
         tripId = next
@@ -187,7 +189,7 @@ class QuestionCoordinator(
             AskEvent.Stopped -> {
                 endCheck()
                 // 사용자가 요청한 질문은 녹음이 멈춘 뒤에도 끝까지 읽는다.
-                if (onDemandSpeaking.get() == 0) { cancelQuestion(); setOverlay(QuestionOverlay.None) }
+                if (!speechOwnership.onDemandSpeaking) { cancelQuestion(); setOverlay(QuestionOverlay.None) }
             }
         }
         publishPhase()
@@ -229,11 +231,19 @@ class QuestionCoordinator(
     /** "동반차 질문 그만해줘": 이번 여행에서는 먼저 묻지 않는다. [source] = voice / screen. */
     fun stopAsking(source: String) = scope.launch {
         note("질문 그만 ($source)")
-        cancelQuestion()
-        preparing?.cancel(); preparing = null; prepared = null
-        setOverlay(QuestionOverlay.None)
-        val id = tripId ?: return@launch
-        handle(watcher.mute(clock(), "user"), id)
+        val id = tripId
+        stopAskingFeedback.stop(source,
+            applyMute = {
+                if (id != null) handle(watcher.mute(clock(), "user"), id)
+                id != null
+            },
+            stopQuestion = {
+                cancelQuestion()
+                preparing?.cancel(); preparing = null; prepared = null
+                setOverlay(QuestionOverlay.None)
+            },
+            speak = { if (id != null) speakAcknowledgement(id, VoiceCommands.STOP_ASKING_ACKNOWLEDGEMENT) },
+        )
     }
 
     /**
@@ -243,6 +253,8 @@ class QuestionCoordinator(
      * @return 질문을 시작했으면 true, 진행 중인 여행이 없으면 false
      */
     suspend fun startQuestion(source: String): Boolean {
+        // A new requested question waits for the pause acknowledgement instead of cutting it off.
+        pauseSpeechJob?.join()
         val id = tripRepository.observeOngoingTrip().first()?.id
         if (id == null || !tripRepository.isTripOngoing(id)) { note("질문 요청($source): 진행 중인 여행 없음"); return false }
         if (tripId != id) switchTrip(id)
@@ -280,7 +292,7 @@ class QuestionCoordinator(
     /** Called on Main before trip deletion/end; cancels generation, playback wait and TTS. */
     fun cancelForTrip(id: Long) {
         if (tripId != id && questionTripId != id && state.value.tripId != id) return
-        cancelQuestion()
+        cancelQuestion(force = true)
         endCheck()
         preparing?.cancel(); preparing = null; prepared = null
         watcher = QuietWatcher(policy())
@@ -288,23 +300,68 @@ class QuestionCoordinator(
         state.value = QuestionUi()
     }
 
-    private fun cancelQuestion() {
+    private fun cancelQuestion(force: Boolean = false): Boolean {
+        if (!speechOwnership.canCancel(force)) return false
         questionJob?.cancel(); questionJob = null; questionTripId = null
+        pauseSpeechJob = null
         overlayJob?.cancel(); overlayJob = null
-        speaker.stop()
+        try { speaker.stop() }
+        catch (_: Exception) { /* Optional TTS cannot block question state changes. */ }
+        catch (_: LinkageError) { /* Device TTS may be unavailable. */ }
+        return true
+    }
+
+    /** Called only after capture has closed. Uses the same on-device, ko-KR speaker as questions. */
+    suspend fun speakRecordingPaused(id: Long) =
+        speakAcknowledgement(id, VoiceCommands.PAUSE_RECORDING_ACKNOWLEDGEMENT, onlyWhenPaused = true)
+
+    private suspend fun speakAcknowledgement(id: Long, text: String, onlyWhenPaused: Boolean = false) = coroutineScope {
+        pauseSpeechJob?.takeIf { it.isActive && questionTripId == id }?.let {
+            it.join()
+            if (onlyWhenPaused) return@coroutineScope
+        }
+        if (!canSpeakAcknowledgement(id, onlyWhenPaused)) return@coroutineScope
+        if (!cancelQuestion()) return@coroutineScope
+        endCheck()
+        setOverlay(QuestionOverlay.None)
+        questionTripId = id
+        val job = launch(start = CoroutineStart.UNDISPATCHED) {
+            // Own the speaker for either notice so the quiet watcher cannot cancel this utterance.
+            val lease = speechOwnership.acquire(id, onDemand = true, pauseNotice = onlyWhenPaused)
+            try {
+                if (canSpeakAcknowledgement(id, onlyWhenPaused)) speaker.speak(text)
+            } finally {
+                speechOwnership.release(lease)
+            }
+        }
+        questionJob = job
+        if (onlyWhenPaused) pauseSpeechJob = job
+        try { job.join() }
+        finally { if (pauseSpeechJob === job) pauseSpeechJob = null }
+    }
+
+    private suspend fun canSpeakAcknowledgement(id: Long, onlyWhenPaused: Boolean): Boolean =
+        tripRepository.isTripOngoing(id) && (!onlyWhenPaused || TalkRec.state.value.let {
+            it.tripId == id && it.status == CaptureStatus.Paused
+        })
+
+    /** Main: release only pause feedback before resume; an unrelated requested question keeps its lifecycle. */
+    fun stopRecordingPauseSpeech() {
+        val job = pauseSpeechJob ?: return
+        if (questionJob === job) cancelQuestion(force = true) else job.cancel()
     }
 
     private fun launchQuestion(id: Long, onDemand: Boolean, waitForGleo: Boolean = false) {
-        cancelQuestion()
+        if (!cancelQuestion()) return
         questionTripId = id
         // Increment before the first suspension, and decrement only in this job's finally.
         questionJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            if (onDemand) onDemandSpeaking.incrementAndGet()
+            val lease = speechOwnership.acquire(id, onDemand)
             try {
                 if (waitForGleo) gleoPlayback.awaitQuiet()
                 if (tripRepository.isTripOngoing(id)) askNow(id, onDemand)
             } finally {
-                if (onDemand) onDemandSpeaking.decrementAndGet()
+                speechOwnership.release(lease)
             }
         }
     }

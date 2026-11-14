@@ -225,7 +225,8 @@ adb shell am broadcast --user 10 -a com.dongbantest.app.DEBUG_IMPORT_GPX -p com.
 | `ASK_REACTION` | `--es kind accept\|decline\|other` | Q01에 대한 반응을 넣습니다 |
 | `ASK_FORCE_QUESTION` | | 확인 없이 바로 질문합니다 |
 | `ASK_SHORT_POLICY` | `--ez on true\|false` | 시간 조건을 짧게 합니다(조용함 30초, 여행 시작 직후부터) |
-| `ASK_VOICE` | `--es cmd next\|stop` | 녹음 중 "동반차 질문 해줘" / "질문 그만해줘"를 말한 것으로 처리합니다 |
+| `ASK_VOICE` | `--es cmd next\|stop` | 앱 STT의 "동반차 질문 해줘" / "질문 그만해줘"를 흉내 냅니다. `stop`은 먼저 묻지 않기를 적용하고 질문 읽기를 취소한 뒤 기기 TTS로 안내합니다. 안내 중과 종료 후 1초는 저장·판정·요약에서 제외합니다(저장 음성의 앞뒤 여유 구간도 검사) |
+| `ASK_VOICE` | `--es cmd pause` | 앱 STT의 "동반차 녹음 멈춰"를 흉내 냅니다. 마이크를 닫은 뒤 기기 TTS로 중단을 안내합니다(질문 읽기는 취소) |
 | `ASK_GLEO` | | Gleo의 `ASK_NEW_QUESTION` 호출을 흉내 냅니다(녹음 멈춤·녹음 없는 여행에서) |
 
 ```bash

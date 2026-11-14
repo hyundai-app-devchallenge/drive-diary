@@ -5,6 +5,8 @@ import java.util.Locale
 /** User-facing command sentences. Screen copy and the screen-tap path compare against these. */
 object VoiceCommands {
     const val PAUSE_RECORDING = "동반차 녹음 멈춰"
+    const val PAUSE_RECORDING_ACKNOWLEDGEMENT = "네, 동반차 녹음 중단할게요"
+    const val STOP_ASKING_ACKNOWLEDGEMENT = "네, 이번 여행에서는 먼저 질문하지 않을게요"
     const val RESUME_RECORDING = "동반차 녹음 다시 시작해"
     const val ASK_NEXT = "동반차 질문 해줘"
     const val STOP_ASKING = "동반차 질문 그만해줘"

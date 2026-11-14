@@ -7,6 +7,7 @@ import com.drivediary.talkrec.capture.CaptureBudget
 import com.drivediary.talkrec.capture.CaptureState
 import com.drivediary.talkrec.capture.ConversationCaptureService
 import com.drivediary.talkrec.capture.MicAudioSource
+import com.drivediary.talkrec.capture.NoRecordWindows
 import com.drivediary.talkrec.capture.SpeechActivity
 import com.drivediary.talkrec.policy.AppSignals
 import com.drivediary.talkrec.sink.TalkSink
@@ -29,6 +30,8 @@ class CaptureOptions(
     val voiceCommand: (text: String) -> Boolean = { false },
     /** Runs after [voiceCommand]. Return true to consume that line (not stored, no reaction tap) without pausing. */
     val consumeCommand: (text: String) -> Boolean = { false },
+    /** Main: stop optional app speech before reopening paused input, including notification resumes. */
+    val beforeResume: () -> Unit = {},
 ) {
     init { require(silenceRms.isFinite() && silenceRms >= 0) }
     internal var budgetOverride: CaptureBudget? = null
@@ -104,22 +107,19 @@ object TalkRec {
      */
     @Volatile var reactionTap: ((text: String) -> Unit)? = null
 
-    private val noRecordWindows = mutableListOf<LongRange>()
+    private val noRecordWindows = NoRecordWindows()
 
     /** Blocks overlapping [fromMs, untilMs] (epoch ms) are dropped: not judged, saved or summarized. */
     fun markNoRecord(fromMs: Long, untilMs: Long) {
-        require(untilMs >= fromMs)
-        synchronized(noRecordWindows) {
-            noRecordWindows.removeAll { it.last < fromMs - WINDOW_KEEP_MS }
-            noRecordWindows += fromMs..untilMs
-        }
+        noRecordWindows.mark(fromMs, untilMs)
     }
 
-    internal fun inNoRecord(startMs: Long, endMs: Long): Boolean = synchronized(noRecordWindows) {
-        noRecordWindows.any { startMs <= it.last && endMs >= it.first }
-    }
+    /** Open protection before TTS starts; the returned callback closes it at the actual end plus grace. */
+    fun beginNoRecord(fromMs: Long): (untilMs: Long) -> Unit = noRecordWindows.begin(fromMs)
 
-    private const val WINDOW_KEEP_MS = 30 * 60_000L
+    /** Includes the saved PCM's leading/trailing padding, before judging or sending to the sink. */
+    internal fun inNoRecord(startMs: Long, endMs: Long): Boolean =
+        noRecordWindows.overlapsCapture(startMs, endMs)
 
     /** Debug receiver's in-process seam. It cannot be invoked through a release exported component. */
     internal var switchSource: ((factory: (() -> AudioSource)?, tripId: Long?, commandResult: CompletableDeferred<Boolean>?) -> Unit)? = null

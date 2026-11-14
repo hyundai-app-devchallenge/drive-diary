@@ -50,7 +50,11 @@ class AppContainer(context: Context) : SummaryWorkerDependencies {
             onPendingSaved = { id -> SummaryWorkScheduler.enqueue(context, id) })
     }
     val talkRecording by lazy {
-        TalkRecordingController(context, tripRepository, recordingConsentStore, talkSink, recordingSettingsStore)
+        TalkRecordingController(
+            context, tripRepository, recordingConsentStore, talkSink, recordingSettingsStore, appScope,
+            speakPause = { questionCoordinator.speakRecordingPaused(it) },
+            stopPauseSpeech = { questionCoordinator.stopRecordingPauseSpeech() },
+        )
     }
     val vehicleRepository by lazy { VehicleRepository(context, appScope) }
     val drivingSafetyMonitor by lazy { DrivingSafetyMonitor(context) }
