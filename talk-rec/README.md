@@ -9,7 +9,8 @@ talk-rec/
 ├── docs/             버전별 작업과 검증 결과
 │   ├── v0.1.0.md
 │   ├── model-create/ 모델 제작 작업별 기록 (T번호)
-│   └── app-integration/ 팀 앱 연동 설계와 작업별 기록 (I번호)
+│   ├── app-integration/ 팀 앱 연동 설계와 작업별 기록 (I번호)
+│   └── question-suggest/ 조용할 때 건네는 대화 질문 기획·설계 (QS번호)
 ├── model-create/     추억 후보 판정 모델: 합성 대화, 학습, 실제 영상 평가
 ├── test/
 │   └── stt/          독립 Android 검증 앱, 합성 음성 자산, 모델 비교 도구
@@ -64,3 +65,4 @@ Logcat 태그는 `DriveDiarySttProbe`다. AVD에서 완료한 20분 시험은 �
 4. [차량 대화 평가 시나리오](test/stt/story-dialogues.md)에서 후보와 제외를 비교할 문장을 보고, [dev-tools 사용법](dev-tools/README.md)에서 실제 대화 샘플 전사 절차를 찾는다.
 5. [model-create DESIGN.md](model-create/DESIGN.md)에서 판정 모델 설계와 결정 사항을, [docs/model-create](docs/model-create/)에서 작업별 결과를 본다.
 6. [app-integration DESIGN.md](docs/app-integration/DESIGN.md)에서 팀 앱 연동 설계를, 같은 폴더의 I번호 문서에서 연동 작업별 결과를 본다. 외부 LLM 요약은 [T63](docs/model-create/T63-cloudflare-relay.md)부터 Cloudflare Workers AI(Gemma 4)를 쓴다.
+7. [question-suggest PLAN.md](docs/question-suggest/PLAN.md)에서 조용할 때 건네는 대화 질문의 기획을, [DESIGN.md](docs/question-suggest/DESIGN.md)에서 기술 설계와 작업 단계(QS번호)를 본다.

@@ -41,7 +41,9 @@
 
 ## 디버그 앱에서 차량 음성 버튼 사용
 
-동반차 디버그 상단의 **Gleo 차량 음성 버튼**은 Pleos AVD에서 스티어링 휠의 짧은 음성 버튼 입력을 보낸다. AVD에서 동반차 디버그 APK를 설치하고, PC에서 `drive-diary-int` 루트를 열어 아래 스크립트를 실행한 상태로 버튼을 누른다. Android의 차량 입력에는 권한이 필요하므로 PC의 ADB가 `cmd car_service inject-key 231`을 실행한다. ADB가 PATH에 없다면 `--adb`에 platform-tools의 adb 경로를 넘긴다. [Android ADB 역방향 포트 연결](https://developer.android.com/develop/ui/views/layout/webapps/access-local-server)
+동반차 디버그 상단의 **Gleo 차량 음성 버튼**은 Pleos AVD에서 스티어링 휠의 짧은 음성 버튼 입력을 보낸다. AVD에서 동반차 디버그 APK를 설치하고, PC에서 `drive-diary-int` 루트를 열어 아래 스크립트를 실행한 상태로 버튼을 누른다. Android의 차량 입력에는 권한이 필요하므로 PC의 ADB가 `cmd car_service inject-key 231`을 실행한다. ADB가 PATH에 없다면 `--adb`에 platform-tools의 adb 경로를 넘긴다.
+
+2026-11-14 수정: 이전 버전은 `adb reverse`로 포트를 연결했다. 이 연결은 AVD 재부팅이나 ADB 서버 재연결 때 사라지지만 스크립트는 계속 떠 있어서, 재시작 뒤 버튼이 “PC 연결을 확인할 수 없어요”로 실패했다(재현: 스크립트 실행 중 `adb reverse --list`가 비어 있음). 이제 앱은 에뮬레이터의 호스트 루프백 별칭 `10.0.2.2:43192`로 직접 접속하고 스크립트는 `127.0.0.1:43192`에서 대기한다. 토큰이 없거나 맞지 않으면(재설치·데이터 삭제) 스크립트가 토큰을 다시 써 주고 앱이 한 번 재시도한다. 토큰 삭제, 앱 강제 종료, ADB 서버 재시작 뒤에도 버튼이 `MICOM_PTT_PRESS:SHORT`를 일으키는 것을 확인했다. [에뮬레이터 네트워크 주소](https://developer.android.com/studio/run/emulator-networking)
 
 ```powershell
 python module/talkrec/tools/gleo-voice-button.py --serial emulator-5554
@@ -54,12 +56,46 @@ python module/talkrec/tools/gleo-voice-button.py --serial emulator-5554
 
 이 시험에서 음성 게이트웨이는 응답했다. 실패한 구간은 Gleo가 인식 결과를 기다리는 단계이며, 이 상태에서는 일반 질문 응답과 동반차 Action 모두 확인할 수 없었다. ACK는 오디오 전송 확인이므로 게이트웨이 뒤 음성 인식 처리 상태까지 보여주지 않는다. AVD가 Gleo에 넘긴 오디오의 채널·품질, 서버의 발화 구간 판정과 인식 처리 중 어느 쪽이 원인인지는 아직 확인되지 않았다. 동일 빌드를 Gleo 일반 음성이 동작하는 Devbox에서 대조하거나, Pleos 지원 측에서 같은 시간대 gRPC 요청의 인식 로그를 조회하면 이 구간을 좁힐 수 있다.
 
+### 2026-11-14 추가 관찰: 입력 레벨
+
+- Gleo의 핫워드 트랙은 `AUDIO_SOURCE_HOTWORD`, 4채널 인덱스 마스크(`0x8000000F`), 16 kHz로 열려 있다. AVD 마이크 HAL 입력 스레드는 2채널(`0xc`)이다. Gleo 엔지니어링 모드(`am start --user 10 -a ambientai.intent.action.ENGINEERING_MODE -n ai.umos.ambientai/.SettingsActivity`) 상단에는 빨간 경고와 함께 `Unknown [4ch]`가 표시된다.
+- PC 스피커로 한국어 TTS를 재생했을 때 `HOTWORD_TAP` 입력 레벨은 무음 −97 dBFS, 발화 최대 약 −43 dBFS였다. 일반적인 근접 발화(−20~−30 dBFS)보다 15~25 dB 낮다. Windows 기본 녹음 장치(USB 헤드셋 마이크)의 볼륨은 이미 100%였다.
+- 동반차의 ON_DEVICE STT도 AVD에서 `MicAudioSource.amplifyMicFrame`의 최대 30 dB 증폭에 기대고 있다. Gleo는 이 증폭을 받지 못하므로, 호출어 감지와 서버 발화 구간 판정이 모두 낮은 레벨 때문에 실패했을 가능성이 가장 높다. 사용자가 헤드셋 마이크에 직접 말할 때의 레벨은 아직 측정하지 못했다.
+
+### 2026-11-14 실측: 레벨이 충분하면 인식된다, 그리고 Action 이름 불일치
+
+- 사용자가 헤드셋 마이크에 직접 크게 말해 최대 −30.9 dBFS가 들어가자, 차량 음성 버튼 경로에서 `transcript=지금 몇 시야?`가 나오고 스트리밍 TTS 답변까지 진행됐다. −40 dBFS대 발화는 서버가 발화 끝(EPD)을 잡지 못해 약 5초 뒤 `RESULT_TIMEOUT`이 났다. 이전 실패의 원인은 입력 레벨이다. 버튼 직후 1초 안에 말을 시작해야 하고, 단어 사이에 쉬면 거기서 발화가 끝난 것으로 처리된다(“동반차”만 인식돼 앱 실행으로 처리된 사례).
+- “동반자 녹음 멈춰.”(오인식)에서도 Gleo AMI가 `com.dongbantest.app.PAUSE_TRIP_RECORDING`을 고르고 `sendActionCall action: com.dongbantest.app.PAUSE_TRIP_RECORDING, component: service`를 기록했다. 실제 인텐트 action에는 **패키지 접두어가 붙는다.** 앱의 intent-filter와 수신기는 `PAUSE_TRIP_RECORDING`만 받아서 브로드캐스트가 앱에 닿지 않았다. 매니페스트에 `${applicationId}.PAUSE_TRIP_RECORDING`/`RESUME_TRIP_RECORDING`을 추가하고 수신기가 두 형식을 모두 받도록 고쳤다. `cmd package query-receivers`로 접두어 action이 `GleoRecordingReceiver`로 해석되는 것을 확인했다. 수정 후 실제 음성으로 앱 콜백과 Gleo 최종 응답까지 이어지는지는 아직 확인하지 못했다.
+
+### 2026-11-14 확인: 다른 앱이 녹음 중이면 Gleo는 시작하지 않는다
+
+- 동반차 녹음 중 차량 음성 버튼을 누르면 Gleo가 `isUsingPrimaryMic: true`, `preProcessSystemEvent() : isUsingPrimaryMic is activated, ignoring`, `startPttButton() is ignored by preProcessSystemEvent`를 남기고 화면을 띄우지 않는다.
+- Gleo 4.2.0.15 APK(`/system_ext/app/AmbientAiApp/AmbientAiApp.apk`)의 `AmbAudioManager$recordingCallback$1.onRecordingConfigChanged`는 `AudioRecordingCallback`의 활성 녹음 목록이 비어 있지 않으면 소스와 무관하게 `isUsingPrimaryMic=true`로 둔다. `VoiceChromeManager.preProcessSystemEvent`는 태블릿 빌드가 아니면 이때 PTT를 무시한다. AOSP는 HOTWORD 같은 시스템 전용 소스만 이 목록에서 빼므로 일반 앱은 피할 수 없다.
+- Pleos SDK의 `SpeechToText.request()`로 GAAS(`ai.pleos.playground.caas`)가 대신 녹음하게 해도 `VOICE_RECOGNITION` 소스로 목록에 올라 같은 이유로 무시됐다.
+- 결론: 동반차가 마이크를 잡고 있는 동안에는 Gleo 음성 명령(“녹음 멈춰”)을 쓸 수 없다. 앱 녹음이 멈춘 상태에서는 Gleo가 동작하므로 “녹음 다시 시작”은 Gleo로 가능하다. Gleo의 약 5초 무발화 타임아웃과 입력 레벨은 Gleo·HAL 쪽이라 앱에서 바꿀 수 없다.
+
 두 로그를 함께 보려면 아래처럼 조회한다. `response audio ack`는 Gleo 앱 프로세스가 아닌 Pleos 음성 서비스 로그에 있다.
 
 ```powershell
 adb -s emulator-5554 logcat -d -s '[GAA]:V' '[GAA-STT]:V' '[GAAS]SttStreamManagerImpl:I' |
     Select-String 'MICOM_PTT_PRESS|sendAudioBufferToServer|response audio ack|RESULT_TIMEOUT'
 ```
+
+## Pleos 공식 가이드와 AVD 로그 대조
+
+Gleo Interface의 App Schema는 Gleo가 사용자 요청을 해석한 뒤 앱의 함수를 고르고 실행할 수 있게 한다. 부팅 시 APK의 `assets/schema.json`을 찾아 로드하는 동작과 Pleos의 스키마 검토·승인 절차가 모두 안내돼 있다. AVD 로그의 `setAppCapability … functionCount=2`는 동반차 함수 두 개가 로컬에서 등록됐음을 보여준다. 앱 마켓 승인이나 실제 음성 명령에서의 함수 선택까지 확인하려면 별도 검증이 필요하다. 공개 가이드에서 ADB로 설치한 앱에 대해 어떤 조건으로 승인 없이 실제 음성 호출까지 허용하는지는 확인할 수 없었다. [Gleo Interface](https://document.pleos.ai/docs/pleos-only/app-integration-guide/guide/core-concepts), [스키마 전달](https://document.pleos.ai/docs/pleos-only/app-integration-guide/guide/deliver-schema)
+
+| 단계 | 공식 가이드와 구현 | AVD에서 확인한 범위 |
+| --- | --- | --- |
+| 호출어 감지와 발화 인식 | Gleo가 대화를 시작하고 발화를 인식한다. | 호출어로 듣기 상태에 진입하지 않았다. 차량 음성 버튼은 듣기 상태를 열었다. 일반 질문에서도 음성 게이트웨이 ACK가 돌아왔지만 인식 결과 없이 약 5초 뒤 `RESULT_TIMEOUT`이 발생했다. |
+| Gleo Action 선택 및 전달 | `component: "service"`는 앱 패키지를 지정한 브로드캐스트다. `action` 값은 스키마 함수 이름과 같다. | 두 함수 모두 APK 스키마에서 로드됐다. 실제 음성 발화에 대한 Gleo 발신 인텐트는 관찰되지 않았다. |
+| 앱 콜백과 Gleo 최종 응답 | 앱이 `APP_ACTION_RESPONSE`에 `packageName`과 `response`를 넣어 전달한다. 가이드의 7초는 Gleo가 Action을 취소하는 제한이며 앱 내부 확인 제한은 6초다. | 디버그 모의 호출로 앱의 녹음 전환을 확인했다. 실제 Gleo Action에 대한 앱 콜백과 최종 응답은 아직 확인하지 못했다. |
+
+Gleo가 일반 질문도 전사하지 못한 시점에는 앱 Action이 시작되지 않았다. 따라서 출시용 스키마 승인 여부로 이번 호출어 실패나 약 5초 음성 인식 타임아웃을 설명하기 어렵다. 일반 질문에 대한 인식이나 응답이 확인된 뒤 동반차 명령만 실패하면, 그때 스키마 승인·함수 선택·Android 전달을 조사한다. [Action과 콜백 예제](https://document.pleos.ai/docs/pleos-only/app-integration-guide/guide/examples), [콜백 제한 시간](https://document.pleos.ai/docs/pleos-only/app-integration-guide/guide/action_callback)
+
+동반차의 패키지명과 스키마 버전은 빌드의 `applicationId`, `versionName`과 일치한다. 두 함수는 가이드의 최대 3개 제한 이내이고, 파라미터가 없는 `service` Action이다. 코드에 추가한 `ai.umos.gleo.permission.APP_ACTION` 송신자 확인은 공개 예제에 명시돼 있지 않다. AVD에서 `ai.umos.ambientai`는 이 권한을 보유했고 음성 인식 서비스 패키지 `ai.pleos.playground.caas`는 보유하지 않은 것을 확인했다. 실제 Gleo Action이 어느 패키지에서 발송되는지는 이번 음성 시험으로 확인하지 못했다. 실차·Devbox에서는 실제 Action을 보내는 패키지와 권한, 콜백 수신을 확인해야 한다. [App Schema 작성 가이드](https://document.pleos.ai/docs/pleos-only/app-integration-guide/guide/app-capability), [라디오 연동 예제](https://document.pleos.ai/docs/pleos-only/app-integration-guide/use-cases/radio-app)
+
+My Project의 클라이언트 ID·시크릿 등록은 타사 앱이 SpeechToText SDK를 `SERVER` 또는 `HYBRID`로 호출할 때의 요건이다. 동반차의 대화 전사는 `ON_DEVICE` 모드다. 이 설정과 Gleo 시스템 앱의 음성 인식은 별도 경로다. [프로젝트·SDK 권한 신청](https://document.pleos.ai/docs/pleos-only/create-my-project), [SpeechToText 모드 및 등록](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/SpeechToText/intro)
 
 ## 재현과 합격 기준
 
