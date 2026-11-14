@@ -10,7 +10,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.background
@@ -74,8 +73,15 @@ fun RecordCard(
     Column(
         modifier
             .fillMaxWidth()
-            .graphicsLayer { alpha = fade }
-            .shadow(lift, DbShapes.card, clip = false, ambientColor = c.shadow, spotColor = c.shadow)
+            // 흐림·그림자 애니메이션 값은 그리기 단계에서만 읽는다: 매 프레임 카드를 다시 구성하지 않는다.
+            .graphicsLayer {
+                alpha = fade
+                shadowElevation = lift.toPx()
+                shape = DbShapes.card
+                clip = false
+                ambientShadowColor = c.shadow
+                spotShadowColor = c.shadow
+            }
             .clip(DbShapes.card)
             .background(c.paper)
             .border(1.dp, edge, DbShapes.card)
