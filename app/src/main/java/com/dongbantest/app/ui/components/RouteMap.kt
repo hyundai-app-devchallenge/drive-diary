@@ -1,8 +1,15 @@
 package com.dongbantest.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -17,23 +24,31 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.dongbantest.app.DongbanApplication
-import com.dongbantest.app.data.map.MapboxTokenSource
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.doOnLayout
+import com.dongbantest.app.DongbanApplication
+import com.dongbantest.app.data.map.MapboxTokenSource
 import com.dongbantest.app.domain.model.LocationPoint
 import com.dongbantest.app.domain.model.TimelineEvent
 import com.dongbantest.app.domain.model.TimelineType
+import com.dongbantest.app.ui.v3.components.DbIcon
+import com.dongbantest.app.ui.v3.theme.DbIcons
 import com.mapbox.geojson.Feature
 import com.mapbox.geojson.FeatureCollection
 import com.mapbox.geojson.LineString
 import com.mapbox.geojson.MultiLineString
 import com.mapbox.geojson.Point
+import com.mapbox.maps.CameraBoundsOptions
 import com.mapbox.maps.CameraOptions
+import com.mapbox.maps.CoordinateBounds
 import com.mapbox.maps.EdgeInsets
 import com.mapbox.maps.MapInitOptions
 import com.mapbox.maps.MapView
@@ -44,6 +59,8 @@ import com.mapbox.maps.ScreenBox
 import com.mapbox.maps.ScreenCoordinate
 import com.mapbox.maps.Style
 import com.mapbox.maps.extension.localization.localizeLabels
+import com.mapbox.maps.extension.style.expressions.dsl.generated.interpolate
+import com.mapbox.maps.extension.style.expressions.generated.Expression
 import com.mapbox.maps.extension.style.expressions.generated.Expression.Companion.get
 import com.mapbox.maps.extension.style.layers.addLayer
 import com.mapbox.maps.extension.style.layers.generated.circleLayer
@@ -54,6 +71,9 @@ import com.mapbox.maps.extension.style.sources.addSource
 import com.mapbox.maps.extension.style.sources.generated.GeoJsonSource
 import com.mapbox.maps.extension.style.sources.generated.geoJsonSource
 import com.mapbox.maps.extension.style.sources.getSourceAs
+import com.mapbox.maps.plugin.animation.MapAnimationOptions
+import com.mapbox.maps.plugin.animation.camera
+import com.mapbox.maps.plugin.compass.compass
 import com.mapbox.maps.plugin.gestures.OnMapClickListener
 import com.mapbox.maps.plugin.gestures.addOnMapClickListener
 import com.mapbox.maps.plugin.gestures.gestures
@@ -68,14 +88,17 @@ data class MapRoute(
     val color: String,
     /** 위치가 튄 곳에서 끊긴 구간들 */
     val segments: List<List<LocationPoint>>,
-    /** 출발·정차·도착 표시. 비우면 점을 찍지 않는다. */
+    /** 출발·정차·도착 표시. 비우면 경로 끝에 도착 점만 찍는다. */
     val events: List<TimelineEvent> = emptyList(),
 )
 
 /**
- * Mapbox 지도에 기록 경로를 그린다. 공개 토큰은 local.properties 의 MAPBOX_ACCESS_TOKEN 에서 온다
- * (build.gradle.kts 가 mapbox_access_token 문자열 리소스로 넣고, Mapbox SDK 가 자동으로 읽는다).
- * 지도 스타일은 [STYLE_URL] 하나만 바꾸면 된다 (Mapbox Studio 로 만든 스타일 주소도 넣을 수 있다).
+ * Mapbox 지도에 기록 경로를 그린다. 공개 토큰은 디버그 앱 "지도 설정" 또는 local.properties 의
+ * MAPBOX_ACCESS_TOKEN 에서 온다. 지도 스타일은 [STYLE_URL] 하나만 바꾸면 된다.
+ *
+ * - 처음부터 한국을 보여 주고(세계 지도로 시작하지 않음), 한반도 밖으로 멀리 나가지 않게 막는다.
+ * - 오른쪽 아래 확대·축소 버튼.
+ * - 경로는 번짐(glow) → 흰 테두리 → 색 선 세 겹으로 그려 밝은 지도 위에서 또렷하게 보인다.
  *
  * @param onRouteClick 경로를 누르면 그 기록의 id 로 부른다. null 이면 누를 수 없다.
  */
@@ -84,6 +107,7 @@ fun RouteMap(
     routes: List<MapRoute>,
     modifier: Modifier = Modifier,
     onRouteClick: ((Long) -> Unit)? = null,
+    zoomControls: Boolean = true,
 ) {
     val context = LocalContext.current
     // 토큰이 없으면 지도를 만들지 않고 안내 문구만 보인다. 토큰이 저장되면 재시작 없이 지도가 나타난다.
@@ -103,7 +127,7 @@ fun RouteMap(
         return
     }
     // 토큰이 바뀌면 지도를 새로 만든다.
-    key(revision) { MapboxRouteMap(routes, modifier, onRouteClick) }
+    key(revision) { MapboxRouteMap(routes, modifier, onRouteClick, zoomControls) }
 }
 
 @Composable
@@ -111,14 +135,18 @@ private fun MapboxRouteMap(
     routes: List<MapRoute>,
     modifier: Modifier,
     onRouteClick: ((Long) -> Unit)?,
+    zoomControls: Boolean,
 ) {
     val context = LocalContext.current
     val mapView = remember {
         // 스크롤되는 화면 안에서도 잘 그려지도록 TextureView 방식을 쓴다.
-        MapView(context, MapInitOptions(context, textureView = true)).apply {
+        // 첫 장면부터 한국: 스타일·경로가 오기 전에 세계 지도가 잠깐 보이지 않게 한다.
+        MapView(context, MapInitOptions(context, cameraOptions = KOREA_CAMERA, textureView = true)).apply {
             gestures.rotateEnabled = false
             gestures.pitchEnabled = false
             scalebar.enabled = false // 작은 지도에서 거리 눈금이 경로를 가려서 숨긴다
+            compass.enabled = false // 회전을 막았으니 나침반도 필요 없다
+            mapboxMap.setBounds(KOREA_BOUNDS)
         }
     }
     // 화면에서 지도가 사라지면 지도 자원을 정리한다. 시작·멈춤은 Mapbox 가 화면 생명주기를 따라 스스로 한다.
@@ -137,7 +165,7 @@ private fun MapboxRouteMap(
     LaunchedEffect(style, routes) {
         val s = style ?: return@LaunchedEffect
         drawRoutes(s, routes)
-        moveCamera(mapView, routes)
+        moveCamera(mapView, routes, zoomControls)
     }
 
     val clickHandler by rememberUpdatedState(onRouteClick)
@@ -152,7 +180,7 @@ private fun MapboxRouteMap(
             )
             map.queryRenderedFeatures(
                 RenderedQueryGeometry(box),
-                RenderedQueryOptions(listOf(ROUTE_LAYER), null),
+                RenderedQueryOptions(listOf(ROUTE_LAYER, ROUTE_CASING_LAYER), null),
             ) { result ->
                 val tripId = result.value?.firstOrNull()?.queriedFeature?.feature
                     ?.getNumberProperty(PROP_TRIP)?.toLong() ?: return@queryRenderedFeatures
@@ -164,11 +192,58 @@ private fun MapboxRouteMap(
         onDispose { map.removeOnMapClickListener(listener) }
     }
 
-    AndroidView(factory = { mapView }, modifier = modifier)
+    BoxWithConstraints(modifier) {
+        AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
+        if (showZoomButtons(zoomControls, maxHeight.value)) {
+            Column(
+                Modifier.align(Alignment.BottomEnd).padding(ZOOM_MARGIN_DP.dp),
+            ) {
+                ZoomButton(DbIcons.Plus, "지도 확대") { zoomBy(mapView, +1.0) }
+                ZoomButton(DbIcons.Minus, "지도 축소") { zoomBy(mapView, -1.0) }
+            }
+        }
+    }
+}
+
+/** 다이어리 한 장의 200dp 지도처럼 낮은 지도에서는 버튼이 경로를 가리므로 띄우지 않는다(손가락 확대는 그대로). */
+private fun showZoomButtons(zoomControls: Boolean, mapHeightDp: Float): Boolean =
+    zoomControls && mapHeightDp >= SMALL_MAP_HEIGHT_DP
+
+/** 지도 위 확대·축소 버튼. 보이는 원은 40dp, 누르는 영역은 48dp. */
+@Composable
+private fun ZoomButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(ZOOM_TOUCH_DP.dp)
+            .clip(CircleShape)
+            .clickable(role = Role.Button, onClickLabel = label, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier
+                .size(40.dp)
+                .shadow(3.dp, CircleShape)
+                .background(Color.White, CircleShape)
+                .border(1.dp, Color(0x14000000), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            DbIcon(icon, 20.dp, Color(0xFF1A1A1A), contentDescription = label)
+        }
+    }
+}
+
+private fun zoomBy(view: MapView, delta: Double) {
+    val current = view.mapboxMap.cameraState.zoom
+    val target = (current + delta).coerceIn(MIN_ZOOM, MAX_ZOOM)
+    view.camera.easeTo(
+        CameraOptions.Builder().zoom(target).build(),
+        MapAnimationOptions.Builder().duration(250L).build(),
+    )
 }
 
 private fun drawRoutes(style: Style, routes: List<MapRoute>) {
-    val lines = routes.filter { r -> r.segments.any { it.size >= 2 } }.map { route ->
+    val drawable = routes.filter { r -> r.segments.any { it.size >= 2 } }
+    val lines = drawable.map { route ->
         val geometry = MultiLineString.fromLineStrings(
             route.segments.filter { it.size >= 2 }.map { seg ->
                 LineString.fromLngLats(seg.map { Point.fromLngLat(it.longitude, it.latitude) })
@@ -179,25 +254,50 @@ private fun drawRoutes(style: Style, routes: List<MapRoute>) {
             addStringProperty(PROP_COLOR, route.color)
         }
     }
-    val dots = routes.flatMap { route ->
-        // 다시 출발은 정차와 거의 같은 자리라 점을 생략하고, 출발·도착 점이 위에 오도록 마지막에 그린다.
-        route.events.filter { it.type != TimelineType.RESUME }
-            .sortedBy { if (it.type == TimelineType.STOP) 0 else 1 }
-            .map { event ->
-                Feature.fromGeometry(Point.fromLngLat(event.longitude, event.latitude)).apply {
-                    addStringProperty(PROP_COLOR, eventColor(event.type))
-                }
+    val dots = routes.flatMap { route -> routeDots(route) }
+        // 정차 점을 먼저, 출발·도착 점이 위에 오도록 나중에 그린다.
+        .sortedBy { if (it.kind == DotKind.STOP) 0 else 1 }
+        .map { dot ->
+            Feature.fromGeometry(Point.fromLngLat(dot.lng, dot.lat)).apply {
+                // 출발: 흰 점 + 경로 색 테두리, 도착: 경로 색 점 + 흰 테두리, 정차: 작은 흰 점 + 경로 색 테두리
+                addStringProperty(PROP_FILL, if (dot.kind == DotKind.END) dot.color else "#FFFFFF")
+                addStringProperty(PROP_STROKE, if (dot.kind == DotKind.END) "#FFFFFF" else dot.color)
+                addNumberProperty(PROP_RADIUS, if (dot.kind == DotKind.STOP) 4.5 else 7.0)
+                addNumberProperty(PROP_STROKE_WIDTH, if (dot.kind == DotKind.STOP) 2.0 else 3.0)
             }
-    }
+        }
 
     upsertSource(style, ROUTE_SOURCE, FeatureCollection.fromFeatures(lines))
     upsertSource(style, EVENT_SOURCE, FeatureCollection.fromFeatures(dots))
 
+    // 아래에서 위로: 번짐 → 흰 테두리 → 색 선 → 점
+    if (!style.styleLayerExists(ROUTE_GLOW_LAYER)) {
+        style.addLayer(
+            lineLayer(ROUTE_GLOW_LAYER, ROUTE_SOURCE) {
+                lineColor(get(PROP_COLOR))
+                lineWidth(widthByZoom(3.0))
+                lineOpacity(0.16)
+                lineBlur(widthByZoom(1.4))
+                lineCap(LineCap.ROUND)
+                lineJoin(LineJoin.ROUND)
+            }
+        )
+    }
+    if (!style.styleLayerExists(ROUTE_CASING_LAYER)) {
+        style.addLayer(
+            lineLayer(ROUTE_CASING_LAYER, ROUTE_SOURCE) {
+                lineColor("#FFFFFF")
+                lineWidth(widthByZoom(1.0, extra = 3.0))
+                lineCap(LineCap.ROUND)
+                lineJoin(LineJoin.ROUND)
+            }
+        )
+    }
     if (!style.styleLayerExists(ROUTE_LAYER)) {
         style.addLayer(
             lineLayer(ROUTE_LAYER, ROUTE_SOURCE) {
                 lineColor(get(PROP_COLOR))
-                lineWidth(6.0)
+                lineWidth(widthByZoom(1.0))
                 lineCap(LineCap.ROUND)
                 lineJoin(LineJoin.ROUND)
             }
@@ -206,13 +306,47 @@ private fun drawRoutes(style: Style, routes: List<MapRoute>) {
     if (!style.styleLayerExists(EVENT_LAYER)) {
         style.addLayer(
             circleLayer(EVENT_LAYER, EVENT_SOURCE) {
-                circleColor(get(PROP_COLOR))
-                circleRadius(7.0)
-                circleStrokeColor("#FFFFFF")
-                circleStrokeWidth(2.0)
+                circleColor(get(PROP_FILL))
+                circleRadius(get(PROP_RADIUS))
+                circleStrokeColor(get(PROP_STROKE))
+                circleStrokeWidth(get(PROP_STROKE_WIDTH))
             }
         )
     }
+}
+
+private enum class DotKind { START, STOP, END }
+
+private data class RouteDot(val lat: Double, val lng: Double, val kind: DotKind, val color: String)
+
+/**
+ * 출발·정차·도착 점. 타임라인이 없으면(기록 탭의 전체 지도) 경로의 끝에 도착 점 하나만 찍는다:
+ * 여러 기록의 출발점이 집 근처에 몰려 겹치기 때문이다.
+ */
+private fun routeDots(route: MapRoute): List<RouteDot> {
+    if (route.events.isNotEmpty()) {
+        // 다시 출발은 정차와 거의 같은 자리라 점을 생략한다.
+        return route.events.filter { it.type != TimelineType.RESUME }.map { e ->
+            val kind = when (e.type) {
+                TimelineType.START -> DotKind.START
+                TimelineType.END -> DotKind.END
+                else -> DotKind.STOP
+            }
+            RouteDot(e.latitude, e.longitude, kind, route.color)
+        }
+    }
+    val last = route.segments.lastOrNull { it.isNotEmpty() }?.last() ?: return emptyList()
+    return listOf(RouteDot(last.latitude, last.longitude, DotKind.END, route.color))
+}
+
+/** 줌에 따라 굵어지는 선 폭: 전국을 볼 때는 가늘게, 동네를 볼 때는 굵게. */
+private fun widthByZoom(scale: Double, extra: Double = 0.0): Expression = interpolate {
+    linear()
+    zoom()
+    stop { literal(5.0); literal(2.5 * scale + extra) }
+    stop { literal(9.0); literal(4.0 * scale + extra) }
+    stop { literal(13.0); literal(6.0 * scale + extra) }
+    stop { literal(17.0); literal(9.0 * scale + extra) }
 }
 
 private fun upsertSource(style: Style, id: String, data: FeatureCollection) {
@@ -225,25 +359,38 @@ private fun upsertSource(style: Style, id: String, data: FeatureCollection) {
 }
 
 /**
- * 모든 경로가 보이게 카메라를 맞춘다. 경로가 없으면 서울을 보여준다.
+ * 모든 경로가 보이게 카메라를 맞춘다. 경로가 없으면 한국 전체를 보여준다.
  * 지도 크기가 정해진 뒤에 맞춘다(크기가 0일 때 맞추면 아주 멀리서 보인다).
  * 경로 둘레 여백은 지도 크기에 비례한다: 다이어리의 작은 지도(높이 200dp)에서 고정 여백을 크게 주면
- * 경로가 손톱만 하게 나오기 때문이다.
+ * 경로가 손톱만 하게 나오기 때문이다. 확대·축소 버튼이 있으면 오른쪽 여백에 버튼 폭을 더해
+ * 출발·도착 점이 버튼 밑에 깔리지 않게 한다.
  */
-private fun moveCamera(view: MapView, routes: List<MapRoute>) {
-    val points = routes.flatMap { it.segments.flatten() }.map { Point.fromLngLat(it.longitude, it.latitude) }
+private fun moveCamera(view: MapView, routes: List<MapRoute>, zoomControls: Boolean) {
+    // 한국 밖 좌표(예: 에뮬레이터 기본 위치인 미국)는 빼고 맞춘다. 남는 게 없으면 한국 전체를 보여 준다.
+    // 그대로 맞추면 카메라가 경계 끝 바다로 밀려나 지도가 회색 한 면으로 보인다.
+    val points = routes.flatMap { it.segments.flatten() }
+        .filter { it.latitude in KOREA_LAT_RANGE && it.longitude in KOREA_LNG_RANGE }
+        .map { Point.fromLngLat(it.longitude, it.latitude) }
     view.doOnLayout {
         val map: MapboxMap = view.mapboxMap
         when {
-            points.isEmpty() -> map.setCamera(CameraOptions.Builder().center(SEOUL).zoom(10.0).build())
+            points.isEmpty() -> map.setCamera(KOREA_CAMERA)
             points.distinct().size == 1 -> map.setCamera(CameraOptions.Builder().center(points.first()).zoom(15.0).build())
             else -> {
                 val pad = (minOf(view.width, view.height) * CAMERA_PADDING_RATIO).coerceAtLeast(CAMERA_PADDING_MIN_PX).toDouble()
+                val density = view.resources.displayMetrics.density
+                val right = if (showZoomButtons(zoomControls, view.height / density)) {
+                    pad + (ZOOM_TOUCH_DP + ZOOM_MARGIN_DP * 2) * density
+                } else {
+                    pad
+                }
+                // 왼쪽 아래 Mapbox 로고에 출발 점이 깔리지 않게 아래 여백을 로고 높이만큼 더 준다.
+                val bottom = pad + LOGO_INSET_DP * density
                 map.cameraForCoordinates(
                     points,
                     CameraOptions.Builder().build(),
-                    EdgeInsets(pad, pad, pad, pad),
-                    null,
+                    EdgeInsets(pad, pad, bottom, right),
+                    MAX_FIT_ZOOM,
                     null,
                 ) { camera -> map.setCamera(camera) }
             }
@@ -251,22 +398,52 @@ private fun moveCamera(view: MapView, routes: List<MapRoute>) {
     }
 }
 
-private fun eventColor(type: TimelineType): String = when (type) {
-    TimelineType.START -> "#2E7D32"
-    TimelineType.STOP, TimelineType.RESUME -> "#F9A825"
-    TimelineType.END -> "#C62828"
-}
-
 /** 밝은 지도: v3 흰 바탕 디자인과 어울리고 경로 색이 잘 보인다. Mapbox Studio 스타일 주소로 바꿔도 된다. */
 private val STYLE_URL = Style.LIGHT
 private const val ROUTE_SOURCE = "dongban-routes"
+private const val ROUTE_GLOW_LAYER = "dongban-routes-glow"
+private const val ROUTE_CASING_LAYER = "dongban-routes-casing"
 private const val ROUTE_LAYER = "dongban-routes-line"
 private const val EVENT_SOURCE = "dongban-events"
 private const val EVENT_LAYER = "dongban-events-circle"
 private const val PROP_TRIP = "tripId"
 private const val PROP_COLOR = "color"
+private const val PROP_FILL = "fill"
+private const val PROP_STROKE = "stroke"
+private const val PROP_RADIUS = "radius"
+private const val PROP_STROKE_WIDTH = "strokeWidth"
 private const val TOUCH_PX = 24.0
+/** 이보다 낮은 지도(다이어리 한 장의 200dp 지도 등)에는 확대·축소 버튼을 띄우지 않는다 */
+private const val SMALL_MAP_HEIGHT_DP = 280f
+private const val ZOOM_TOUCH_DP = 48f
+private const val ZOOM_MARGIN_DP = 12f
+/** 지도 왼쪽 아래 Mapbox 로고·정보 버튼이 차지하는 높이 */
+private const val LOGO_INSET_DP = 20f
 /** 경로 둘레 여백 = 지도 짧은 변의 12% (최소 16px) */
 private const val CAMERA_PADDING_RATIO = 0.12f
 private const val CAMERA_PADDING_MIN_PX = 16f
-private val SEOUL = Point.fromLngLat(126.9780, 37.5665)
+private const val MIN_ZOOM = 5.0
+private const val MAX_ZOOM = 17.0
+/** 짧은 경로에 맞출 때 너무 가까이 들어가지 않게 */
+private const val MAX_FIT_ZOOM = 15.5
+
+/** 한반도 남쪽(제주~휴전선, 서해~울릉·독도)을 처음 보이는 장면으로 */
+private val KOREA_CAMERA: CameraOptions = CameraOptions.Builder()
+    .center(Point.fromLngLat(127.8, 36.2))
+    .zoom(5.8)
+    .build()
+
+private val KOREA_LAT_RANGE = 32.0..39.6
+private val KOREA_LNG_RANGE = 123.0..133.0
+
+/** 지도를 한국 둘레로 묶는다. 이 밖으로는 끌어도 나가지 않는다. */
+private val KOREA_BOUNDS: CameraBoundsOptions = CameraBoundsOptions.Builder()
+    .bounds(
+        CoordinateBounds(
+            Point.fromLngLat(KOREA_LNG_RANGE.start, KOREA_LAT_RANGE.start),
+            Point.fromLngLat(KOREA_LNG_RANGE.endInclusive, KOREA_LAT_RANGE.endInclusive),
+        )
+    )
+    .minZoom(MIN_ZOOM)
+    .maxZoom(MAX_ZOOM)
+    .build()
