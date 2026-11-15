@@ -516,13 +516,15 @@ fun ConsentScreen(
                             label = state.listenOption, sub = state.listenOptionSub,
                             badge = state.listenBadge, badgeIcon = DbIcons.Lock,
                             selected = record, onClick = { record = !record },
-                        )
-                        // (2) 외부 AI 전송: (1)을 켠 경우에만 켤 수 있다
-                        ConsentChoice(
-                            label = state.aiOption, sub = state.aiOptionSub,
-                            badge = state.aiBadge, badgeIcon = DbIcons.Cloud,
-                            selected = record && sendToAi, enabled = record,
-                            indent = true, onClick = { sendToAi = !sendToAi },
+                            // (2) 외부 AI 전송: (1)에 딸린 동의라 (1) 상자 안에 작은 상자로 넣는다. (1)을 켠 경우에만 켤 수 있다
+                            nested = {
+                                ConsentChoice(
+                                    label = state.aiOption, sub = state.aiOptionSub,
+                                    badge = state.aiBadge, badgeIcon = DbIcons.Cloud,
+                                    selected = record && sendToAi, enabled = record,
+                                    inner = true, onClick = { sendToAi = !sendToAi },
+                                )
+                            },
                         )
                         if (!record) {
                             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
@@ -543,7 +545,11 @@ fun ConsentScreen(
     }
 }
 
-/** S03 동의 줄: 체크박스 + 제목 + 설명 + 보내는 범위 표시. 높이 48dp 이상. */
+/**
+ * S03 동의 줄: 체크박스 + 제목 + 설명 + 보내는 범위 표시. 높이 48dp 이상.
+ * [nested] 를 주면 이 동의에 딸린 하위 동의를 같은 상자 안, 글 아래에 작은 상자로 넣는다(위 동의를 켜야 고를 수 있는 것).
+ * [inner] 는 그 안쪽 작은 상자: 옅은 바탕으로 바깥 상자와 구분한다.
+ */
 @Composable
 private fun ConsentChoice(
     label: String,
@@ -553,44 +559,55 @@ private fun ConsentChoice(
     badge: String? = null,
     badgeIcon: ImageVector? = null,
     enabled: Boolean = true,
-    indent: Boolean = false,
+    inner: Boolean = false,
+    nested: (@Composable () -> Unit)? = null,
 ) {
     val c = DbTheme.colors
     val t = DbTheme.type
     val mark = androidx.compose.foundation.shape.RoundedCornerShape(6.dp)
+    val shape = if (inner) DbShapes.button else DbShapes.card
     val alpha = if (enabled) 1f else 0.4f
-    Row(
+    Column(
         Modifier
             .fillMaxWidth()
-            .padding(start = if (indent) Spacing.lg else 0.dp)
-            .heightIn(min = 48.dp)
-            .clip(DbShapes.card)
-            .border(1.dp, if (selected) c.ink else c.rule, DbShapes.card)
-            .toggleable(selected, enabled = enabled, role = Role.Checkbox, onValueChange = { onClick() })
-            .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
-        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+            .clip(shape)
+            .then(if (inner) Modifier.background(c.paper2) else Modifier)
+            .border(1.dp, if (selected) c.ink else c.rule, shape),
     ) {
-        Box(
-            Modifier.padding(top = 2.dp).size(22.dp).clip(mark)
-                .background(if (selected) c.ink else c.paper)
-                .border(1.dp, if (selected) c.ink else c.rule, mark),
-            contentAlignment = Alignment.Center,
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .toggleable(selected, enabled = enabled, role = Role.Checkbox, onValueChange = { onClick() })
+                .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
-            if (selected) DbIcon(DbIcons.Check, 14.dp, c.paper)
-        }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s3xs)) {
-            Text(label, style = t.body.copy(fontWeight = FontWeight.Medium), color = c.ink.copy(alpha = alpha))
-            Text(sub, style = t.bodySm, color = c.muted.copy(alpha = alpha))
-            if (badge != null) {
-                Row(
-                    Modifier.padding(top = Spacing.s3xs),
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.s3xs),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    badgeIcon?.let { DbIcon(it, 16.dp, c.ink.copy(alpha = alpha)) }
-                    Text(badge, style = t.bodySm.copy(fontWeight = FontWeight.Medium), color = c.ink.copy(alpha = alpha))
+            Box(
+                Modifier.padding(top = 2.dp).size(22.dp).clip(mark)
+                    .background(if (selected) c.ink else c.paper)
+                    .border(1.dp, if (selected) c.ink else c.rule, mark),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (selected) DbIcon(DbIcons.Check, 14.dp, c.paper)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.s3xs)) {
+                Text(label, style = t.body.copy(fontWeight = FontWeight.Medium), color = c.ink.copy(alpha = alpha))
+                Text(sub, style = t.bodySm, color = c.muted.copy(alpha = alpha))
+                if (badge != null) {
+                    Row(
+                        Modifier.padding(top = Spacing.s3xs),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.s3xs),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        badgeIcon?.let { DbIcon(it, 16.dp, c.ink.copy(alpha = alpha)) }
+                        Text(badge, style = t.bodySm.copy(fontWeight = FontWeight.Medium), color = c.ink.copy(alpha = alpha))
+                    }
                 }
             }
+        }
+        // 하위 동의: 체크박스 폭만큼 들여 위 글과 왼쪽을 맞춘다.
+        nested?.let {
+            Box(Modifier.padding(start = Spacing.sm + 22.dp + Spacing.sm, end = Spacing.sm, bottom = Spacing.sm)) { it() }
         }
     }
 }
