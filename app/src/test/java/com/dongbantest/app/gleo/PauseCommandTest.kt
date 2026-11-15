@@ -20,6 +20,26 @@ class PauseCommandTest {
         ).forEach { assertTrue(it, isPauseRecordingCommand(it)) }
     }
 
+    @Test fun toleratesMishearingAndMergedLeadIn() {
+        listOf(
+            "동방차 녹음 멈춰",
+            "동반 자 녹음 정지",
+            "돈반차 녹음 그만",
+            "통반차야 녹음 꺼줘",
+            "그래서 말이야 동반차 녹음 멈춰",
+            "어 잠깐만 녹음 정지",
+        ).forEach { assertTrue(it, isPauseRecordingCommand(it)) }
+    }
+
+    @Test fun rejectsLongLeadInWithoutWakeWordAndFuzzyNegations() {
+        listOf(
+            "우리 아까 휴게소에서 들었던 그 녹음 멈춰",
+            "동방차 녹음 멈추지 마",
+            "동반차 녹음 멈춰 라고 하면 돼",
+            "안 녹음 멈춰",
+        ).forEach { assertFalse(it, isPauseRecordingCommand(it)) }
+    }
+
     @Test fun recognizesEveryStopVerb() {
         listOf("멈춰", "멈춤", "멈추어", "정지", "중지", "중단", "꺼", "끄", "그만").forEach {
             assertTrue(it, isPauseRecordingCommand("녹음 $it"))
