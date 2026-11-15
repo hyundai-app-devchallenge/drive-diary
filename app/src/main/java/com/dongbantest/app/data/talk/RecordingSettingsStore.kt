@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class RecordingSettingsStore(context: Context) {
     private val prefs = context.getSharedPreferences("recording_settings", Context.MODE_PRIVATE)
-    private val boost = MutableStateFlow(prefs.getBoolean(MIC_BOOST, false))
+    private val boost = MutableStateFlow(prefs.getBoolean(MIC_BOOST, true))
     val micBoostEnabled = boost.asStateFlow()
 
     fun setMicBoostEnabled(enabled: Boolean) {

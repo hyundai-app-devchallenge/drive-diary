@@ -83,7 +83,7 @@ class WeatherClient(
         val snapshot = (try {
             val (status, body) = http.get(url)
             if (status in 200..299) parse(body, clock()) else null
-        } catch (_: IOException) { null } catch (_: RuntimeException) { null }) ?: return null
+        } catch (_: IOException) { null } catch (_: RuntimeException) { null } catch (_: org.json.JSONException) { null }) ?: return null
         synchronized(cache) { cache[key] = snapshot }
         return snapshot
     }

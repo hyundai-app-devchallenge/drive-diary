@@ -70,6 +70,13 @@ class VoiceCommandsTest {
         assertFalse(isPauseRecordingCommand("동반차 질문 그만해줘"))
     }
 
+    @Test fun toleratesMishearingAndMergedLeadIn() {
+        listOf("동방차 질문 해줘", "아 맞다 동반차 질문 해줘").forEach { assertTrue(it, isAskNextCommand(it)) }
+        assertTrue(isStopAskingCommand("동방차 질문 그만해줘"))
+        listOf("동네 질문 해줘", "아빠 질문 해줘").forEach { assertFalse(it, isAskNextCommand(it)) }
+        assertFalse(isStopAskingCommand("질문 그만해줘"))
+    }
+
     @Test fun parsesCommands() {
         assertEquals(QuestionCommand.ASK_NEXT, parseQuestionCommand(VoiceCommands.ASK_NEXT))
         assertEquals(QuestionCommand.STOP_ASKING, parseQuestionCommand(VoiceCommands.STOP_ASKING))

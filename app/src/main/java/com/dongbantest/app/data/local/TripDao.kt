@@ -13,9 +13,12 @@ interface TripDao {
     @Transaction
     suspend fun insertFinishedSample(trip: TripEntity, points: List<LocationPointEntity>): Long {
         val id = insertTrip(trip)
-        points.forEach { insertLocationPoint(it.copy(tripId = id)) }
+        insertLocationPoints(points.map { it.copy(tripId = id) })
         return id
     }
+
+    @Insert
+    suspend fun insertLocationPoints(points: List<LocationPointEntity>)
 
     @Query("UPDATE talk_meta SET runClosed = 1 WHERE runId = :runId AND memoryId IN (SELECT id FROM memories WHERE tripId = :tripId)")
     suspend fun markTalkRunClosed(tripId: Long, runId: String)

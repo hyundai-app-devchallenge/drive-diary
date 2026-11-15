@@ -62,4 +62,19 @@ class BlockAssemblerTest {
         assertTrue(energy(a, 20_000, 39_900, 0.0).isEmpty())
         assertEquals(CloseReason.SILENCE, energy(a, 39_900, 40_000, 0.0).single().reason)
     }
+    @Test fun oldNoiseOnsetDoesNotStretchBlockStartOrCloseItAsLength() {
+        val a = BlockAssembler()
+        energy(a, 0, 100, 1000.0)
+        energy(a, 100, 100_000, 0.0)
+        assertTrue(a.onFinal(FinalLine("별이 떴어", t + 100_000)).isEmpty())
+        assertTrue(a.onFinal(FinalLine("정말 예쁘다", t + 104_000)).isEmpty())
+        val block = a.forceClose(t + 105_000)!!
+        assertEquals(2, block.lines.size)
+        assertEquals(t + 80_000, block.startMs)
+    }
+    @Test fun forceCloseCanCarryAnotherReason() {
+        val a = BlockAssembler(); a.onFinal(FinalLine("종이별을 접었어", t))
+        val block = a.forceClose(t + 300, CloseReason.SILENCE)!!
+        assertEquals(CaptureSource.AUTO, block.source); assertEquals(CloseReason.SILENCE, block.reason)
+    }
 }

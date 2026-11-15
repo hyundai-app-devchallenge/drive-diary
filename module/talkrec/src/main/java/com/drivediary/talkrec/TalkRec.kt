@@ -66,6 +66,7 @@ object TalkRec {
         } catch (error: RuntimeException) { finished(request); stopped(request); throw error }
     }
 
+    @Synchronized internal fun hasPending(): Boolean = pending != null
     @Synchronized internal fun takeRequest(id: String?): Request? = pending?.takeIf { it.id == id }?.also { pending = null }
     @Synchronized internal fun finished(request: Request?) {
         if (request == null || activeRequest !== request) return

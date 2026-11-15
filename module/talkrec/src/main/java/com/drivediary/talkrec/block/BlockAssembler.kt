@@ -49,7 +49,8 @@ class BlockAssembler(
         require(lines.isEmpty() || line.receivedMs >= lines.last().receivedMs) { "Unordered final time" }
         val closed = advance(line.receivedMs)
         if (line.text.isBlank()) return closed
-        if (lines.isEmpty()) start = maxOf(onset ?: line.receivedMs, line.receivedMs - maxMs + 1)
+        // A noise long before the line must not stretch the block start back; look back at most one silence window.
+        if (lines.isEmpty()) start = minOf(line.receivedMs, maxOf(onset ?: line.receivedMs, line.receivedMs - maxMs + 1, line.receivedMs - silenceMs))
         lines += line
         return closed
     }
@@ -66,8 +67,8 @@ class BlockAssembler(
         return emptyList()
     }
 
-    fun forceClose(nowMs: Long = System.currentTimeMillis()): ConversationBlock? = start?.let {
-        close(maxOf(it + 1, minOf(nowMs, it + maxMs), lines.last().receivedMs), CloseReason.MANUAL)
+    fun forceClose(nowMs: Long = System.currentTimeMillis(), reason: CloseReason = CloseReason.MANUAL): ConversationBlock? = start?.let {
+        close(maxOf(it + 1, minOf(nowMs, it + maxMs), lines.last().receivedMs), reason)
     }
 
     private fun close(endMs: Long, reason: CloseReason): ConversationBlock {

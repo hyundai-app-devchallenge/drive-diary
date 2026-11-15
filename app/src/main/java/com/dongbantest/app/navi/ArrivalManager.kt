@@ -69,6 +69,9 @@ class ArrivalManager(
         Log.i(TAG, "여행 다시 열기: tripId=$tripId")
     }
 
+    /** 내비 목적지가 다른 곳으로 바뀌었다: "아직 여행 중" 표시를 푼다. */
+    fun onDestinationChanged() = gate.destinationChanged()
+
     /** 화면이 도착 이벤트를 받아 갔으면 지운다. */
     fun consume() {
         _arrival.value = null

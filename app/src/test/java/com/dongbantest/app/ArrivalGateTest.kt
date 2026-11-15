@@ -37,6 +37,23 @@ class ArrivalGateTest {
     }
 
     @Test
+    fun destinationChangedClearsKeptTraveling() {
+        val gate = ArrivalGate()
+        gate.keepTraveling(1)
+        assertFalse(gate.shouldEndOnNaviArrival(1))
+        gate.destinationChanged()
+        assertTrue(gate.shouldEndOnNaviArrival(1))
+        assertTrue(gate.shouldEndOnPark(1, 150.0))
+    }
+
+    @Test
+    fun destinationChangedWithoutKeptTripIsHarmless() {
+        val gate = ArrivalGate()
+        gate.destinationChanged()
+        assertTrue(gate.shouldEndOnNaviArrival(1))
+    }
+
+    @Test
     fun keepTravelingOnlyAffectsThatTrip() {
         val gate = ArrivalGate()
         gate.keepTraveling(1)

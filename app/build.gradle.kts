@@ -27,6 +27,10 @@ android {
             rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
         }
         resValue("string", "mapbox_access_token", localProps.getProperty("MAPBOX_ACCESS_TOKEN", ""))
+        // Cloudflare 계정 ID·API 토큰 기본값도 Git 에 올리지 않는 local.properties 에서 읽는다 (없으면 빈 값).
+        // 기기에 저장된 키가 없을 때만 앱 시작 시 한 번 저장소에 넣는다.
+        resValue("string", "cloudflare_account_id_default", localProps.getProperty("CLOUDFLARE_ACCOUNT_ID", ""))
+        resValue("string", "cloudflare_api_token_default", localProps.getProperty("CLOUDFLARE_API_TOKEN", ""))
     }
 
     // AAOS CarUxRestrictions API (android.car). Optional at runtime so the app

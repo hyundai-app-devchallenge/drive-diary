@@ -16,6 +16,7 @@ import com.drivediary.talkrec.TalkRecDebug
 import com.drivediary.talkrec.TalkDebugEvent
 import com.drivediary.talkrec.DebugBlockTrace
 import com.drivediary.talkrec.block.BlockAssembler
+import com.drivediary.talkrec.block.CloseReason
 import com.drivediary.talkrec.block.ConversationBlock
 import com.drivediary.talkrec.block.FinalLine
 import com.drivediary.talkrec.judge.ConversationJudge
@@ -94,7 +95,20 @@ class ConversationCaptureService : Service() {
         val action = intent?.action
         if (action == START) {
             val next = TalkRec.takeRequest(intent?.getStringExtra("request"))
-            if (next == null) { if (request == null) stopSelf(); return START_NOT_STICKY }
+            if (next == null) {
+                if (request == null) {
+                    // A newer START is on its way and will call startForeground.
+                    if (TalkRec.hasPending()) return START_NOT_STICKY
+                    // This start came from startForegroundService: satisfy it before stopping.
+                    try {
+                        if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION, notification(false), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+                        else startForeground(NOTIFICATION, notification(false))
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                    } catch (_: RuntimeException) { /* Nothing more to do. */ }
+                    stopSelf()
+                }
+                return START_NOT_STICKY
+            }
             val notification = notification(false)
             try {
                 if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
@@ -125,7 +139,15 @@ class ConversationCaptureService : Service() {
                 startInput()
             }
             is Event.Control -> when (event.action) {
-                STOP -> { endInput(); debugStopped(); state(CaptureStatus.Off); TalkRec.finished(request); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
+                STOP -> {
+                    if (TalkRec.state.value.status == CaptureStatus.On) {
+                        // Save the conversation in progress: close the open block and hand pending blocks to the
+                        // save queue (still judged and budgeted as silence-closed; no-record windows are applied
+                        // in flushCandidates; ring.slice clamps the missing audio tail). endInput drains the queue.
+                        assembler.forceClose(lastEnd ?: System.currentTimeMillis(), CloseReason.SILENCE)?.let { closed(it) }
+                        flushCandidates(Long.MAX_VALUE)
+                    }
+                    endInput(); debugStopped(); state(CaptureStatus.Off); TalkRec.finished(request); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
                 PAUSE -> pauseCapture()
                 RESUME -> if (request != null && TalkRec.state.value.status == CaptureStatus.Paused) {
                     request?.options?.beforeResume?.invoke()
@@ -266,13 +288,18 @@ class ConversationCaptureService : Service() {
                         }
                     } finally { candidate.discard() }
                 }
-            } catch (_: TimeoutCancellationException) { events.send(Event.Failed(id)) }
+            } catch (_: TimeoutCancellationException) { dispatch(Event.Failed(id)) }
             catch (cancel: CancellationException) { throw cancel }
-            catch (_: Exception) { events.send(Event.Failed(id)) }
-            catch (_: LinkageError) { events.send(Event.Failed(id)) }
+            catch (_: Exception) { dispatch(Event.Failed(id)) }
+            catch (_: LinkageError) { dispatch(Event.Failed(id)) }
             finally {
                 try { withContext(NonCancellable) { processor?.closeRun() } }
-                finally { try { judge?.close() } finally { queue.cancel() } }
+                catch (e: Exception) { Log.w(TAG, "closeRun failed ${e.javaClass.simpleName}") }
+                finally {
+                    try { judge?.close() }
+                    catch (e: Exception) { Log.w(TAG, "judge close failed ${e.javaClass.simpleName}") }
+                    finally { queue.cancel() }
+                }
             }
         }
         val client = PleosSttClient(this, scope, active.options.locale,

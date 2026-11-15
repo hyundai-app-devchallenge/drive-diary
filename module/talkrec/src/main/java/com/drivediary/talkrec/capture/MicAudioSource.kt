@@ -18,6 +18,7 @@ import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 /** The MIC source/format used by the Pleos AVD probe. One collector owns one AudioRecord. */
 class MicAudioSource(private val boostEnabled: () -> Boolean = { false }) : AudioSource {
@@ -92,8 +93,19 @@ class MicAudioSource(private val boostEnabled: () -> Boolean = { false }) : Audi
     }.flowOn(Dispatchers.IO)
 }
 
-/** Apply up to 30 dB of gain, using one gain per frame to avoid clipping peaks. */
+/**
+ * Noise gate for [amplifyMicFrame]. Same value as the default `silenceRms` (CaptureOptions in TalkRec.kt,
+ * BlockAssembler.silenceRms): frames below it count as silence downstream, so they must not be boosted
+ * into "loud" frames or silence detection (block close, quiet-car questions) would never fire.
+ */
+private const val BOOST_GATE_RMS = 140.0
+
+/** Apply up to 30 dB of gain, using one gain per frame to avoid clipping peaks. Frames below [BOOST_GATE_RMS] are left as is. */
 internal fun amplifyMicFrame(samples: ShortArray) {
+    if (samples.isEmpty()) return
+    var squares = 0.0
+    for (s in samples) squares += s.toDouble() * s
+    if (sqrt(squares / samples.size) < BOOST_GATE_RMS) return
     val peak = samples.maxOfOrNull { abs(it.toInt()) } ?: return
     if (peak == 0) return
     val gain = (Short.MAX_VALUE.toDouble() / peak).coerceIn(1.0, 32.0)
