@@ -20,9 +20,9 @@
 
 ## 바로 가기
 
-| 시연 페이지 | 시연 영상 | 기획 문서 | APK |
-|---|---|---|---|
-| [동반차 시연 페이지](https://hyundai-app-devchallenge.github.io/drive-diary/) | 영상 링크 준비 중 | 준비 중 | 제출 파일에 포함 |
+| 시연 페이지 | 시연 영상 | APK |
+|---|---|---|
+| [동반차 시연 페이지](https://hyundai-app-devchallenge.github.io/drive-diary/) | 영상 링크 준비 중 | 제출 파일에 포함 |
 
 ---
 
