@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>동반차 · 함께 탄 차 안의 시간을 한 권의 다이어리로</title>
+<meta name="description" content="동반차는 Pleos Connect(Android Automotive OS)용 차량 앱입니다. 함께 탄 사람들이 나눈 이야기와 달려온 길을 다이어리로 정리합니다.">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+:root{--brand:#002C5F;--tint:#DCE5F0;--text:#222;--muted:#6a6a6a;--line:#e3e8ef;--soft:#f5f7fa;--r:14px;--w:1080px}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:#fff;color:var(--text);font:16px/1.7 "Pretendard Variable",Pretendard,system-ui,sans-serif;word-break:keep-all;overflow-wrap:anywhere}
+img{display:block;max-width:100%;height:auto}
+a{color:var(--brand);text-underline-offset:3px}
+a:focus-visible,button:focus-visible{outline:3px solid var(--brand);outline-offset:3px;border-radius:6px}
+.wrap{max-width:var(--w);margin:0 auto;padding:0 16px}
+.skip{position:absolute;left:-999px}.skip:focus{left:16px;top:8px;background:#fff;padding:8px 12px;z-index:9}
+/* header */
+header.top{border-bottom:1px solid var(--line)}
+.top-in{display:flex;flex-wrap:wrap;gap:6px 24px;align-items:center;justify-content:space-between;padding-top:14px;padding-bottom:14px}
+.logo{display:inline-flex;align-items:center;gap:10px;font-weight:800;font-size:20px;color:var(--brand);text-decoration:none}
+.ribbon-mini{width:28px;height:8px;border-radius:4px;background:var(--tint);position:relative}
+.ribbon-mini:after{content:"";position:absolute;inset:0 auto 0 0;width:62%;border-radius:4px;background:var(--brand)}
+.top nav{display:flex;flex-wrap:wrap;gap:2px 18px;font-size:15px}
+.top nav a{color:var(--text);text-decoration:none;padding:6px 0}
+.top nav a:hover{color:var(--brand);text-decoration:underline}
+/* sections */
+section{padding:56px 0}
+h1,h2,h3{letter-spacing:-.015em;margin:0}
+h2{font-size:clamp(24px,4vw,32px);line-height:1.3;color:var(--brand)}
+.eyebrow{font-size:14px;font-weight:700;color:var(--brand);letter-spacing:.04em;margin:0 0 8px}
+.lead{color:var(--muted);margin:10px 0 0;max-width:640px}
+.more{display:inline-block;margin-top:16px;font-weight:600}
+/* hero */
+.hero{padding:48px 0 56px}
+.hero-grid{display:grid;gap:32px}
+h1{font-size:clamp(32px,6.4vw,52px);line-height:1.22;color:var(--brand);font-weight:800}
+.hero p.intro{margin:20px 0 0;font-size:17px;max-width:560px}
+.btns{display:flex;flex-wrap:wrap;gap:10px;margin-top:28px}
+.btn{display:inline-flex;align-items:center;min-height:48px;padding:0 22px;border-radius:var(--r);font-weight:700;text-decoration:none;border:2px solid var(--brand)}
+.btn.primary{background:var(--brand);color:#fff}
+.btn.primary:hover{background:#00204a}
+.btn.ghost{background:#fff;color:var(--brand)}
+.btn.ghost:hover{background:var(--tint)}
+.btn[aria-disabled="true"]{border-color:var(--line);color:var(--muted);background:var(--soft);cursor:default}
+.note{font-size:14px;color:var(--muted);margin:14px 0 0}
+.shot{border-radius:var(--r);border:1px solid var(--line);background:var(--soft);width:100%}
+/* video */
+.video-box{max-width:880px;margin-top:24px;aspect-ratio:16/9;border-radius:var(--r);overflow:hidden;background:var(--soft);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--muted);font-weight:600}
+.video-box iframe{width:100%;height:100%;border:0}
+/* glance */
+.alt{background:var(--soft)}
+.cards{display:grid;gap:16px;margin-top:28px}
+.card{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:24px}
+.alt .card{border-color:transparent}
+.card h3{font-size:18px;color:var(--brand);margin-bottom:8px}
+.card p{margin:0;font-size:15px}
+.tag{display:inline-block;font-size:13px;font-weight:700;background:var(--tint);color:var(--brand);padding:2px 10px;border-radius:999px;margin-bottom:12px}
+/* flow: road ribbon */
+.flow{list-style:none;margin:36px 0 0;padding:0;position:relative}
+.flow:before{content:"";position:absolute;left:11px;top:12px;bottom:28px;width:8px;border-radius:4px;background:var(--tint)}
+.flow:after{content:"";position:absolute;left:13px;top:12px;bottom:28px;width:4px;border-radius:2px;background:var(--brand)}
+.step{position:relative;padding:0 0 44px 52px}
+.step:before{content:"";position:absolute;left:5px;top:2px;width:20px;height:20px;border-radius:50%;background:#fff;border:5px solid var(--brand);z-index:1}
+.step-grid{display:grid;gap:16px}
+.step .num{font-size:13px;font-weight:700;color:var(--brand);margin:0}
+.step h3{font-size:20px;line-height:1.4;margin:2px 0 6px}
+.step p.desc{margin:0;color:#444;font-size:15.5px;max-width:420px}
+.goal{position:relative;padding-left:52px;font-weight:700;color:var(--brand);display:flex;align-items:center;min-height:36px}
+.goal svg{position:absolute;left:0;top:0;z-index:1;background:#fff}
+/* features */
+.feat{list-style:none;margin:28px 0 0;padding:0;display:grid;gap:12px}
+.feat li{display:grid;grid-template-columns:36px 1fr;gap:4px 12px;padding:16px 0;border-top:1px solid var(--line)}
+.feat .c{font-size:22px;color:var(--brand);line-height:1.3}
+.feat b{display:block;line-height:1.45}
+.feat span{color:var(--muted);font-size:15px}
+/* tech */
+.stats{display:grid;gap:16px;margin-top:28px}
+.stat{border-radius:var(--r);background:#fff;padding:24px}
+.stat .n{font-size:40px;font-weight:800;color:var(--brand);line-height:1.1;letter-spacing:-.02em}
+.stat .n small{font-size:18px;font-weight:700}
+.stat h3{font-size:16px;margin:8px 0 4px}
+.stat p{margin:0;font-size:14.5px;color:var(--muted)}
+/* run */
+pre{background:var(--brand);color:#fff;border-radius:var(--r);padding:16px 20px;overflow:auto;margin:20px 0 0;font:15px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.run ul{margin:16px 0 0;padding-left:20px}
+.run li{margin:6px 0}
+code{font:.9em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--tint);padding:.1em .4em;border-radius:6px}
+pre code{background:none;padding:0;font-size:inherit}
+/* footer */
+footer{border-top:1px solid var(--line);padding:32px 0 48px;color:var(--muted);font-size:14px}
+footer .links{display:flex;flex-wrap:wrap;gap:6px 20px;margin-bottom:12px}
+footer a{color:var(--brand)}
+footer p{margin:4px 0}
+@media (min-width:760px){
+  .hero-grid{grid-template-columns:1fr 1.15fr;align-items:center;gap:48px}
+  .cards{grid-template-columns:repeat(3,1fr)}
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .feat{grid-template-columns:1fr 1fr;column-gap:40px}
+  section{padding:80px 0}
+}
+@media (min-width:960px){
+  .step-grid{grid-template-columns:300px 1fr;gap:32px;align-items:start}
+  .stats{grid-template-columns:repeat(4,1fr)}
+}
+@media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">본문으로 건너뛰기</a>
+
+<header class="top"><div class="wrap top-in">
+  <a class="logo" href="./"><span class="ribbon-mini" aria-hidden="true"></span>동반차</a>
+  <nav aria-label="주요 메뉴">
+    <a href="#video">영상</a><a href="#flow">시연 흐름</a><a href="#features">기능</a><a href="#tech">기술</a><a href="#run">실행</a>
+  </nav>
+</div></header>
+
+<main id="main">
+
+<section class="hero"><div class="wrap hero-grid">
+  <div>
+    <h1>함께 탄 차 안의 시간을<br>한 권의 다이어리로.</h1>
+    <p class="intro">동반차는 Pleos Connect(Android Automotive OS)용 차량 앱입니다. 함께 탄 사람들이 나눈 이야기 중 다시 듣고 싶은 순간과 달려온 길을 기록합니다. 대화가 끊기면 조심스럽게 이야기를 이어 주고, 도착하면 그날의 주행을 다이어리로 정리합니다.</p>
+    <div class="btns">
+      <a class="btn primary" href="#video">시연 영상 보기</a>
+      <a class="btn ghost" href="https://github.com/hyundai-app-devchallenge/drive-diary">GitHub 레포</a>
+      <span class="btn ghost" aria-disabled="true" role="link">기획 문서 (준비 중)</span>
+    </div>
+    <p class="note">APK는 제출 파일에 포함되어 있어요.</p>
+  </div>
+  <img class="shot" src="images/home.png" width="1200" height="866" alt="동반차 홈 화면: 여행 시작하기와 지난 여행 사진 카드">
+</div></section>
+
+<section id="video" class="alt" data-youtube-id=""><div class="wrap">
+  <p class="eyebrow">시연 영상</p>
+  <h2>영상으로 먼저 보기</h2>
+  <div class="video-box" id="video-box" role="img" aria-label="시연 영상 준비 중">시연 영상 준비 중</div>
+</div></section>
+
+<section id="glance"><div class="wrap">
+  <p class="eyebrow">한눈에</p>
+  <h2>가는 길은 어디에도 남지 않습니다</h2>
+  <div class="cards">
+    <article class="card">
+      <span class="tag">문제</span>
+      <h3>이동하는 시간은 기록에서 빠집니다</h3>
+      <p>사진과 영상은 대개 도착한 뒤에 찍힙니다. 대화가 끊기면 동승자는 잠들거나 각자 휴대폰을 봅니다. 함께 탔지만 함께하지 못하는 시간이 생깁니다.</p>
+    </article>
+    <article class="card">
+      <span class="tag">해결</span>
+      <h3>고른 이야기만 남기고, 다이어리로 정리합니다</h3>
+      <p>출발 전에 탑승자 모두의 동의를 받고, 모든 대화를 저장하지 않습니다. 여행이 끝나면 날짜, 함께한 사람, 달려온 길, 사진, 나눈 이야기를 한 권의 다이어리로 정리합니다.</p>
+    </article>
+    <article class="card">
+      <span class="tag">왜 차 안인가</span>
+      <h3>필요한 것을 이미 모두 갖추고 있습니다</h3>
+      <p>위치, 기어와 문 열림 같은 차량 상태, 마이크, 탑승자 모두가 함께 보는 화면입니다. 동반차는 누구도 휴대폰을 들지 않고 이 시간을 기록하는 방법을 제안합니다.</p>
+    </article>
+  </div>
+  <a class="more" href="https://github.com/hyundai-app-devchallenge/drive-diary#1-배경">배경 전체 읽기 →</a>
+</div></section>
+
+<section id="flow" class="alt"><div class="wrap">
+  <p class="eyebrow">시연 흐름</p>
+  <h2>출발부터 다이어리까지</h2>
+  <p class="lead">Pleos Connect 에뮬레이터(v2.1.0)에서 앱의 2/3 분할 화면을 캡처한 화면입니다. 지난 여행 3개는 데모 데이터입니다.</p>
+  <ol class="flow">
+    <li class="step"><div class="step-grid"><div>
+      <p class="num">1단계</p><h3>출발과 녹음 동의</h3>
+      <p class="desc">홈에서 여행 시작하기를 누르고 함께 가는 사람을 정합니다. 대화 듣기와 AI 정리 동의를 따로 받습니다.</p></div>
+      <img class="shot" loading="lazy" src="images/consent.png" width="1200" height="866" alt="대화 듣기와 AI 정리 동의를 따로 받는 화면"></div></li>
+    <li class="step"><div class="step-grid"><div>
+      <p class="num">2단계</p><h3>주행 중: 화면은 보기만</h3>
+      <p class="desc">목적지까지의 길 리본, 녹음 상태, 지금까지 저장한 대화만 보입니다. 버튼은 정차 중에만 나옵니다.</p></div>
+      <img class="shot" loading="lazy" src="images/driving.png" width="1200" height="866" alt="주행 중 여행 화면: 버튼 없이 AI가 제목을 붙인 대화 3개만 보임"></div></li>
+    <li class="step"><div class="step-grid"><div>
+      <p class="num">3단계</p><h3>조용할 때 확인</h3>
+      <p class="desc">차 안이 오래 조용하면 소리 없이 화면으로만 “혹시 다들 자고 있나요?”를 묻습니다.</p></div>
+      <img class="shot" loading="lazy" src="images/ask-quiet.png" width="1200" height="866" alt="혹시 다들 자고 있나요? 화면 확인"></div></li>
+    <li class="step"><div class="step-grid"><div>
+      <p class="num">4단계</p><h3>대화를 잇는 질문</h3>
+      <p class="desc">“아니, 안 자”처럼 말로 답하면 여행지와 동행 관계에 맞는 가벼운 질문을 소리로 읽어 줍니다.</p></div>
+      <img class="shot" loading="lazy" src="images/ask-question.png" width="1200" height="866" alt="친구와 탄 여행에 맞춘 질문 카드"></div></li>
+    <li class="step"><div class="step-grid"><div>
+      <p class="num">5단계</p><h3>도착</h3>
+      <p class="desc">차량 내비가 도착을 알리거나, 목적지 300m 안에서 기어가 P가 되면 여행을 스스로 마칩니다.</p></div>
+      <img class="shot" loading="lazy" src="images/arrival.png" width="1200" height="866" alt="강릉 경포해변 도착, 녹음 저장됨"></div></li>
+    <li class="step"><div class="step-grid"><div>
+      <p class="num">6단계</p><h3>다이어리 만들기</h3>
+      <p class="desc">정차한 뒤 녹음 저장, 이야기 정리, 경로와 시간 정리, 다이어리 꾸미기 순서로 진행합니다.</p></div>
+      <img class="shot" loading="lazy" src="images/diary-making.png" width="1200" height="866" alt="오늘의 다이어리를 만들고 있어요"></div></li>
+    <li class="step"><div class="step-grid"><div>
+      <p class="num">7단계</p><h3>다이어리 완성</h3>
+      <p class="desc">날짜, 제목, 함께한 사람, 실제 주행 경로, 함께 달린 시간, 사진, 나눈 이야기가 한 장에 담깁니다.</p></div>
+      <img class="shot" loading="lazy" src="images/diary-done.png" width="1200" height="866" alt="이야기 3개와 경로가 담긴 다이어리 완성"></div></li>
+    <li class="step"><div class="step-grid"><div>
+      <p class="num">8단계</p><h3>기록 지도</h3>
+      <p class="desc">지금까지의 여행은 지도 위에 기록마다 다른 색의 경로로 쌓입니다. 경로나 카드를 누르면 그날의 다이어리가 열립니다.</p></div>
+      <img class="shot" loading="lazy" src="images/records.png" width="1200" height="866" alt="여행 3개가 색이 다른 경로로 쌓인 기록 지도"></div></li>
+    <li class="step"><div class="step-grid"><div>
+      <p class="num">9단계</p><h3>다이어리 펼쳐 보기</h3>
+      <p class="desc">이야기마다 제목, 태그, 음성 길이가 붙고 눌러서 다시 듣습니다. 이야기를 고르면 지도와 시간 띠에서 그 자리를 함께 보여 줍니다.</p></div>
+      <img class="shot" loading="lazy" src="images/diary.png" width="1200" height="866" alt="다이어리: 경로 지도, 동승자, 사진, 나눈 이야기"></div></li>
+  </ol>
+  <div class="goal">
+    <svg width="30" height="36" viewBox="0 0 30 36" aria-hidden="true"><path d="M6 3v30" stroke="#002C5F" stroke-width="4" stroke-linecap="round"/><path d="M6 5h18l-4 6 4 6H6z" fill="#002C5F"/></svg>
+    도착, 한 권의 다이어리가 됩니다
+  </div>
+</div></section>
+
+<section id="features"><div class="wrap">
+  <p class="eyebrow">기능</p>
+  <h2>일곱 가지 기능</h2>
+  <ul class="feat">
+    <li><span class="c" aria-hidden="true">①</span><div><b>여행 시작: 함께 가는 사람과 녹음 동의</b><span>목적지는 차량 내비에서 찍으면 자동으로 들어옵니다.</span></div></li>
+    <li><span class="c" aria-hidden="true">②</span><div><b>주행 중: 화면은 보기만, 기록은 저절로</b><span>남길 만한 이야기만 골라 음성 조각으로 저장합니다.</span></div></li>
+    <li><span class="c" aria-hidden="true">③</span><div><b>조용할 때만 건네는 질문</b><span>말소리의 유무와 목적지까지 남은 시간으로 때를 봅니다.</span></div></li>
+    <li><span class="c" aria-hidden="true">④</span><div><b>운전자 안전: 기록은 정차했을 때만</b><span>화면을 오래 봐야 하는 기능은 정차 중에만 엽니다.</span></div></li>
+    <li><span class="c" aria-hidden="true">⑤</span><div><b>Gleo와 함께 쓰는 음성 명령</b><span>“동반차 녹음 다시 시작해”처럼 말로 조작합니다.</span></div></li>
+    <li><span class="c" aria-hidden="true">⑥</span><div><b>도착과 다이어리 생성</b><span>도착하면 여행을 스스로 마치고 다이어리를 만듭니다.</span></div></li>
+    <li><span class="c" aria-hidden="true">⑦</span><div><b>기록 지도와 다이어리</b><span>여행이 지도 위에 다른 색의 경로로 쌓입니다.</span></div></li>
+  </ul>
+  <a class="more" href="guide/features.html">기능 자세히 보기 →</a>
+</div></section>
+
+<section id="tech" class="alt"><div class="wrap">
+  <p class="eyebrow">기술</p>
+  <h2>기기 안에서 판정하고, 권장 기준 안에서 돕니다</h2>
+  <p class="lead">남길지 말지는 기기 안의 작은 모델이 정합니다. 버려지는 대화는 처음부터 끝까지 차 밖으로 나가지 않습니다.</p>
+  <div class="stats">
+    <div class="stat"><div class="n">15<small>MB</small></div><h3>온디바이스 판정 모델</h3><p>KoELECTRA-small을 INT8로 줄였습니다(56MB → 15MB). 묶음당 판정 25ms.</p></div>
+    <div class="stat"><div class="n">24<small>/25</small></div><h3>남길 대화 재현율 0.96</h3><p>실제 차 안 대화 37묶음에서 남길 대화 25개 중 24개를 지켰고, 정확도는 0.84입니다.</p></div>
+    <div class="stat"><div class="n">213<small>MB</small></div><h3>평균 메모리 (권장 400MB 이하)</h3><p>CPU는 평균 2.9%(권장 3% 이하). 동반차 앱 프로세스만 측정했습니다.</p></div>
+    <div class="stat"><div class="n">읽기<small>만</small></div><h3>주행 안전과 차량 연동</h3><p>주행 중에는 보기 전용 화면만 열고, 차량 제어 API는 쓰지 않습니다.</p></div>
+  </div>
+  <a class="more" href="guide/tech.html">기술 자세히 보기 →</a> &nbsp; <a class="more" href="guide/m1-model.html">판정 모델 자세히 보기 →</a>
+</div></section>
+
+<section id="run" class="run"><div class="wrap">
+  <p class="eyebrow">실행·설치</p>
+  <h2>에뮬레이터에 설치해 보기</h2>
+  <p class="lead">Android SDK와 Pleos Connect 에뮬레이터(또는 Android 기기)가 필요합니다.</p>
+  <pre><code>./gradlew installDebug</code></pre>
+  <ul>
+    <li>Pleos 에뮬레이터에서는 앱이 <b>사용자 10</b>에서 돕니다.</li>
+    <li>처음 실행하면 공모전 데모 여행 3개(경로, 음성, 사진 포함)가 기록에 자동으로 들어갑니다.</li>
+    <li>debug 빌드에는 런처에 <b>동반차 디버그</b> 아이콘이 따로 생깁니다. 차량 없이 주행, 음성, Gleo를 시험하는 도구입니다.</li>
+  </ul>
+  <a class="more" href="guide/debug-app.html">디버그 앱 자세히 보기 →</a>
+</div></section>
+
+</main>
+
+<footer><div class="wrap">
+  <div class="links">
+    <a href="https://github.com/hyundai-app-devchallenge/drive-diary">GitHub</a>
+    <a href="guide/features.html">기능</a><a href="guide/structure.html">프로젝트 구조</a><a href="guide/tech.html">기술</a><a href="guide/debug-app.html">디버그 앱</a>
+  </div>
+  <p>화면은 Pleos Connect 에뮬레이터(v2.1.0) 캡처이며, 지난 여행 3개는 데모 데이터입니다.</p>
+  <p>글꼴: Pretendard (SIL Open Font License 1.1)</p>
+</div></footer>
+
+<script>
+(function(){
+  var s=document.getElementById('video'),b=document.getElementById('video-box');
+  var id=(s.getAttribute('data-youtube-id')||'').trim();
+  if(!/^[\w-]{6,}$/.test(id))return;
+  var f=document.createElement('iframe');
+  f.src='https://www.youtube-nocookie.com/embed/'+id;
+  f.title='동반차 시연 영상';
+  f.loading='lazy';
+  f.allow='accelerometer; encrypted-media; picture-in-picture';
+  f.allowFullscreen=true;
+  b.removeAttribute('role');b.removeAttribute('aria-label');
+  b.textContent='';b.appendChild(f);
+})();
+</script>
+</body>
+</html>

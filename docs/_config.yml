@@ -1,0 +1,12 @@
+title: 동반차
+description: 함께 탄 차 안의 시간을 한 권의 다이어리로.
+baseurl: /drive-diary
+markdown: kramdown
+plugins:
+  - jekyll-relative-links
+relative_links:
+  enabled: true
+  collections: false
+exclude:
+  - android-mvp.md
+  - compose-ui-v3-integration.md
