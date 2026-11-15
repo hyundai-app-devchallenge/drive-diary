@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.Dongbantest" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- 앱이 뜨는 동안 보이는 시작 화면: 흰 바탕 가운데에 동반이. 첫 화면이 그려지면 사라진다. -->
+    <style name="Theme.Dongbantest" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@drawable/splash_window</item>
+    </style>
 </resources>

@@ -1,7 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 임시 런처 아이콘 배경. -->
+<!-- 런처 아이콘 배경: 동반이 얼굴색과 같은 계열의 따뜻한 크림색. 아래쪽은 살짝 짙게 해 바닥처럼 보이게 한다. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#0F2A4A" android:pathData="M0,0H108V108H0Z" />
+    <path android:pathData="M0,0H108V108H0Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="54" android:startY="0" android:endX="54" android:endY="108">
+                <item android:offset="0" android:color="#FFF8EE" />
+                <item android:offset="1" android:color="#FFE9CC" />
+            </gradient>
+        </aapt:attr>
+    </path>
 </vector>

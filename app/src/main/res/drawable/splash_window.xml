@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 시작 화면(Android 11 이하): 흰 바탕 가운데에 동반이. Android 12 이상은 values-v31 의 시스템 시작 화면을 쓴다. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@android:color/white" />
+    <item android:drawable="@drawable/ic_dongban_car_foreground" android:gravity="center" android:width="240dp" android:height="240dp" />
+</layer-list>
