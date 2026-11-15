@@ -62,7 +62,7 @@ h1{font-size:clamp(32px,6.4vw,52px);line-height:1.22;color:var(--brand);font-wei
 .flow:before{content:"";position:absolute;left:11px;top:12px;bottom:28px;width:8px;border-radius:4px;background:var(--tint)}
 .flow:after{content:"";position:absolute;left:13px;top:12px;bottom:28px;width:4px;border-radius:2px;background:var(--brand)}
 .step{position:relative;padding:0 0 44px 52px}
-.step:before{content:"";position:absolute;left:5px;top:2px;width:20px;height:20px;border-radius:50%;background:#fff;border:5px solid var(--brand);z-index:1}
+.step:before{content:"";position:absolute;box-sizing:border-box;left:5px;top:2px;width:20px;height:20px;border-radius:50%;background:#fff;border:5px solid var(--brand);z-index:1}
 .step-grid{display:grid;gap:16px}
 .step .num{font-size:13px;font-weight:700;color:var(--brand);margin:0}
 .step h3{font-size:20px;line-height:1.4;margin:2px 0 6px}
