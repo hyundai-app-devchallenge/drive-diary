@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- debug 빌드의 동반차 아이콘 그림: release 와 같은 동반이 위에 "DEV" 표시를 얹는다. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_dongban_car_foreground" />
+    <item android:drawable="@drawable/ic_dongban_dev_badge" />
+</layer-list>
