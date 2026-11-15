@@ -393,7 +393,7 @@ Android SDK와 Pleos Connect 에뮬레이터(또는 Android 기기)가 필요합
 
 - 에뮬레이터는 시작할 때마다 PC 마이크 사용이 꺼집니다. `powershell -ExecutionPolicy Bypass -File tools/emulator/start-pleos.ps1`로 시작하면 마이크 사용을 켜 줍니다.
 - `powershell -ExecutionPolicy Bypass -File tools/emulator/start-pleos.ps1 -CheckMic`은 에뮬레이터의 오디오 입력이 고장 났는지 알려 줍니다. 고장 났다면 에뮬레이터를 다시 시작합니다.
-- 디버그 빌드는 녹음을 시작하고 20초 동안 마이크에 소리가 한 번도 잡히지 않으면 화면 아래에 안내를 띄웁니다. 소리가 한 번 잡히면 그 뒤로는 띄우지 않습니다.
+- 디버그 빌드는 녹음을 시작하고 5초 동안 마이크에 소리가 한 번도 잡히지 않으면 화면 아래에 안내를 띄웁니다. 소리가 한 번 잡히면 그 뒤로는 띄우지 않습니다.
 
 ### 디버그 앱 (동반차 디버그)
 

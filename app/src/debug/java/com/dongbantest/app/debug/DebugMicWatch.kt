@@ -26,7 +26,7 @@ import kotlinx.coroutines.launch
 /** 안내를 띄울지 정하는 순수 로직. [armed] 가 true 면 이번 녹음 구간에서 아직 안내하지 않은 상태. */
 object MicSilenceDecision {
     /** 녹음을 시작하고 이만큼 지나도록 말소리 크기의 소리가 한 번도 없으면 안내한다. */
-    const val QUIET_THRESHOLD_MS = 20_000L
+    const val QUIET_THRESHOLD_MS = 5_000L
 
     data class Result(val warn: Boolean, val armed: Boolean)
 
@@ -49,7 +49,7 @@ object MicSilenceDecision {
 object DebugMicWatch {
     private const val TAG = "DebugMicWatch"
     private const val MESSAGE =
-        "20초 동안 마이크에 소리가 잡히지 않았어요. 말을 했는데도 이 안내가 뜨면 에뮬레이터의 PC 마이크 사용을 켜거나 " +
+        "5초 동안 마이크에 소리가 잡히지 않았어요. 말을 했는데도 이 안내가 뜨면 에뮬레이터의 PC 마이크 사용을 켜거나 " +
             "에뮬레이터를 다시 시작해 주세요. (디버그 빌드 안내)"
     private const val MAX_WARNINGS = 2
     private const val BANNER_MS = 10_000L

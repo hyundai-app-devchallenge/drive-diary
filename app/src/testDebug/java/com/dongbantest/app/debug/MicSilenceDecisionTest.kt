@@ -14,7 +14,7 @@ class MicSilenceDecisionTest {
     ) = MicSilenceDecision.decide(status, test, quietMs, armed)
 
     @Test fun warnsOnceAtThreshold() {
-        val first = decide(quietMs = 20_000)
+        val first = decide(quietMs = 5_000)
         assertTrue(first.warn)
         assertFalse(first.armed)
         val again = decide(quietMs = 30_000, armed = first.armed)
@@ -22,7 +22,7 @@ class MicSilenceDecisionTest {
     }
 
     @Test fun noWarningBelowThreshold() {
-        assertFalse(decide(quietMs = 19_900).warn)
+        assertFalse(decide(quietMs = 4_900).warn)
     }
 
     @Test fun noWarningForTestAudio() {
@@ -36,9 +36,9 @@ class MicSilenceDecisionTest {
     }
 
     @Test fun rearmsWhenCaptureLeavesOn() {
-        val first = decide(quietMs = 20_000)
+        val first = decide(quietMs = 5_000)
         val paused = decide(status = CaptureStatus.Paused, quietMs = 0, armed = first.armed)
         assertTrue(paused.armed)
-        assertTrue(decide(quietMs = 20_000, armed = paused.armed).warn)
+        assertTrue(decide(quietMs = 5_000, armed = paused.armed).warn)
     }
 }
