@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
@@ -64,15 +65,15 @@ class TripRepository(
         combine(dao.observeTrips(), dao.observePhotoMemories()) { trips, photos ->
             val coverByTrip = photos.groupBy { it.tripId }.mapValues { it.value.first().filePath }
             trips.map { it.toDomain(coverByTrip[it.id]) }
-        }
+        }.flowOn(Dispatchers.Default)
 
     /** 끝난 여행별 지도 경로 (여행 id → 위치가 튄 곳에서 끊긴 구간들). */
     fun observeFinishedRoutes(): Flow<Map<Long, List<List<LocationPoint>>>> =
-        dao.observeFinishedTripPoints().map { rows ->
+        dao.observeFinishedTripPoints().distinctUntilChanged().map { rows ->
             rows.groupBy { it.tripId }
                 .mapValues { (_, points) -> RoutePath.segments(points.map { it.toDomain() }) }
                 .filterValues { it.isNotEmpty() }
-        }
+        }.flowOn(Dispatchers.Default)
 
     fun observeOngoingTrip(): Flow<Trip?> =
         combine(dao.observeOngoingTrip(), endingTrips) { trip, _ ->
@@ -99,7 +100,7 @@ class TripRepository(
                     ),
                 )
             }
-        }
+        }.flowOn(Dispatchers.Default)
 
     suspend fun isTripOngoing(tripId: Long): Boolean = !isTripEnding(tripId) &&
         canSaveOngoingTrip(tripId) && !isTripEnding(tripId)

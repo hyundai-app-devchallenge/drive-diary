@@ -39,6 +39,8 @@ class NaviMonitor(context: Context) {
 
     private val naviHelper = NaviHelper(context.applicationContext)
     private var started = false
+    /** 첫 연결이 실패한 뒤 다시 연결해 본 횟수. 내비가 없는 기기에서 끝없이 다시 붙지 않게 [MAX_RETRIES] 번까지만 한다. */
+    private var retries = 0
     private val addressWaiters = mutableListOf<CompletableDeferred<String>>()
 
     private val _route = MutableStateFlow<NaviRoute?>(null)
@@ -122,6 +124,8 @@ class NaviMonitor(context: Context) {
             },
             onFailed = { e ->
                 Log.w(TAG, "NaviHelper 연결 실패", e)
+                // 다시 start() 할 때 listener 가 두 번 등록되지 않게 먼저 뺀다.
+                runCatching { naviHelper.removeListener(listener) }
                 started = false
             },
         )
@@ -138,7 +142,14 @@ class NaviMonitor(context: Context) {
 
     /** 남은 거리·시간을 새로 물어본다. 답은 [route] 로 온다. */
     fun refreshRoute() {
-        if (!started) return
+        if (!started) {
+            // 첫 연결이 실패했으면(부팅 직후 내비가 아직 안 뜬 경우 등) 15초마다 이 호출에서 몇 번 더 연결해 본다.
+            if (retries < MAX_RETRIES) {
+                retries++
+                start()
+            }
+            return
+        }
         runCatching { naviHelper.getDestinationInfo() }.onFailure { Log.w(TAG, "목적지 조회 실패", it) }
     }
 
@@ -218,5 +229,6 @@ class NaviMonitor(context: Context) {
 
     private companion object {
         const val TAG = "NaviMonitor"
+        const val MAX_RETRIES = 8
     }
 }

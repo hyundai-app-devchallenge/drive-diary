@@ -383,7 +383,7 @@ Android SDK와 Pleos Connect 에뮬레이터(또는 Android 기기)가 필요합
 | 키 | 없을 때 | 넣는 곳 |
 |---|---|---|
 | Mapbox 공개 토큰 (`pk.`) | 지도 자리에 안내 문구만 나옵니다. | 디버그 앱 **지도 설정**, 또는 `local.properties`에 `MAPBOX_ACCESS_TOKEN=pk.…` 한 줄을 넣고 빌드 |
-| Cloudflare 계정 ID와 API 토큰 | 대화는 기록되지만 제목·태그가 붙지 않고, 질문은 앱 안 목록에서 고릅니다. | 디버그 앱 **대화 요약 설정**에서 저장 후 **연결 시험** |
+| Cloudflare 계정 ID와 API 토큰 | 대화는 기록되지만 제목·태그가 붙지 않고, 질문은 앱 안 목록에서 고릅니다. | 디버그 앱 **대화 요약 설정**에서 저장 후 **연결 시험**, 또는 `local.properties`에 `CLOUDFLARE_ACCOUNT_ID=…`, `CLOUDFLARE_API_TOKEN=…` 두 줄을 넣고 빌드 (빌드 때 읽어 두었다가, 기기에 저장된 키가 없을 때만 기본값으로 씁니다) |
 
 - 키는 Android Keystore로 암호화해 기기 안에만 둡니다. 화면에는 끝 4자리만 보입니다.
 - 키는 정차 중에만 바꿀 수 있습니다.

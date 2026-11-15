@@ -85,6 +85,9 @@ import com.dongbantest.app.viewmodel.HomeViewModel
 import com.dongbantest.app.viewmodel.RecordingMode
 import com.dongbantest.app.viewmodel.TripViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import com.drivediary.talkrec.capture.CaptureState
 import com.dongbantest.app.ui.components.MapRoute as RealMapRoute
 
 /**
@@ -138,6 +141,24 @@ private fun rememberNow(): Long {
         }
     }
     return now
+}
+
+/**
+ * 화면에 쓰는 캡처 상태. 캡처는 0.1초마다 프레임 수·누적 시간을 올리는데, 그대로 읽으면 주행 화면이 1초에 10번 다시 그려진다.
+ * 화면에 보이는 값(상태, 분 단위로 보이는 누적 시간)만 남겨 그 값이 바뀔 때만 알린다.
+ */
+@Composable
+private fun rememberCaptureState(): CaptureState {
+    val flow = remember {
+        TalkRec.state.map {
+            it.copy(
+                accumulatedCaptureMs = it.accumulatedCaptureMs / 60_000 * 60_000,
+                frameCount = 0, finalCount = 0, blockCount = 0, unavailableFrameCount = 0, discontinuityCount = 0,
+            )
+        }.distinctUntilChanged()
+    }
+    val state by flow.collectAsStateWithLifecycle(TalkRec.state.value)
+    return state
 }
 
 @Composable
@@ -285,7 +306,7 @@ fun V3NavHost(
             val playback by vm.playback.collectAsStateWithLifecycle()
             val talks = remember(state.data) { state.data?.talks().orEmpty() }
             val now = rememberNow()
-            val capture by TalkRec.state.collectAsStateWithLifecycle() // talk-rec: 상시 캡처 상태(녹음 칩)
+            val capture = rememberCaptureState() // talk-rec: 상시 캡처 상태(녹음 칩)
             var showGuide by rememberSaveable { mutableStateOf(entry.arguments?.getBoolean("guide") == true) }
             var confirmEnd by rememberSaveable { mutableStateOf(false) }
             // "버리기"를 고르면 되돌릴 수 없으니 한 번 더 묻는다.
@@ -442,13 +463,19 @@ fun V3NavHost(
             val vm: TripViewModel = viewModel(factory = AppViewModelProvider.trip(tripId))
             val state by vm.uiState.collectAsStateWithLifecycle()
             val now = rememberNow()
-            val capture by TalkRec.state.collectAsStateWithLifecycle() // talk-rec: 상시 캡처 상태
+            val capture = rememberCaptureState() // talk-rec: 상시 캡처 상태
             ArrivalScreen(
                 state = state.toArrival(entry.arguments?.getString("name").orEmpty(), now, capture),
                 events = DrivingEvents(onTab = onTab),
                 onConfirm = { navController.go(V3Routes.making(tripId)) },
                 onTimeline = { navController.go(V3Routes.diary(tripId)) },
-                onNotYet = { vm.keepTraveling { navController.go(V3Routes.trip(tripId)) } },
+                onNotYet = {
+                    vm.keepTraveling {
+                        // 직접 끝냈다가 되돌린 여행은 다시 "진행 중"이다. 닫힌 목록에 남겨 두면 여행 탭·홈 카드로 못 들어간다.
+                        closedTripIds = closedTripIds - tripId
+                        navController.go(V3Routes.trip(tripId))
+                    }
+                },
             )
         }
 

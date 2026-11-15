@@ -29,6 +29,12 @@ class ArrivalGate(
     @Synchronized
     fun shouldEndOnNaviArrival(tripId: Long): Boolean = tripId !in keptTraveling
 
+    /** 내비 목적지가 다른 곳으로 바뀌었을 때: 이전에 "아직 여행 중"이던 여행도 새 목적지에서는 끝낼 수 있다. */
+    @Synchronized
+    fun destinationChanged() {
+        keptTraveling.clear()
+    }
+
     /** "아직 여행 중이에요"를 눌렀을 때. */
     @Synchronized
     fun keepTraveling(tripId: Long) {
