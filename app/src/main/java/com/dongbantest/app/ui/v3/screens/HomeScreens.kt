@@ -572,7 +572,8 @@ private fun ConsentChoice(
             .fillMaxWidth()
             .clip(shape)
             .then(if (inner) Modifier.background(c.paper2) else Modifier)
-            .border(1.dp, if (selected) c.ink else c.rule, shape),
+            // 테두리는 늘 옅게 둔다. 고른 상태는 체크박스로 보인다(진한 테두리 두 겹은 상자가 무겁게 보였다).
+            .border(1.dp, c.rule, shape),
     ) {
         Row(
             Modifier
