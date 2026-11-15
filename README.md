@@ -22,7 +22,7 @@
 
 | 시연 페이지 | 시연 영상 | APK |
 |---|---|---|
-| [동반차 시연 페이지](https://hyundai-app-devchallenge.github.io/drive-diary/) | 영상 링크 준비 중 | 제출 파일에 포함 |
+| [동반차 시연 페이지](https://hyundai-app-devchallenge.github.io/drive-diary/) | 영상 링크 준비 중 | [동반차 1.0.0 (GitHub Release)](https://github.com/hyundai-app-devchallenge/drive-diary/releases/tag/release) |
 
 ---
 
@@ -157,9 +157,33 @@ drive-diary/
 
 ## 5. 데모 앱 실행 방법과 디버그 앱
 
+### 테스트 환경
+
+| 항목 | 내용 |
+|---|---|
+| 에뮬레이터 | Pleos Connect v2.1.0 (Android 14, API 34) |
+| 화면 규격 | 2560×1440 px, 160 dpi (밀도 1.0) |
+| 앱 창 | 1/3 분할 약 840×1212 px, 2/3 분할 약 1700×1212 px, 전체 약 2560×1212 px (상단 상태 표시줄과 하단 공조 바를 뺀 영역) |
+| 빌드 | Android SDK, JDK 25 (Gradle 데몬 기준) |
+
+필요한 설정은 아래 [키 넣기](#키-넣기-선택)와 [에뮬레이터 마이크](#에뮬레이터-마이크)를 참고하세요.
+
 ### 실행
 
-Android SDK와 Pleos Connect 에뮬레이터(또는 Android 기기)가 필요합니다.
+**APK로 설치**
+
+1. [GitHub Release](https://github.com/hyundai-app-devchallenge/drive-diary/releases/tag/release)에서 `42gether_dongbancha_release.apk`를 받습니다.
+2. Pleos Connect 에뮬레이터를 켠 뒤 설치합니다.
+
+```bash
+adb install -r 42gether_dongbancha_release.apk
+```
+
+Release APK에는 지도(Mapbox)와 대화 요약(Cloudflare) 키가 들어 있어 따로 설정하지 않아도 모든 기능이 동작합니다.
+
+**소스에서 빌드**
+
+Android SDK가 필요합니다.
 
 ```bash
 ./gradlew installDebug
@@ -171,6 +195,8 @@ Android SDK와 Pleos Connect 에뮬레이터(또는 Android 기기)가 필요합
 - 일반 Android 기기에서는 차량 정보가 모의 데이터로 표시됩니다.
 
 #### 키 넣기 (선택)
+
+소스에서 빌드할 때만 필요합니다. Release APK에는 키가 이미 들어 있습니다.
 
 | 키 | 없을 때 | 넣는 곳 |
 |---|---|---|
