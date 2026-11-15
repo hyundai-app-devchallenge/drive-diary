@@ -12,6 +12,13 @@
     </queries>
 
     <application>
+        <!-- 디버그 전용: 앱이 뜰 때 마이크 무음 감시(DebugMicWatch)를 시작한다.
+             녹음 중인데 마이크 입력이 8초 넘게 완전한 0이면 화면에 안내를 한 번 띄운다. -->
+        <provider
+            android:name=".debug.DebugMicWatchInitializer"
+            android:authorities="${applicationId}.debug-mic-watch"
+            android:exported="false" />
+
         <activity
             android:name=".debug.DebugGleoVoiceActivity"
             android:exported="false"

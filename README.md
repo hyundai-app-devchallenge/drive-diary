@@ -389,6 +389,12 @@ Android SDK와 Pleos Connect 에뮬레이터(또는 Android 기기)가 필요합
 - 키는 정차 중에만 바꿀 수 있습니다.
 - `local.properties`는 Git에 올라가지 않습니다. 키를 코드나 이슈에 붙여 넣지 마세요.
 
+#### 에뮬레이터 마이크
+
+- 에뮬레이터는 시작할 때마다 PC 마이크 사용이 꺼집니다. `powershell -ExecutionPolicy Bypass -File tools/emulator/start-pleos.ps1`로 시작하면 마이크 사용을 켜 줍니다.
+- `powershell -ExecutionPolicy Bypass -File tools/emulator/start-pleos.ps1 -CheckMic`은 에뮬레이터의 오디오 입력이 고장 났는지 알려 줍니다. 고장 났다면 에뮬레이터를 다시 시작합니다.
+- 디버그 빌드는 녹음을 시작하고 20초 동안 마이크에 소리가 한 번도 잡히지 않으면 화면 아래에 안내를 띄웁니다. 소리가 한 번 잡히면 그 뒤로는 띄우지 않습니다.
+
 ### 디버그 앱 (동반차 디버그)
 
 debug 빌드를 설치하면 런처에 **동반차 디버그** 아이콘이 따로 생깁니다. 차량 없이 에뮬레이터에서 주행, 음성, Gleo를 시험하는 도구이며, release 빌드에는 들어가지 않습니다.
