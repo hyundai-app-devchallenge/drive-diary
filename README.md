@@ -20,9 +20,9 @@
 
 ## 바로 가기
 
-| 시연 페이지 | 시연 영상 | APK |
+| 안내 페이지 | 시연 영상 | APK |
 |---|---|---|
-| [동반차 시연 페이지](https://hyundai-app-devchallenge.github.io/drive-diary/) | [시연 영상](https://youtu.be/sy-nPxrDXH8) · [시연 영상 (음성)](https://youtu.be/i9xM9Pp_T5w) | [동반차 1.0.0 (GitHub Release)](https://github.com/hyundai-app-devchallenge/drive-diary/releases/tag/release) |
+| [동반차 안내 페이지](https://hyundai-app-devchallenge.github.io/drive-diary/) | [시연 영상](https://youtu.be/sy-nPxrDXH8) · [시연 영상 (음성)](https://youtu.be/i9xM9Pp_T5w) | [동반차 1.0.0 (GitHub Release)](https://github.com/hyundai-app-devchallenge/drive-diary/releases/tag/release) |
 
 ---
 
