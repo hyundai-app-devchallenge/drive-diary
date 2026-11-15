@@ -170,7 +170,20 @@ drive-diary/
 
 ### 실행
 
-Android SDK와 Pleos Connect 에뮬레이터(또는 Android 기기)가 필요합니다.
+**APK로 설치**
+
+1. [GitHub Release](https://github.com/hyundai-app-devchallenge/drive-diary/releases/tag/release)에서 `42gether_dongbancha_release.apk`를 받습니다.
+2. Pleos Connect 에뮬레이터를 켠 뒤 설치합니다.
+
+```bash
+adb install -r 42gether_dongbancha_release.apk
+```
+
+Release APK에는 지도(Mapbox)와 대화 요약(Cloudflare) 키가 들어 있어 따로 설정하지 않아도 모든 기능이 동작합니다.
+
+**소스에서 빌드**
+
+Android SDK가 필요합니다.
 
 ```bash
 ./gradlew installDebug
@@ -182,6 +195,8 @@ Android SDK와 Pleos Connect 에뮬레이터(또는 Android 기기)가 필요합
 - 일반 Android 기기에서는 차량 정보가 모의 데이터로 표시됩니다.
 
 #### 키 넣기 (선택)
+
+소스에서 빌드할 때만 필요합니다. Release APK에는 키가 이미 들어 있습니다.
 
 | 키 | 없을 때 | 넣는 곳 |
 |---|---|---|
