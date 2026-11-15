@@ -22,7 +22,7 @@
 
 | 시연 페이지 | 시연 영상 | APK |
 |---|---|---|
-| [동반차 시연 페이지](https://hyundai-app-devchallenge.github.io/drive-diary/) | 영상 링크 준비 중 | 제출 파일에 포함 |
+| [동반차 시연 페이지](https://hyundai-app-devchallenge.github.io/drive-diary/) | 영상 링크 준비 중 | [동반차 1.0.0 (GitHub Release)](https://github.com/hyundai-app-devchallenge/drive-diary/releases/tag/release) |
 
 ---
 
@@ -156,6 +156,17 @@ drive-diary/
 ---
 
 ## 5. 데모 앱 실행 방법과 디버그 앱
+
+### 테스트 환경
+
+| 항목 | 내용 |
+|---|---|
+| 에뮬레이터 | Pleos Connect v2.1.0 (Android 14, API 34) |
+| 화면 규격 | 2560×1440 px, 160 dpi (밀도 1.0) |
+| 앱 창 | 2/3 분할(약 1700×1212 px)을 기준으로 만들었고, 1/3 분할에서도 동작을 확인했습니다. (크기는 상단 상태 표시줄과 하단 공조 바를 뺀 영역) |
+| 빌드 | Android SDK, JDK 25 (Gradle 데몬 기준) |
+
+필요한 설정은 아래 [키 넣기](#키-넣기-선택)와 [에뮬레이터 마이크](#에뮬레이터-마이크)를 참고하세요.
 
 ### 실행
 
